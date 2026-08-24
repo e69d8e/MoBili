@@ -1,4 +1,4 @@
-name: Build & Release
+name: "Build & Release"
 
 on:
   push:
@@ -258,39 +258,18 @@ jobs:
             cp -r "$BUNDLE_DIR"/* "$DEB_DIR/usr/lib/mobili/"
             
             # Create symlink launcher
-            cat << 'SH_EOF' > "$DEB_DIR/usr/bin/mobili"
-#!/bin/sh
-exec /usr/lib/mobili/mobili "$@"
-SH_EOF
+            printf "#!/bin/sh\nexec /usr/lib/mobili/mobili \"\$@\"\n" > "$DEB_DIR/usr/bin/mobili"
             chmod +x "$DEB_DIR/usr/bin/mobili"
             
             # Create desktop entry
-            cat << 'DESKTOP_EOF' > "$DEB_DIR/usr/share/applications/mobili.desktop"
-[Desktop Entry]
-Name=MoBili
-Comment=水墨禅意 · 哔哩哔哩第三方客户端
-Exec=/usr/bin/mobili
-Icon=mobili
-Terminal=false
-Type=Application
-Categories=AudioVideo;Video;Player;
-DESKTOP_EOF
+            printf "[Desktop Entry]\nName=MoBili\nComment=水墨禅意 · 哔哩哔哩第三方客户端\nExec=/usr/bin/mobili\nIcon=mobili\nTerminal=false\nType=Application\nCategories=AudioVideo;Video;Player;\n" > "$DEB_DIR/usr/share/applications/mobili.desktop"
             
             if [ -f "assets/icons/app_icon.png" ]; then
               cp "assets/icons/app_icon.png" "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/mobili.png"
             fi
             
             # Control file
-            cat << CONTROL_EOF > "$DEB_DIR/DEBIAN/control"
-Package: mobili
-Version: ${VERSION_NUM}
-Architecture: amd64
-Maintainer: MoBili Authors <https://github.com/e69d8e/MoBili>
-Description: 墨哩 (MoBili) - 水墨禅意 · 哔哩哔哩第三方客户端
- A modern, elegant third-party Bilibili client crafted with Zen ink aesthetics.
-Section: video
-Priority: optional
-CONTROL_EOF
+            printf "Package: mobili\nVersion: %s\nArchitecture: amd64\nMaintainer: MoBili Authors <https://github.com/e69d8e/MoBili>\nDescription: 墨哩 (MoBili) - 水墨禅意 · 哔哩哔哩第三方客户端\n A modern, elegant third-party Bilibili client crafted with Zen ink aesthetics.\nSection: video\nPriority: optional\n" "${VERSION_NUM}" > "$DEB_DIR/DEBIAN/control"
             
             dpkg-deb --build "$DEB_DIR" "artifacts/MoBili-Linux-x64-${VERSION}.deb"
             rm -rf "$DEB_DIR"
