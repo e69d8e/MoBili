@@ -4,6 +4,7 @@ import '../../models/video_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/audio/mini_audio_player.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/video_card.dart';
@@ -33,8 +34,12 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final info = await UserApiService().getUpSpaceInfo(widget.mid);
-    final videos = await UserApiService().getUpSpaceVideos(widget.mid, pn: 1);
+    final results = await Future.wait([
+      UserApiService().getUpSpaceInfo(widget.mid),
+      UserApiService().getUpSpaceVideos(widget.mid, pn: 1),
+    ]);
+    final info = results[0] as UpSpaceInfo?;
+    final videos = results[1] as List<VideoItem>;
 
     if (mounted) {
       setState(() {
@@ -79,6 +84,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
+      bottomNavigationBar: const MiniAudioPlayer(),
       body: _isLoading
           ? const LoadingView(message: '加载UP主空间...')
           : _spaceInfo == null
@@ -92,6 +98,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                     return false;
                   },
                   child: CustomScrollView(
+                    cacheExtent: 600.0,
                     slivers: [
                       // App Bar without banner image
                       SliverAppBar(

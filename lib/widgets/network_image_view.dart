@@ -60,8 +60,7 @@ class NetworkImageView extends StatelessWidget {
       }
       // Safe default upper bound to prevent decoding unconstrained 4K images into GPU memory
       if (effectiveCacheWidth == null && effectiveCacheHeight == null) {
-        effectiveCacheWidth = 640;
-        effectiveCacheHeight = 400;
+        effectiveCacheWidth = 1080;
       }
     }
 

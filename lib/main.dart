@@ -7,6 +7,7 @@ import 'providers/search_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/main_tab_screen.dart';
 import 'services/danmaku_settings_service.dart';
+import 'services/storage/history_storage_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -26,6 +27,7 @@ void main() async {
     authProvider.init(),
     themeProvider.init(),
     DanmakuSettingsService.init(),
+    HistoryStorageService().init(),
   ]);
 
   runApp(
@@ -70,6 +72,8 @@ class MoBiliRoot extends StatelessWidget {
   }
 }
 
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 class MoBiliApp extends StatelessWidget {
   const MoBiliApp({super.key});
 
@@ -80,10 +84,18 @@ class MoBiliApp extends StatelessWidget {
     return MaterialApp(
       title: '墨哩',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(preset: themeProvider.themePreset),
-      darkTheme: AppTheme.darkTheme(preset: themeProvider.themePreset, isAmoled: themeProvider.isAmoled),
+      theme: AppTheme.lightTheme(
+        preset: themeProvider.themePreset,
+        enablePredictiveBack: themeProvider.enablePredictiveBack,
+      ),
+      darkTheme: AppTheme.darkTheme(
+        preset: themeProvider.themePreset,
+        isAmoled: themeProvider.isAmoled,
+        enablePredictiveBack: themeProvider.enablePredictiveBack,
+      ),
       themeMode: themeProvider.themeMode,
       home: const MainTabScreen(),
+      navigatorObservers: [routeObserver],
     );
   }
 }

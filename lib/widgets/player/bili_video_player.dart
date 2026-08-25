@@ -6,29 +6,35 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../models/danmaku_model.dart';
 import '../../models/play_url_model.dart';
+import '../../models/video_model.dart';
 import '../../utils/formatters.dart';
+import '../app_toast.dart';
 import 'danmaku_overlay.dart';
 
 class BiliVideoPlayer extends StatefulWidget {
   final PlayUrlInfo playUrlInfo;
   final List<DanmakuItem> danmakus;
+  final List<VideoChapter> chapters;
   final String title;
   final Duration? initialPosition;
   final Function(int quality)? onQualityChanged;
   final Function(bool isFullScreen)? onFullScreenChanged;
   final VoidCallback? onNextEpisode;
   final VoidCallback? onListenMode;
+  final void Function(Duration position, Duration duration)? onProgressUpdate;
 
   const BiliVideoPlayer({
     super.key,
     required this.playUrlInfo,
     this.danmakus = const [],
+    this.chapters = const [],
     this.title = '',
     this.initialPosition,
     this.onQualityChanged,
     this.onFullScreenChanged,
     this.onNextEpisode,
     this.onListenMode,
+    this.onProgressUpdate,
   });
 
   @override
@@ -50,9 +56,27 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   bool _isFullScreen = false;
   double _playbackSpeed = 1.0;
 
+  // Screen Lock (横屏锁屏)
+  bool _isScreenLocked = false;
+  bool _showLockIcon = true;
+  Timer? _lockIconTimer;
+
+  // Long Press 2.0X Speed (长按二倍速)
+  bool _isLongPressSpeeding = false;
+  double _speedBeforeLongPress = 1.0;
+
+  // Pan Progress Seek (左右滑动快进快退)
+  bool _isDraggingProgress = false;
+  bool _isPanGestureIgnored = false;
+  Duration _dragStartPosition = Duration.zero;
+  Duration _targetSeekPosition = Duration.zero;
+  double _accumulatedPanDx = 0.0;
+  double _accumulatedPanDy = 0.0;
+
   // In-Player Floating Panels
   bool _showQualityPanel = false;
   bool _showSpeedPanel = false;
+  bool _showChapterPanel = false;
 
   @override
   void initState() {
@@ -129,8 +153,15 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         return;
       }
 
-      if (initialPosition != null) {
+      if (initialPosition != null && initialPosition > Duration.zero) {
         await controller.seekTo(initialPosition);
+        if (widget.initialPosition != null && widget.initialPosition == initialPosition && mounted) {
+          AppToast.show(
+            context,
+            '已定位至上次播放位置 ${Formatters.formatDuration(initialPosition.inSeconds)}',
+            icon: Icons.history_rounded,
+          );
+        }
       }
       await controller.setPlaybackSpeed(_playbackSpeed);
       await controller.play();
@@ -207,12 +238,20 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       isPlaying: val.isPlaying,
       playbackSpeed: _playbackSpeed,
     );
+
+    widget.onProgressUpdate?.call(val.position, val.duration);
   }
 
   void _startHideTimer() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller != null && _controller!.value.isPlaying && !_showQualityPanel && !_showSpeedPanel) {
+      if (mounted &&
+          _controller != null &&
+          _controller!.value.isPlaying &&
+          !_showQualityPanel &&
+          !_showSpeedPanel &&
+          !_showChapterPanel &&
+          !_isDraggingProgress) {
         setState(() {
           _showControls = false;
         });
@@ -221,10 +260,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   }
 
   void _toggleControls() {
-    if (_showQualityPanel || _showSpeedPanel) {
+    if (_showQualityPanel || _showSpeedPanel || _showChapterPanel) {
       setState(() {
         _showQualityPanel = false;
         _showSpeedPanel = false;
+        _showChapterPanel = false;
       });
       return;
     }
@@ -269,31 +309,96 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }
   }
 
+  void _toggleLock() {
+    setState(() {
+      _isScreenLocked = !_isScreenLocked;
+      if (_isScreenLocked) {
+        _showControls = false;
+        _showQualityPanel = false;
+        _showSpeedPanel = false;
+        _showChapterPanel = false;
+        _showLockIcon = true;
+        _startLockIconTimer();
+      } else {
+        _showControls = true;
+        _showLockIcon = true;
+        _startHideTimer();
+      }
+    });
+    HapticFeedback.lightImpact();
+  }
+
+  void _startLockIconTimer() {
+    _lockIconTimer?.cancel();
+    _lockIconTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isScreenLocked) {
+        setState(() {
+          _showLockIcon = false;
+        });
+      }
+    });
+  }
+
+  void _toggleLockIconVisibility() {
+    setState(() {
+      _showLockIcon = !_showLockIcon;
+    });
+    if (_showLockIcon) {
+      _startLockIconTimer();
+    } else {
+      _lockIconTimer?.cancel();
+    }
+  }
+
+  bool get isVerticalVideo =>
+      _controller != null &&
+      _controller!.value.isInitialized &&
+      _controller!.value.aspectRatio < 0.95;
+
   void _toggleFullScreen() {
     _setFullScreen(!_isFullScreen);
   }
 
+  bool get isFullScreen => _isFullScreen;
+
   void toggleFullScreen() {
     _toggleFullScreen();
+  }
+
+  void enterFullScreen() {
+    _setFullScreen(true);
   }
 
   void exitFullScreen() {
     _setFullScreen(false);
   }
 
-  void _setFullScreen(bool full) {
-    if (_isFullScreen == full) return;
+  void _setFullScreen(bool full, {bool? forceLandscape}) {
+    if (_isFullScreen == full && forceLandscape == null) return;
     setState(() {
       _isFullScreen = full;
+      if (!_isFullScreen) {
+        _isScreenLocked = false;
+        _showChapterPanel = false;
+      }
     });
     widget.onFullScreenChanged?.call(_isFullScreen);
 
     if (_isFullScreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      if (isVerticalVideo && !(forceLandscape ?? false)) {
+        // Vertical video enters portrait immersive fullscreen
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      } else {
+        // Horizontal video or forced landscape enters landscape fullscreen
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
     } else {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       SystemChrome.setPreferredOrientations([
@@ -302,10 +407,27 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }
   }
 
+  void _toggleFullscreenOrientation() {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    if (isLandscape) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+    HapticFeedback.lightImpact();
+  }
+
   void _toggleQualityPanel() {
     setState(() {
       _showQualityPanel = !_showQualityPanel;
       _showSpeedPanel = false;
+      _showChapterPanel = false;
     });
     _startHideTimer();
   }
@@ -314,6 +436,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     setState(() {
       _showSpeedPanel = !_showSpeedPanel;
       _showQualityPanel = false;
+      _showChapterPanel = false;
+    });
+    _startHideTimer();
+  }
+
+  void _toggleChapterPanel() {
+    setState(() {
+      _showChapterPanel = !_showChapterPanel;
+      _showQualityPanel = false;
+      _showSpeedPanel = false;
     });
     _startHideTimer();
   }
@@ -450,6 +582,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   void dispose() {
     _initToken++;
     _hideTimer?.cancel();
+    _lockIconTimer?.cancel();
     _disableWakelock();
     if (_controller != null) {
       _controller!.removeListener(_onPlayerUpdate);
@@ -498,8 +631,139 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     Widget playerBody = Container(
       color: Colors.black,
       child: GestureDetector(
-        onTap: _toggleControls,
-        onDoubleTap: _togglePlayPause,
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (_isScreenLocked) {
+            _toggleLockIconVisibility();
+            return;
+          }
+          _toggleControls();
+        },
+        onDoubleTap: () {
+          if (_isScreenLocked) return;
+          _togglePlayPause();
+        },
+        onLongPressStart: (details) {
+          if (_isScreenLocked || !hasController) return;
+          _speedBeforeLongPress = _playbackSpeed;
+          _isLongPressSpeeding = true;
+          _controller?.setPlaybackSpeed(2.0);
+          _danmakuController.setPlaybackSpeed(2.0);
+          HapticFeedback.selectionClick();
+          setState(() {});
+        },
+        onLongPressEnd: (details) {
+          if (!_isLongPressSpeeding) return;
+          _isLongPressSpeeding = false;
+          _controller?.setPlaybackSpeed(_speedBeforeLongPress);
+          _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
+          setState(() {});
+        },
+        onLongPressCancel: () {
+          if (!_isLongPressSpeeding) return;
+          _isLongPressSpeeding = false;
+          _controller?.setPlaybackSpeed(_speedBeforeLongPress);
+          _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
+          setState(() {});
+        },
+        onPanStart: (details) {
+          if (_isScreenLocked || !hasController || _isLongPressSpeeding) {
+            _isPanGestureIgnored = true;
+            return;
+          }
+
+          // Top Edge Exclusion: Ignore touches starting in the top notification/status bar area
+          final topPadding = MediaQuery.of(context).padding.top;
+          if (details.localPosition.dy < topPadding + 28.0) {
+            _isPanGestureIgnored = true;
+            return;
+          }
+
+          _isPanGestureIgnored = false;
+          _isDraggingProgress = false;
+          _dragStartPosition = _controller!.value.position;
+          _targetSeekPosition = _dragStartPosition;
+          _accumulatedPanDx = 0.0;
+          _accumulatedPanDy = 0.0;
+        },
+        onPanUpdate: (details) {
+          if (_isPanGestureIgnored || _isScreenLocked || !hasController || _isLongPressSpeeding) return;
+
+          _accumulatedPanDx += details.delta.dx;
+          _accumulatedPanDy += details.delta.dy;
+
+          // Vertical Dominance Lockout: If swiping down/up (e.g. status bar / page scroll), reject immediately
+          if (!_isDraggingProgress) {
+            if (_accumulatedPanDy.abs() > _accumulatedPanDx.abs() && _accumulatedPanDy.abs() > 10.0) {
+              _isPanGestureIgnored = true;
+              return;
+            }
+
+            // Stricter horizontal threshold:
+            // 1. Must move horizontally by at least 26.0 pixels
+            // 2. Horizontal movement must clearly dominate vertical movement (> 1.8x)
+            const double horizontalThreshold = 26.0;
+            if (_accumulatedPanDx.abs() >= horizontalThreshold &&
+                _accumulatedPanDx.abs() > _accumulatedPanDy.abs() * 1.8) {
+              _isDraggingProgress = true;
+              _hideTimer?.cancel();
+              HapticFeedback.selectionClick();
+            } else {
+              return;
+            }
+          }
+
+          final totalDuration = _controller!.value.duration;
+          if (totalDuration.inMilliseconds <= 0) return;
+
+          final screenWidth = MediaQuery.of(context).size.width;
+          const double dragThreshold = 26.0;
+          // Offset deadzone so scrubbing starts smoothly from zero
+          final effectiveDelta = _accumulatedPanDx > 0
+              ? (_accumulatedPanDx - dragThreshold)
+              : (_accumulatedPanDx + dragThreshold);
+
+          // Scaled scrubbing: full-screen swipe ~90s for long videos, ~45s for medium, ~20s for short
+          final scaleDuration = totalDuration.inSeconds > 600
+              ? 90.0
+              : (totalDuration.inSeconds > 180 ? 45.0 : 20.0);
+          final deltaSeconds = (effectiveDelta / screenWidth) * scaleDuration;
+
+          final targetMs = (_dragStartPosition.inMilliseconds + (deltaSeconds * 1000).toInt())
+              .clamp(0, totalDuration.inMilliseconds);
+          setState(() {
+            _targetSeekPosition = Duration(milliseconds: targetMs);
+          });
+        },
+        onPanEnd: (details) {
+          if (!_isDraggingProgress) {
+            _accumulatedPanDx = 0.0;
+            _accumulatedPanDy = 0.0;
+            _isPanGestureIgnored = false;
+            return;
+          }
+          _isDraggingProgress = false;
+          _accumulatedPanDx = 0.0;
+          _accumulatedPanDy = 0.0;
+          _isPanGestureIgnored = false;
+          if (hasController) {
+            _controller!.seekTo(_targetSeekPosition);
+            _danmakuController.updatePosition(_targetSeekPosition.inMilliseconds / 1000.0);
+          }
+          setState(() {});
+          _startHideTimer();
+        },
+        onPanCancel: () {
+          _accumulatedPanDx = 0.0;
+          _accumulatedPanDy = 0.0;
+          _isPanGestureIgnored = false;
+          if (_isDraggingProgress) {
+            setState(() {
+              _isDraggingProgress = false;
+            });
+            _startHideTimer();
+          }
+        },
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -546,7 +810,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
               ),
 
             // Ultra-slim bottom progress line (when controls are hidden, locally listening to controller)
-            if (!_showControls && hasController)
+            if (!_showControls && !_isScreenLocked && hasController && !_isDraggingProgress)
               Positioned(
                 left: 0,
                 right: 0,
@@ -567,15 +831,175 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                 ),
               ),
 
-            // Controls Overlay (when controls are visible)
-            AnimatedOpacity(
-              opacity: _showControls ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 200),
-              child: _buildControls(context, hasController, isFull),
+            // Controls Overlay (when controls are visible and not locked)
+            IgnorePointer(
+              ignoring: !_showControls || _isScreenLocked,
+              child: AnimatedOpacity(
+                opacity: (_showControls && !_isScreenLocked) ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: _buildControls(context, hasController, isFull),
+              ),
             ),
 
+            // Horizontal Drag Seek HUD Overlay
+            if (_isDraggingProgress && hasController)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xE614141C),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white24, width: 0.8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _targetSeekPosition >= _dragStartPosition
+                                ? Icons.fast_forward_rounded
+                                : Icons.fast_rewind_rounded,
+                            color: accent,
+                            size: 26,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _targetSeekPosition >= _dragStartPosition
+                                ? '+${Formatters.formatDuration((_targetSeekPosition - _dragStartPosition).inSeconds)}'
+                                : '-${Formatters.formatDuration((_dragStartPosition - _targetSeekPosition).inSeconds)}',
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${Formatters.formatDuration(_targetSeekPosition.inSeconds)} / ${Formatters.formatDuration(_controller!.value.duration.inSeconds)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: 140,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: _controller!.value.duration.inMilliseconds > 0
+                                ? (_targetSeekPosition.inMilliseconds / _controller!.value.duration.inMilliseconds).clamp(0.0, 1.0)
+                                : 0.0,
+                            backgroundColor: Colors.white24,
+                            valueColor: AlwaysStoppedAnimation<Color>(accent),
+                            minHeight: 3.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Long Press 2.0X Speed HUD Overlay
+            if (_isLongPressSpeeding)
+              Positioned(
+                top: isFull ? 24 : 12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xD9101016),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: accent.withValues(alpha: 0.4), width: 0.8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.fast_forward_rounded, color: accent, size: 15),
+                        const SizedBox(width: 5),
+                        const Text(
+                          '2.0X',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Screen Lock Button (in landscape / fullscreen mode)
+            if (isFull)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 200),
+                left: (_isScreenLocked ? _showLockIcon : _showControls) ? 24 : -60,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _toggleLock,
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _isScreenLocked
+                              ? accent.withValues(alpha: 0.85)
+                              : const Color(0x99101016),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _isScreenLocked ? accent : Colors.white24,
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _isScreenLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                          color: _isScreenLocked ? Colors.white : Colors.white70,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
             // In-Player Floating Quality Selector Panel (直接在上方弹出半透明框)
-            if (_showQualityPanel)
+            if (_showQualityPanel && !_isScreenLocked)
               Positioned(
                 right: isFull ? 24 : 8,
                 bottom: 40,
@@ -583,11 +1007,19 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
               ),
 
             // In-Player Floating Speed Selector Panel
-            if (_showSpeedPanel)
+            if (_showSpeedPanel && !_isScreenLocked)
               Positioned(
-                right: isFull ? 70 : 48,
+                right: isFull ? (widget.chapters.isNotEmpty ? 100 : 66) : 48,
                 bottom: 40,
                 child: _buildFloatingSpeedPanel(isFull),
+              ),
+
+            // In-Player Floating Chapter Selector Panel
+            if (_showChapterPanel && !_isScreenLocked && widget.chapters.isNotEmpty)
+              Positioned(
+                right: isFull ? 24 : 8,
+                bottom: 40,
+                child: _buildFloatingChapterPanel(isFull),
               ),
           ],
         ),
@@ -598,8 +1030,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       return playerBody;
     }
 
+    final double effectiveRatio = isVerticalVideo
+        ? _controller!.value.aspectRatio.clamp(0.72, 1.0)
+        : (hasController && _controller!.value.aspectRatio > 0
+            ? _controller!.value.aspectRatio.clamp(1.33, 1.85)
+            : 16 / 9);
+
     return AspectRatio(
-      aspectRatio: 16 / 9,
+      aspectRatio: effectiveRatio,
       child: playerBody,
     );
   }
@@ -784,6 +1222,117 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     );
   }
 
+  Widget _buildFloatingChapterPanel(bool isFull) {
+    final accent = _getPlayerAccent(context);
+    final currentSec = (_controller?.value.position.inSeconds ?? 0);
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        constraints: BoxConstraints(
+          maxHeight: isFull ? 240 : 130,
+          maxWidth: isFull ? 220 : 170,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xF0181820),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.5),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.bookmark_outline_rounded, size: 12, color: accent),
+                  const SizedBox(width: 4),
+                  Text(
+                    '视频章节',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 6, thickness: 0.5, color: Colors.white12),
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: widget.chapters.map((ch) {
+                    final isCurrent = currentSec >= ch.from && (ch.to > ch.from ? currentSec < ch.to : true);
+                    final timeStr = Formatters.formatDuration(ch.from);
+
+                    return InkWell(
+                      onTap: () {
+                        setState(() => _showChapterPanel = false);
+                        _controller?.seekTo(Duration(seconds: ch.from));
+                        _danmakuController.updatePosition(ch.from.toDouble());
+                        _startHideTimer();
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        margin: const EdgeInsets.symmetric(vertical: 1),
+                        decoration: BoxDecoration(
+                          color: isCurrent ? accent.withValues(alpha: 0.22) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isCurrent ? accent.withValues(alpha: 0.55) : Colors.transparent,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              timeStr,
+                              style: TextStyle(
+                                color: isCurrent ? accent : Colors.white60,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                ch.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isCurrent ? accent : Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 11,
+                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildControls(
     BuildContext context,
     bool hasController,
@@ -843,6 +1392,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                       icon: const Icon(Icons.headphones_rounded, color: Colors.white, size: 17),
                       tooltip: '听视频 (熄屏播放)',
                       onPressed: widget.onListenMode,
+                    ),
+                  if (isFull)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.screen_rotation_rounded, color: Colors.white, size: 17),
+                      tooltip: '旋转屏幕',
+                      onPressed: _toggleFullscreenOrientation,
                     ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
@@ -972,6 +1528,26 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                       );
                     },
                   ),
+
+                  // 4.5 Chapters Button (In-player floating panel)
+                  if (widget.chapters.isNotEmpty) ...[
+                    InkWell(
+                      onTap: _toggleChapterPanel,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                        child: Text(
+                          '章节',
+                          style: TextStyle(
+                            color: _showChapterPanel ? accent : Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
 
                   // 5. Speed Button (In-player floating panel)
                   InkWell(

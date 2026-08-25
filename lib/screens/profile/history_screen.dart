@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
+import '../../services/storage/history_storage_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/network_image_view.dart';
@@ -83,6 +84,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadHistory(refresh: true),
                     child: ListView.separated(
+                      cacheExtent: 500.0,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       itemCount: _history.length + (_isLoadingMore ? 1 : 0),
                       separatorBuilder: (ctx, _) => Divider(
@@ -101,12 +103,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         }
 
                         final item = _history[idx];
+                        final effectiveProgress = item.progress > 0
+                            ? item.progress
+                            : HistoryStorageService().getProgress(item.bvid);
+
                         return RepaintBoundary(
                           child: InkWell(
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (ctx) => VideoDetailScreen(bvid: item.bvid),
+                                  builder: (ctx) => VideoDetailScreen(
+                                    bvid: item.bvid,
+                                    initialPosition: effectiveProgress > 0
+                                        ? Duration(seconds: effectiveProgress)
+                                        : null,
+                                  ),
                                 ),
                               );
                             },
@@ -130,7 +141,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             memCacheWidth: 360,
                                             memCacheHeight: 225,
                                           ),
-                                        if (item.progress > 0)
+                                        if (effectiveProgress > 0)
                                           Positioned(
                                             bottom: 4,
                                             right: 4,
@@ -141,7 +152,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
-                                                '看到 ${Formatters.formatDuration(item.progress)}',
+                                                '看到 ${Formatters.formatDuration(effectiveProgress)}',
                                                 style: const TextStyle(color: Colors.white, fontSize: 9),
                                               ),
                                             ),

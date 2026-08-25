@@ -459,6 +459,7 @@ class _CommonVideoGrid extends StatelessWidget {
         onRefresh: onRefresh,
         child: GridView.builder(
           controller: scrollController,
+          cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,

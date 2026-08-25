@@ -299,6 +299,144 @@ void main() {
       expect(ApiEndpoints.coinVideo, contains('/x/web-interface/coin/add'));
       expect(ApiEndpoints.toViewList, contains('/x/v2/history/toview'));
     });
+
+    test('VideoDetail parses official view_points chapters and desc timestamps correctly', () {
+      // 1. Official view_points test
+      final jsonOfficial = {
+        'aid': 12345,
+        'bvid': 'BV1chapter1',
+        'cid': 67890,
+        'title': '官方章节测试',
+        'pic': 'http://i0.hdslb.com/bfs/archive/test.jpg',
+        'desc': '这是视频简介',
+        'duration': 600,
+        'view_points': [
+          {'from': 0, 'to': 90, 'content': '01 序言与简介'},
+          {'from': 90, 'to': 300, 'content': '02 实操与演示'},
+          {'from': 300, 'to': 600, 'content': '03 总结与展望'},
+        ],
+      };
+
+      final detail1 = VideoDetail.fromJson(jsonOfficial);
+      expect(detail1.chapters.length, 3);
+      expect(detail1.chapters[0].title, '01 序言与简介');
+      expect(detail1.chapters[0].from, 0);
+      expect(detail1.chapters[0].to, 90);
+      expect(detail1.chapters[1].from, 90);
+      expect(detail1.chapters[2].from, 300);
+
+      // 2. Fallback description timestamps test
+      final jsonDescTimestamps = {
+        'aid': 54321,
+        'bvid': 'BV1chapter2',
+        'cid': 98765,
+        'title': '简介时间戳测试',
+        'pic': 'http://i0.hdslb.com/bfs/archive/test2.jpg',
+        'desc': '时间线一览：\n00:00 前言\n01:30 核心功能拆解\n05:45 性能评测\n10:20 总结',
+        'duration': 700,
+      };
+
+      final detail2 = VideoDetail.fromJson(jsonDescTimestamps);
+      expect(detail2.chapters.length, 4);
+      expect(detail2.chapters[0].from, 0);
+      expect(detail2.chapters[0].title, '前言');
+      expect(detail2.chapters[1].from, 90);
+      expect(detail2.chapters[1].title, '核心功能拆解');
+      expect(detail2.chapters[2].from, 345);
+      expect(detail2.chapters[2].title, '性能评测');
+      expect(detail2.chapters[3].from, 620);
+      expect(detail2.chapters[3].title, '总结');
+    });
+
+    test('HistoryItem parses nested progress correctly', () {
+      final jsonNestedProgress = {
+        'title': '测试嵌套进度',
+        'pic': 'http://i0.hdslb.com/bfs/archive/nested.jpg',
+        'history': {
+          'oid': 11111,
+          'bvid': 'BV1nested1',
+          'cid': 22222,
+          'progress': 155,
+        },
+        'owner': {'name': 'UP主', 'mid': 123},
+        'view_at': 1700000000,
+        'duration': 300,
+      };
+
+      final item = HistoryItem.fromJson(jsonNestedProgress);
+      expect(item.progress, 155);
+      expect(item.bvid, 'BV1nested1');
+    });
+
+    test('VideoDetail parses ugc_season collections correctly', () {
+      final jsonSeason = {
+        'aid': 12345,
+        'bvid': 'BV1season1',
+        'cid': 67890,
+        'title': '合集视频测试',
+        'pic': 'http://i0.hdslb.com/bfs/archive/test.jpg',
+        'ugc_season': {
+          'id': 999,
+          'title': 'Flutter 全栈开发实战合集',
+          'cover': 'http://i0.hdslb.com/bfs/archive/season.jpg',
+          'ep_count': 3,
+          'sections': [
+            {
+              'season_id': 999,
+              'id': 1,
+              'title': '第一部分：基础篇',
+              'episodes': [
+                {
+                  'id': 101,
+                  'aid': 10001,
+                  'cid': 20001,
+                  'title': '1. 环境搭建与快速上手',
+                  'bvid': 'BV1ep01',
+                  'arc': {'duration': 180},
+                },
+                {
+                  'id': 102,
+                  'aid': 10002,
+                  'cid': 20002,
+                  'title': '2. 状态管理深入剖析',
+                  'bvid': 'BV1ep02',
+                  'arc': {'duration': 360},
+                },
+              ],
+            },
+            {
+              'season_id': 999,
+              'id': 2,
+              'title': '第二部分：进阶篇',
+              'episodes': [
+                {
+                  'id': 103,
+                  'aid': 10003,
+                  'cid': 20003,
+                  'title': '3. 性能优化与实战演练',
+                  'bvid': 'BV1ep03',
+                  'arc': {'duration': 540},
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      final detail = VideoDetail.fromJson(jsonSeason);
+      expect(detail.ugcSeason, isNotNull);
+      expect(detail.ugcSeason!.title, 'Flutter 全栈开发实战合集');
+      expect(detail.ugcSeason!.epCount, 3);
+      expect(detail.ugcSeason!.sections.length, 2);
+      final allEps = detail.ugcSeason!.sections.expand((s) => s.episodes).toList();
+      expect(allEps.length, 3);
+      expect(allEps[0].title, '1. 环境搭建与快速上手');
+      expect(allEps[0].bvid, 'BV1ep01');
+      expect(allEps[0].duration, 180);
+      expect(allEps[1].bvid, 'BV1ep02');
+      expect(allEps[2].title, '3. 性能优化与实战演练');
+    });
   });
 }
+
 

@@ -57,6 +57,61 @@ class UserApiService {
     }
   }
 
+  /// Report video playback progress to Bilibili Cloud History
+  Future<bool> reportHistory({
+    required int aid,
+    required int cid,
+    required int progress,
+    String bvid = '',
+    int duration = 0,
+  }) async {
+    if (aid <= 0 || cid <= 0) return false;
+    try {
+      final csrf = BiliHttpClient().biliJct;
+      final body = <String, dynamic>{
+        'aid': aid,
+        'cid': cid,
+        'progress': progress,
+        'type': 3,
+        'sub_type': 0,
+      };
+      if (csrf != null) {
+        body['csrf'] = csrf;
+      }
+
+      final res = await BiliHttpClient().post(
+        ApiEndpoints.historyReport,
+        data: FormData.fromMap(body),
+      );
+
+      if (res.data != null && res.data['code'] == 0) {
+        return true;
+      }
+
+      // Also send heartbeat for reliability
+      if (csrf != null) {
+        final hbBody = <String, dynamic>{
+          'aid': aid,
+          'bvid': bvid,
+          'cid': cid,
+          'played_time': progress,
+          'real_played_time': progress,
+          'start_ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          'type': 3,
+          'dt': 2,
+          'csrf': csrf,
+        };
+        await BiliHttpClient().post(
+          ApiEndpoints.heartbeat,
+          data: FormData.fromMap(hbBody),
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Get user followings (关注列表)
   Future<List<RelationUser>> getUserFollowings({required int vmid, int pn = 1, int ps = 20, String order = 'desc'}) async {
     try {
@@ -246,16 +301,52 @@ class UserApiService {
     }
   }
 
-  /// Get UP space profile info
+  /// Get relation statistics (粉丝数、关注数)
+  Future<({int follower, int following})?> getUserRelationStat(int vmid) async {
+    try {
+      final res = await BiliHttpClient().get(
+        ApiEndpoints.relationStat,
+        queryParameters: {'vmid': vmid},
+      );
+      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+        final data = res.data['data'];
+        final follower = data['follower'] is int
+            ? data['follower'] as int
+            : (int.tryParse(data['follower']?.toString() ?? '0') ?? 0);
+        final following = data['following'] is int
+            ? data['following'] as int
+            : (int.tryParse(data['following']?.toString() ?? '0') ?? 0);
+        return (follower: follower, following: following);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Get UP space profile info (with merged follower / following stats)
   Future<UpSpaceInfo?> getUpSpaceInfo(int mid) async {
     try {
-      final res = await BiliHttpClient().getWbi(
-        ApiEndpoints.upSpaceInfo,
-        queryParameters: {'mid': mid},
-      );
+      final results = await Future.wait([
+        BiliHttpClient().getWbi(
+          ApiEndpoints.upSpaceInfo,
+          queryParameters: {'mid': mid},
+        ),
+        getUserRelationStat(mid),
+      ]);
+
+      final res = results[0] as Response;
+      final stat = results[1] as ({int follower, int following})?;
 
       if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        return UpSpaceInfo.fromJson(res.data['data']);
+        final Map<String, dynamic> data = Map<String, dynamic>.from(res.data['data']);
+        if (stat != null) {
+          data['fans'] = stat.follower;
+          data['follower'] = stat.follower;
+          data['attention'] = stat.following;
+          data['following_count'] = stat.following;
+        }
+        return UpSpaceInfo.fromJson(data);
       }
       return null;
     } catch (_) {

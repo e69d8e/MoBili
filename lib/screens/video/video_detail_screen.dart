@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../main.dart';
 import '../../models/comment_model.dart';
 import '../../models/danmaku_model.dart';
 import '../../models/play_url_model.dart';
@@ -11,6 +13,7 @@ import '../../services/api/comment_api_service.dart';
 import '../../services/api/danmaku_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/api/video_api_service.dart';
+import '../../services/storage/history_storage_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
@@ -39,7 +42,7 @@ class VideoDetailScreen extends StatefulWidget {
   State<VideoDetailScreen> createState() => _VideoDetailScreenState();
 }
 
-class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTickerProviderStateMixin {
+class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTickerProviderStateMixin, RouteAware {
   late TabController _tabController;
   VideoDetail? _detail;
   PlayUrlInfo? _playUrlInfo;
@@ -64,6 +67,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   bool _isFav = false;
   bool _isFollowing = false;
   int _coinCount = 0;
+  int _upFans = 0;
   bool _isInWatchLater = false;
   bool _descExpanded = false;
   bool _isLoading = true;
@@ -77,6 +81,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
     _loadAll();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
 
@@ -87,7 +100,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
         _detail = detail;
       });
 
-      // 2. Fetch User-Video Relation (attention/follow, like, fav, coin)
+      // 2. Fetch User-Video Relation (attention/follow, like, fav, coin) & UP fans
       _loadRelation();
 
       // 3. Fetch PlayUrl & Danmaku for selected Page (P1 default)
@@ -129,6 +142,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
       if (mounted) {
         setState(() => _isInWatchLater = inWL);
       }
+    }
+    final ownerMid = _detail?.videoItem.owner.mid ?? widget.initialVideo?.owner.mid;
+    if (ownerMid != null && ownerMid > 0) {
+      UserApiService().getUserRelationStat(ownerMid).then((stat) {
+        if (stat != null && mounted) {
+          setState(() {
+            _upFans = stat.follower;
+          });
+        }
+      });
     }
   }
 
@@ -216,6 +239,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   Future<void> _switchPart(int index) async {
     if (_detail == null || index >= _detail!.pages.length || index == _selectedPageIndex) return;
+    _reportFinalProgress();
     setState(() {
       _selectedPageIndex = index;
       _playUrlInfo = null;
@@ -227,6 +251,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   Future<void> _switchEpisode(UgcEpisode ep) async {
     if (ep.bvid == _currentBvid) return;
+    _reportFinalProgress();
     setState(() {
       _currentBvid = ep.bvid;
       _selectedPageIndex = 0;
@@ -271,8 +296,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
       transitionDuration: const Duration(milliseconds: 260),
       transitionBuilder: (ctx, anim1, anim2, child) {
         final curved = CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic);
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.90, end: 1.0).animate(curved),
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(curved),
           child: FadeTransition(
             opacity: curved,
             child: child,
@@ -281,160 +306,166 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
       },
       pageBuilder: (ctx, anim1, anim2) {
         final screenWidth = MediaQuery.of(ctx).size.width;
-        final dialogWidth = screenWidth > 380 ? 290.0 : (screenWidth * 0.78);
+        final screenHeight = MediaQuery.of(ctx).size.height;
+        final bottomInset = MediaQuery.of(ctx).padding.bottom;
+        final dialogWidth = math.min(screenWidth - 32, 480.0);
 
-        return Center(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: dialogWidth,
-              constraints: const BoxConstraints(maxHeight: 420),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xC7181820) : const Color(0xEBFFFFFF),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
-                  width: 0.8,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
-                    blurRadius: 24,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 8),
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: dialogWidth,
+                constraints: BoxConstraints(maxHeight: screenHeight * 0.52),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xE6181820) : const Color(0xF2FFFFFF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+                    width: 0.8,
                   ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                      blurRadius: 24,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Icon(Icons.video_library_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
                             ),
-                            child: Icon(Icons.video_library_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  '合集选集',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  '${season.title} · 共${season.epCount}集',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '合集选集',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                                  Text(
+                                    '${season.title} · 共${season.epCount}集',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 16),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(
-                        height: 1,
-                        thickness: 0.5,
-                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
-                      ),
-                      const SizedBox(height: 8),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 16),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => Navigator.of(ctx).pop(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Divider(
+                          height: 1,
+                          thickness: 0.5,
+                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                        ),
+                        const SizedBox(height: 8),
 
-                      // Episode List
-                      Flexible(
-                        child: ListView.separated(
-                          shrinkWrap: true,
-                          padding: EdgeInsets.zero,
-                          itemCount: allEpisodes.length,
-                          separatorBuilder: (c, _) => const SizedBox(height: 6),
-                          itemBuilder: (c, idx) {
-                            final ep = allEpisodes[idx];
-                            final isPlaying = ep.bvid == _currentBvid;
-                            final primaryColor = Theme.of(context).colorScheme.primary;
-                            return InkWell(
-                              onTap: () {
-                                Navigator.of(ctx).pop();
-                                _switchEpisode(ep);
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: isPlaying
-                                      ? primaryColor.withValues(alpha: 0.14)
-                                      : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isPlaying ? primaryColor : Colors.transparent,
-                                    width: 1,
+                        // Episode List
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: allEpisodes.length,
+                            separatorBuilder: (c, _) => const SizedBox(height: 6),
+                            itemBuilder: (c, idx) {
+                              final ep = allEpisodes[idx];
+                              final isPlaying = ep.bvid == _currentBvid;
+                              final primaryColor = Theme.of(context).colorScheme.primary;
+                              return InkWell(
+                                onTap: () {
+                                  Navigator.of(ctx).pop();
+                                  _switchEpisode(ep);
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: isPlaying
+                                        ? primaryColor.withValues(alpha: 0.14)
+                                        : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isPlaying ? primaryColor : Colors.transparent,
+                                      width: 1,
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    if (isPlaying)
-                                      Padding(
-                                        padding: const EdgeInsets.only(right: 6.0),
-                                        child: Icon(Icons.play_circle_fill_rounded, color: primaryColor, size: 14),
-                                      ),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '${idx + 1}. ${ep.title}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 11.5,
-                                              fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                                              color: isPlaying
-                                                  ? primaryColor
-                                                  : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
-                                            ),
-                                          ),
-                                          if (ep.duration > 0) ...[
-                                            const SizedBox(height: 2),
+                                  child: Row(
+                                    children: [
+                                      if (isPlaying)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 6.0),
+                                          child: Icon(Icons.play_circle_fill_rounded, color: primaryColor, size: 14),
+                                        ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
                                             Text(
-                                              Formatters.formatDuration(ep.duration),
+                                              '${idx + 1}. ${ep.title}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                fontSize: 9.5,
-                                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                                fontSize: 11.5,
+                                                fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                                                color: isPlaying
+                                                    ? primaryColor
+                                                    : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
                                               ),
                                             ),
+                                            if (ep.duration > 0) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                Formatters.formatDuration(ep.duration),
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                                ),
+                                              ),
+                                            ],
                                           ],
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -550,13 +581,57 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   }
 
   void _navigateToUpSpace(int mid) async {
+    final playerState = _playerKey.currentState;
+    final isCurrentlyPlaying = playerState?.controller?.value.isPlaying ?? false;
+    final currentPos = playerState?.controller?.value.position ?? Duration.zero;
+    final currentSpeed = playerState?.playbackSpeed ?? 1.0;
+    final video = _detail?.videoItem ?? widget.initialVideo;
+    final totalDur = (_playUrlInfo != null && _playUrlInfo!.timelength > 0)
+        ? Duration(milliseconds: _playUrlInfo!.timelength)
+        : (video != null && video.duration > 0 ? Duration(seconds: video.duration) : null);
+
+    if (isCurrentlyPlaying && video != null && _playUrlInfo != null) {
+      playerState?.pause();
+      final listenProvider = context.read<ListenVideoProvider>();
+      final cid = _detail != null && _detail!.pages.isNotEmpty
+          ? _detail!.pages[_selectedPageIndex].cid
+          : video.cid;
+      // Start audio playback asynchronously in background without blocking route transition
+      listenProvider.playAudio(
+        bvid: _currentBvid,
+        cid: cid,
+        title: video.title,
+        coverUrl: video.pic,
+        upName: video.owner.name,
+        audioUrl: _playUrlInfo?.primaryVideoUrl,
+        startPosition: currentPos,
+        totalDuration: totalDur,
+        speed: currentSpeed,
+      );
+    }
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => UpSpaceScreen(mid: mid),
       ),
     );
+
     if (mounted) {
       _loadRelation();
+
+      // On return from UP space: check if ListenVideoProvider was playing this video
+      final listenProvider = context.read<ListenVideoProvider>();
+      if (listenProvider.hasAudio && listenProvider.bvid == _currentBvid) {
+        final curAudioPos = listenProvider.position;
+        final wasPlaying = listenProvider.isPlaying;
+        await listenProvider.stopAndClear();
+        if (mounted && playerState != null && playerState.controller != null) {
+          await playerState.controller!.seekTo(curAudioPos);
+          if (wasPlaying) {
+            await playerState.play();
+          }
+        }
+      }
     }
   }
 
@@ -897,17 +972,105 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
     );
   }
 
+  Duration _lastReportedPosition = Duration.zero;
+  DateTime _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
+
   final GlobalKey<BiliVideoPlayerState> _playerKey = GlobalKey<BiliVideoPlayerState>();
+
+  void _onPlayerProgressUpdate(Duration position, Duration duration) {
+    final currentSec = position.inSeconds;
+    final durSec = duration.inSeconds;
+    final video = _detail?.videoItem ?? widget.initialVideo;
+    final aid = video?.aid ?? 0;
+    final cid = (_detail != null && _detail!.pages.isNotEmpty && _selectedPageIndex < _detail!.pages.length)
+        ? _detail!.pages[_selectedPageIndex].cid
+        : (video?.cid ?? 0);
+
+    // 1. Always save to local persistent storage for immediate resume
+    if (currentSec > 0) {
+      HistoryStorageService().saveProgress(
+        bvid: _currentBvid,
+        progress: currentSec,
+        duration: durSec,
+        aid: aid,
+        cid: cid,
+        title: video?.title,
+        cover: video?.pic,
+      );
+    }
+
+    // 2. Periodic cloud report (every 5 seconds or 10s jump)
+    final now = DateTime.now();
+    if (now.difference(_lastReportTime).inSeconds >= 5 ||
+        (position - _lastReportedPosition).inSeconds.abs() >= 10) {
+      _lastReportTime = now;
+      _lastReportedPosition = position;
+      if (aid > 0 && cid > 0 && currentSec > 0) {
+        UserApiService().reportHistory(
+          aid: aid,
+          cid: cid,
+          progress: currentSec,
+          bvid: _currentBvid,
+          duration: durSec,
+        );
+      }
+    }
+  }
+
+  void _reportFinalProgress() {
+    final playerState = _playerKey.currentState;
+    final pos = playerState?.controller?.value.position ?? _lastReportedPosition;
+    final dur = playerState?.controller?.value.duration ?? Duration.zero;
+    final currentSec = pos.inSeconds;
+    if (currentSec <= 0) return;
+
+    final video = _detail?.videoItem ?? widget.initialVideo;
+    final aid = video?.aid ?? 0;
+    final cid = (_detail != null && _detail!.pages.isNotEmpty && _selectedPageIndex < _detail!.pages.length)
+        ? _detail!.pages[_selectedPageIndex].cid
+        : (video?.cid ?? 0);
+
+    HistoryStorageService().saveProgress(
+      bvid: _currentBvid,
+      progress: currentSec,
+      duration: dur.inSeconds,
+      aid: aid,
+      cid: cid,
+      title: video?.title,
+      cover: video?.pic,
+      immediate: true,
+    );
+    HistoryStorageService().flush();
+
+    if (aid > 0 && cid > 0) {
+      UserApiService().reportHistory(
+        aid: aid,
+        cid: cid,
+        progress: currentSec,
+        bvid: _currentBvid,
+        duration: dur.inSeconds,
+      );
+    }
+  }
+
+  @override
+  void didPushNext() {
+    // When a new route is pushed on top of this video detail, report progress and pause
+    _reportFinalProgress();
+    _playerKey.currentState?.pause();
+  }
 
   @override
   void dispose() {
+    _reportFinalProgress();
+    routeObserver.unsubscribe(this);
     _tabController.dispose();
     super.dispose();
   }
 
   void _startListenMode() async {
     final video = _detail?.videoItem ?? widget.initialVideo;
-    final url = _playUrlInfo?.primaryVideoUrl;
+    final url = _playUrlInfo?.primaryAudioUrl ?? _playUrlInfo?.primaryVideoUrl;
     if (video == null || url == null || url.isEmpty) {
       AppToast.show(context, '正在获取播放地址，请稍候...', icon: Icons.info_outline_rounded);
       return;
@@ -918,6 +1081,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
     
     // Explicitly pause the video and danmaku
     await _playerKey.currentState?.pause();
+
+    final wasFullScreen = _playerKey.currentState?.isFullScreen ?? false;
+    if (wasFullScreen) {
+      _playerKey.currentState?.exitFullScreen();
+    }
 
     final totalDur = (_playUrlInfo != null && _playUrlInfo!.timelength > 0)
         ? Duration(milliseconds: _playUrlInfo!.timelength)
@@ -933,13 +1101,19 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
           title: video.title,
           coverUrl: video.pic,
           upName: video.owner.name,
-          playUrl: _playUrlInfo?.primaryVideoUrl,
+          playUrl: url,
           initialPosition: pos,
           totalDuration: totalDur,
           initialSpeed: speed,
           onSwitchToVideo: (curPos) async {
             await _playerKey.currentState?.controller?.seekTo(curPos);
             await _playerKey.currentState?.play();
+            if (mounted && wasFullScreen) {
+              final isLandscapeNow = MediaQuery.of(context).orientation == Orientation.landscape;
+              if (isLandscapeNow) {
+                _playerKey.currentState?.enterFullScreen();
+              }
+            }
           },
         ),
       ),
@@ -948,17 +1122,27 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   Widget _buildPlayer(VideoItem? video, Color primaryColor) {
     if (_playUrlInfo != null) {
+      Duration? effectiveInitialPos = widget.initialPosition;
+      if (effectiveInitialPos == null || effectiveInitialPos == Duration.zero) {
+        final savedSec = HistoryStorageService().getProgress(_currentBvid);
+        if (savedSec > 0) {
+          effectiveInitialPos = Duration(seconds: savedSec);
+        }
+      }
+
       return BiliVideoPlayer(
         key: _playerKey,
         playUrlInfo: _playUrlInfo!,
         danmakus: _danmakus,
+        chapters: _detail?.chapters ?? const [],
         title: video?.title ?? '',
-        initialPosition: widget.initialPosition,
+        initialPosition: effectiveInitialPos,
         onQualityChanged: _switchQuality,
         onFullScreenChanged: (full) {
           setState(() => _isPlayerFullScreen = full);
         },
         onListenMode: _startListenMode,
+        onProgressUpdate: _onPlayerProgressUpdate,
       );
     }
 
@@ -1116,7 +1300,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${Formatters.formatTime(item.pubdate)} · ${item.bvid}',
+                        '${_upFans > 0 ? "${Formatters.formatCount(_upFans)}粉丝 · " : ""}${Formatters.formatTime(item.pubdate)} · ${item.bvid}',
                         style: TextStyle(
                           fontSize: 11,
                           color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
@@ -1404,6 +1588,87 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
             }),
           ],
 
+          // Video Chapters (视频章节)
+          if (_detail != null && _detail!.chapters.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(Icons.bookmark_outline_rounded, size: 15, color: primaryColor),
+                const SizedBox(width: 4),
+                const Text('视频章节', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 6),
+                Text(
+                  '共 ${_detail!.chapters.length} 节',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 38,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _detail!.chapters.length,
+                separatorBuilder: (ctx, _) => const SizedBox(width: 8),
+                itemBuilder: (ctx, idx) {
+                  final ch = _detail!.chapters[idx];
+                  final timeStr = Formatters.formatDuration(ch.from);
+                  return InkWell(
+                    onTap: () {
+                      _playerKey.currentState?.controller?.seekTo(Duration(seconds: ch.from));
+                      _playerKey.currentState?.play();
+                      AppToast.show(context, '已跳转至 $timeStr ${ch.title}');
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                          width: 0.8,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              timeStr,
+                              style: TextStyle(
+                                color: primaryColor,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            ch.title,
+                            style: TextStyle(
+                              color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // Multi-part Selector (分P选集)
           if (_detail != null && _detail!.pages.length > 1) ...[
             Row(
@@ -1485,7 +1750,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
           itemCount: _relatedVideos.length,
           itemBuilder: (ctx, idx) {
             return RepaintBoundary(
-              child: VideoCard(video: _relatedVideos[idx]),
+              child: VideoCard(
+                video: _relatedVideos[idx],
+                onTap: () async {
+                  await _playerKey.currentState?.pause();
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).push(
+                    MaterialPageRoute(
+                      builder: (c) => VideoDetailScreen(
+                        bvid: _relatedVideos[idx].bvid,
+                        initialVideo: _relatedVideos[idx],
+                      ),
+                    ),
+                  );
+                },
+              ),
             );
           },
         ),

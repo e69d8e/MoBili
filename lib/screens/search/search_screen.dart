@@ -416,6 +416,7 @@ class _SearchScreenState extends State<SearchScreen> {
           return false;
         },
         child: GridView.builder(
+          cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -452,6 +453,7 @@ class _SearchScreenState extends State<SearchScreen> {
           return false;
         },
         child: ListView.separated(
+          cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           itemCount: sp.searchUsers.length + (sp.isLoadingMore ? 1 : 0),
           separatorBuilder: (ctx, _) => Divider(
@@ -488,6 +490,7 @@ class _SearchScreenState extends State<SearchScreen> {
           return false;
         },
         child: ListView.separated(
+          cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           itemCount: sp.searchArticles.length + (sp.isLoadingMore ? 1 : 0),
           separatorBuilder: (ctx, _) => const SizedBox(height: 10),

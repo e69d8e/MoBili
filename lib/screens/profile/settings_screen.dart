@@ -183,6 +183,44 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 20),
 
+          // Section: Gestures & Interactions
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              '交互与手势',
+              style: TextStyle(
+                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Material(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('手势预返回 (Predictive Back)', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '侧滑返回时实时预览上一级页面（默认关闭，开启需系统与设备支持）',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  value: themeProvider.enablePredictiveBack,
+                  activeTrackColor: primaryColor,
+                  onChanged: (val) => themeProvider.setPredictiveBack(val),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
           // Section: About
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
@@ -205,7 +243,7 @@ class SettingsScreen extends StatelessWidget {
                   dense: true,
                   title: const Text('软件版本', style: TextStyle(fontSize: 13.5)),
                   trailing: Text(
-                    'v1.0.0',
+                    'v1.0.1',
                     style: TextStyle(
                       fontSize: 12.5,
                       color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,

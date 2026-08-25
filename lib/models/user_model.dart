@@ -124,6 +124,38 @@ class UpSpaceInfo {
       topPhotoUrl = topPhotoUrl.replaceFirst('http://', 'https://');
     }
 
+    int parsedFans = 0;
+    if (json['fans'] != null) {
+      parsedFans = json['fans'] is int ? json['fans'] : (int.tryParse(json['fans'].toString()) ?? 0);
+    } else if (json['follower'] != null) {
+      parsedFans = json['follower'] is int ? json['follower'] : (int.tryParse(json['follower'].toString()) ?? 0);
+    } else if (json['stat'] is Map) {
+      final s = json['stat'];
+      parsedFans = s['fans'] is int
+          ? s['fans']
+          : (int.tryParse(s['fans']?.toString() ?? '') ??
+              (s['follower'] is int
+                  ? s['follower']
+                  : (int.tryParse(s['follower']?.toString() ?? '') ?? 0)));
+    }
+
+    int parsedAttention = 0;
+    if (json['attention'] != null) {
+      parsedAttention = json['attention'] is int ? json['attention'] : (int.tryParse(json['attention'].toString()) ?? 0);
+    } else if (json['following_count'] != null) {
+      parsedAttention = json['following_count'] is int ? json['following_count'] : (int.tryParse(json['following_count'].toString()) ?? 0);
+    } else if (json['following'] is int || (json['following'] is String && int.tryParse(json['following']) != null)) {
+      parsedAttention = json['following'] is int ? json['following'] : (int.tryParse(json['following'].toString()) ?? 0);
+    } else if (json['stat'] is Map) {
+      final s = json['stat'];
+      parsedAttention = s['attention'] is int
+          ? s['attention']
+          : (int.tryParse(s['attention']?.toString() ?? '') ??
+              (s['following'] is int
+                  ? s['following']
+                  : (int.tryParse(s['following']?.toString() ?? '') ?? 0)));
+    }
+
     return UpSpaceInfo(
       mid: json['mid'] is int ? json['mid'] : int.tryParse(json['mid']?.toString() ?? '0') ?? 0,
       name: json['name']?.toString() ?? '',
@@ -132,8 +164,8 @@ class UpSpaceInfo {
       sign: json['sign']?.toString() ?? '',
       level: json['level'] is int ? json['level'] : 0,
       topPhoto: topPhotoUrl,
-      fans: json['fans'] is int ? json['fans'] : (json['stat']?['fans'] is int ? json['stat']['fans'] : 0),
-      attention: json['attention'] is int ? json['attention'] : (json['stat']?['attention'] is int ? json['stat']['attention'] : 0),
+      fans: parsedFans,
+      attention: parsedAttention,
       isFollowing: json['following'] == true || json['is_followed'] == true,
     );
   }
@@ -236,7 +268,12 @@ class HistoryItem {
       title: json['title']?.toString() ?? '',
       cover: coverUrl,
       viewAt: json['view_at'] is int ? json['view_at'] as int : 0,
-      progress: json['progress'] is int ? json['progress'] as int : 0,
+      progress: json['progress'] is int
+          ? json['progress'] as int
+          : (history['progress'] is int
+              ? history['progress'] as int
+              : (int.tryParse(json['progress']?.toString() ?? '') ??
+                  (int.tryParse(history['progress']?.toString() ?? '') ?? 0))),
       duration: json['duration'] is int ? json['duration'] as int : 0,
       ownerName: authorName,
       ownerMid: authorMid,

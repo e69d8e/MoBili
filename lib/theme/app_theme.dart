@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 /// 预设主题风格
@@ -116,7 +117,24 @@ class AppTheme {
   /// Helper to get current primary color from context
   static Color primary(BuildContext context) => Theme.of(context).colorScheme.primary;
 
-  static ThemeData lightTheme({AppThemePreset preset = AppThemePreset.ink}) {
+  static PageTransitionsTheme _buildPageTransitionsTheme(bool enablePredictiveBack) {
+    return PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: enablePredictiveBack
+            ? const PredictiveBackPageTransitionsBuilder()
+            : const ZoomPageTransitionsBuilder(),
+        TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: const ZoomPageTransitionsBuilder(),
+        TargetPlatform.linux: const ZoomPageTransitionsBuilder(),
+      },
+    );
+  }
+
+  static ThemeData lightTheme({
+    AppThemePreset preset = AppThemePreset.ink,
+    bool enablePredictiveBack = false,
+  }) {
     final primary = preset.lightPrimary;
     final secondary = preset.secondary;
     final onPrimary = (primary.computeLuminance() > 0.5) ? Colors.black : Colors.white;
@@ -126,6 +144,7 @@ class AppTheme {
       brightness: Brightness.light,
       primaryColor: primary,
       scaffoldBackgroundColor: bgLight,
+      pageTransitionsTheme: _buildPageTransitionsTheme(enablePredictiveBack),
       colorScheme: ColorScheme.light(
         primary: primary,
         secondary: secondary,
@@ -223,6 +242,7 @@ class AppTheme {
   static ThemeData darkTheme({
     AppThemePreset preset = AppThemePreset.ink,
     bool isAmoled = false,
+    bool enablePredictiveBack = false,
   }) {
     final bg = isAmoled ? pureBlack : inkBg;
     final cardBg = isAmoled ? cardDarkAmoled : cardDark;
@@ -235,6 +255,7 @@ class AppTheme {
       brightness: Brightness.dark,
       primaryColor: primary,
       scaffoldBackgroundColor: bg,
+      pageTransitionsTheme: _buildPageTransitionsTheme(enablePredictiveBack),
       colorScheme: ColorScheme.dark(
         primary: primary,
         secondary: secondary,

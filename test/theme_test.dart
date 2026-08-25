@@ -44,13 +44,30 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('ThemeProvider initializes with ink preset by default', () async {
+    test('ThemeProvider initializes with ink preset by default and predictive back disabled', () async {
       final provider = ThemeProvider();
       await provider.init();
 
       expect(provider.themePreset, AppThemePreset.ink);
       expect(provider.themeMode, ThemeMode.system);
       expect(provider.isAmoled, isFalse);
+      expect(provider.enablePredictiveBack, isFalse);
+    });
+
+    test('ThemeProvider switches and persists predictive back setting', () async {
+      final provider = ThemeProvider();
+      await provider.init();
+
+      expect(provider.enablePredictiveBack, isFalse);
+      await provider.setPredictiveBack(true);
+      expect(provider.enablePredictiveBack, isTrue);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('enable_predictive_back'), isTrue);
+
+      final newProvider = ThemeProvider();
+      await newProvider.init();
+      expect(newProvider.enablePredictiveBack, isTrue);
     });
 
     test('ThemeProvider switches and persists preset', () async {

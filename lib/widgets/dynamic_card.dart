@@ -1,12 +1,16 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/dynamic_model.dart';
+import '../providers/auth_provider.dart';
+import '../screens/dynamic/dynamic_detail_screen.dart';
+import '../screens/profile/login_dialog.dart';
 import '../screens/up/up_space_screen.dart';
 import '../screens/video/video_detail_screen.dart';
+import '../services/api/bili_http_client.dart';
 import '../services/api/dynamic_api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
-import 'image_viewer.dart';
 import 'network_image_view.dart';
 import 'user_avatar.dart';
 
@@ -30,7 +34,27 @@ class _DynamicCardState extends State<DynamicCard> {
     _likeCount = widget.item.stat.likeCount;
   }
 
+  void _navigateToDetail() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => DynamicDetailScreen(
+          dynamicId: widget.item.id,
+          initialItem: widget.item,
+        ),
+      ),
+    );
+  }
+
   void _toggleLike() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLogin || BiliHttpClient().biliJct == null) {
+      showDialog(
+        context: context,
+        builder: (ctx) => const LoginDialog(),
+      );
+      return;
+    }
+
     final targetLike = !_isLiked;
     setState(() {
       _isLiked = targetLike;
@@ -44,7 +68,7 @@ class _DynamicCardState extends State<DynamicCard> {
         _likeCount += targetLike ? -1 : 1;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('操作失败，请先登录')),
+        const SnackBar(content: Text('点赞操作失败，请重试')),
       );
     }
   }
@@ -60,13 +84,18 @@ class _DynamicCardState extends State<DynamicCard> {
         color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Author Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-            child: Row(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _navigateToDetail,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Author Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                child: Row(
               children: [
                 GestureDetector(
                   onTap: () {
@@ -141,14 +170,17 @@ class _DynamicCardState extends State<DynamicCard> {
 
           // Text Content
           if (item.text.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Text(
-                item.text,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  height: 1.45,
-                  color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+            GestureDetector(
+              onTap: _navigateToDetail,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Text(
+                  item.text,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                  ),
                 ),
               ),
             ),
@@ -176,37 +208,51 @@ class _DynamicCardState extends State<DynamicCard> {
           if (item.orig != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1B1B20) : const Color(0xFFF6F7F9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '@${item.orig!.author.name}: ${item.orig!.text}',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                        height: 1.4,
+              child: GestureDetector(
+                onTap: () {
+                  if (item.orig!.id.isNotEmpty) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => DynamicDetailScreen(
+                          dynamicId: item.orig!.id,
+                          initialItem: item.orig,
+                        ),
                       ),
-                    ),
-                    if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _buildVideoCard(context, item.orig!.video!, isDark),
-                    ],
-                    if (item.orig!.pictures.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _buildImages(
-                        context,
-                        item.orig!.pictures,
-                        heroPrefix: 'orig_${item.orig!.id}',
-                        isDark: isDark,
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1B1B20) : const Color(0xFFF6F7F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '@${item.orig!.author.name}: ${item.orig!.text}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          height: 1.4,
+                        ),
                       ),
+                      if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _buildVideoCard(context, item.orig!.video!, isDark),
+                      ],
+                      if (item.orig!.pictures.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _buildImages(
+                          context,
+                          item.orig!.pictures,
+                          heroPrefix: 'orig_${item.orig!.id}',
+                          isDark: isDark,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -229,15 +275,7 @@ class _DynamicCardState extends State<DynamicCard> {
                   label: item.stat.commentCount > 0 ? Formatters.formatCount(item.stat.commentCount) : '评论',
                   active: false,
                   isDark: isDark,
-                  onTap: () {
-                    if (item.video != null && item.video!.bvid.isNotEmpty) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (ctx) => VideoDetailScreen(bvid: item.video!.bvid),
-                        ),
-                      );
-                    }
-                  },
+                  onTap: _navigateToDetail,
                 ),
                 _buildActionButton(
                   icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
@@ -251,7 +289,9 @@ class _DynamicCardState extends State<DynamicCard> {
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildVideoCard(BuildContext context, DynamicVideo video, bool isDark) {
@@ -416,12 +456,7 @@ class _DynamicCardState extends State<DynamicCard> {
         }
 
         return GestureDetector(
-          onTap: () => ImageViewer.show(
-            context,
-            pictures: [pic],
-            initialIndex: 0,
-            heroPrefix: heroPrefix,
-          ),
+          onTap: _navigateToDetail,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Container(
@@ -431,17 +466,14 @@ class _DynamicCardState extends State<DynamicCard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Hero(
-                    tag: '${heroPrefix}_0',
-                    child: NetworkImageView(
-                      url: pic.url,
-                      width: displayWidth,
-                      height: displayHeight,
-                      fit: BoxFit.cover,
-                      alignment: alignment,
-                      memCacheWidth: (displayWidth * 2.5).round().clamp(200, 1200),
-                      memCacheHeight: (displayHeight * 2.5).round().clamp(200, 1200),
-                    ),
+                  NetworkImageView(
+                    url: pic.url,
+                    width: displayWidth,
+                    height: displayHeight,
+                    fit: BoxFit.cover,
+                    alignment: alignment,
+                    memCacheWidth: (displayWidth * 2.5).round().clamp(200, 1200),
+                    memCacheHeight: (displayHeight * 2.5).round().clamp(200, 1200),
                   ),
                   if (isLong)
                     Positioned(
@@ -495,12 +527,7 @@ class _DynamicCardState extends State<DynamicCard> {
 
               rowItems.add(
                 GestureDetector(
-                  onTap: () => ImageViewer.show(
-                    context,
-                    pictures: pictures,
-                    initialIndex: idx,
-                    heroPrefix: heroPrefix,
-                  ),
+                  onTap: _navigateToDetail,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
@@ -510,17 +537,14 @@ class _DynamicCardState extends State<DynamicCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          Hero(
-                            tag: '${heroPrefix}_$idx',
-                            child: NetworkImageView(
-                              url: pic.url,
-                              width: itemWidth,
-                              height: itemHeight,
-                              fit: BoxFit.cover,
-                              alignment: isLong ? Alignment.topCenter : Alignment.center,
-                              memCacheWidth: (itemWidth * 2.5).round().clamp(150, 600),
-                              memCacheHeight: (itemHeight * 2.5).round().clamp(150, 600),
-                            ),
+                          NetworkImageView(
+                            url: pic.url,
+                            width: itemWidth,
+                            height: itemHeight,
+                            fit: BoxFit.cover,
+                            alignment: isLong ? Alignment.topCenter : Alignment.center,
+                            memCacheWidth: (itemWidth * 2.5).round().clamp(150, 600),
+                            memCacheHeight: (itemHeight * 2.5).round().clamp(150, 600),
                           ),
                           if (isLastOfNine)
                             Container(

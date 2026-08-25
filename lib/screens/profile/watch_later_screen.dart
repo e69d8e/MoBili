@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
+import '../../services/storage/history_storage_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/network_image_view.dart';
@@ -135,9 +136,19 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
 
   void _playAll() {
     if (_items.isEmpty) return;
+    final first = _items.first;
+    final firstProgress = first.progress > 0
+        ? first.progress
+        : HistoryStorageService().getProgress(first.bvid);
+
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (ctx) => VideoDetailScreen(bvid: _items.first.bvid),
+        builder: (ctx) => VideoDetailScreen(
+          bvid: first.bvid,
+          initialPosition: firstProgress > 0
+              ? Duration(seconds: firstProgress)
+              : null,
+        ),
       ),
     );
   }
@@ -178,6 +189,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.builder(
+                      cacheExtent: 500.0,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       itemCount: _items.length + 1 + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (ctx, idx) {
@@ -227,6 +239,10 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                         }
 
                         final item = _items[itemIndex];
+                        final effectiveProgress = item.progress > 0
+                            ? item.progress
+                            : HistoryStorageService().getProgress(item.bvid);
+
                         return RepaintBoundary(
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -234,7 +250,12 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (ctx) => VideoDetailScreen(bvid: item.bvid),
+                                    builder: (ctx) => VideoDetailScreen(
+                                      bvid: item.bvid,
+                                      initialPosition: effectiveProgress > 0
+                                          ? Duration(seconds: effectiveProgress)
+                                          : null,
+                                    ),
                                   ),
                                 );
                               },
@@ -274,7 +295,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                                 ),
                                               ),
                                             ),
-                                          if (item.progress > 0)
+                                          if (effectiveProgress > 0)
                                             Positioned(
                                               bottom: 4,
                                               left: 4,
@@ -285,7 +306,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
-                                                  '看到 ${Formatters.formatDuration(item.progress)}',
+                                                  '看到 ${Formatters.formatDuration(effectiveProgress)}',
                                                   style: const TextStyle(color: Colors.white, fontSize: 9),
                                                 ),
                                               ),

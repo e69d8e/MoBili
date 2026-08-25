@@ -6,10 +6,12 @@ class ThemeProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   AppThemePreset _themePreset = AppThemePreset.ink;
   bool _isAmoled = false;
+  bool _enablePredictiveBack = false;
 
   ThemeMode get themeMode => _themeMode;
   AppThemePreset get themePreset => _themePreset;
   bool get isAmoled => _isAmoled;
+  bool get enablePredictiveBack => _enablePredictiveBack;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -26,6 +28,7 @@ class ThemeProvider extends ChangeNotifier {
     _themePreset = AppThemePreset.fromKey(presetStr);
 
     _isAmoled = prefs.getBool('is_amoled') ?? false;
+    _enablePredictiveBack = prefs.getBool('enable_predictive_back') ?? false;
     notifyListeners();
   }
 
@@ -50,6 +53,13 @@ class ThemeProvider extends ChangeNotifier {
     _isAmoled = val;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_amoled', val);
+    notifyListeners();
+  }
+
+  Future<void> setPredictiveBack(bool val) async {
+    _enablePredictiveBack = val;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('enable_predictive_back', val);
     notifyListeners();
   }
 }

@@ -43,11 +43,16 @@ class ApiEndpoints {
 
   // User & Profile
   static const String userHistory = '$biliBase/x/v2/history';
+  static const String historyReport = '$biliBase/x/v2/history/report';
+  static const String heartbeat = '$biliBase/x/click-interface/web/heartbeat';
   static const String userFavFolders = '$biliBase/x/v3/fav/folder/created/list-all';
   static const String userFavList = '$biliBase/x/v3/fav/resource/list';
   static const String userDynamic = '$biliBase/x/polymer/web-dynamic/v1/feed/all';
+  static const String dynamicDetail = '$biliBase/x/polymer/web-dynamic/v1/detail';
+  static const String opusDetail = '$biliBase/x/polymer/web-dynamic/v1/opus/detail';
   static const String userFollowings = '$biliBase/x/relation/followings';
   static const String userFollowers = '$biliBase/x/relation/followers';
+  static const String relationStat = '$biliBase/x/relation/stat';
 
   // Watch Later (稍后观看)
   static const String toViewList = '$biliBase/x/v2/history/toview/web';

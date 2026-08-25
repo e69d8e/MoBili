@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../theme/app_theme.dart';
@@ -39,8 +40,6 @@ class ListenVideoScreen extends StatefulWidget {
 
 class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
-  bool _isSeeking = false;
-  double _dragValue = 0.0;
 
   @override
   void initState() {
@@ -50,9 +49,18 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       duration: const Duration(seconds: 20),
     );
 
+    // Restore normal edge-to-edge system UI and allow all device orientations
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<ListenVideoProvider>();
-      if (provider.cid != widget.cid || !provider.hasAudio) {
+      if (widget.onSwitchToVideo != null || provider.cid != widget.cid || !provider.hasAudio) {
         provider.playAudio(
           bvid: widget.bvid,
           cid: widget.cid,
@@ -254,11 +262,442 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     }
   }
 
+  Widget _buildTopBar(
+    BuildContext context,
+    ListenVideoProvider provider,
+    Color primary, {
+    bool isLandscape = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 16 : 12,
+        vertical: isLandscape ? 4 : 8,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Minimize / Back button
+          IconButton(
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
+            tooltip: widget.onSwitchToVideo != null ? '返回视频' : '收起',
+            onPressed: () => _handleMinimize(provider),
+          ),
+
+          // "Switch to Video" pill button
+          InkWell(
+            onTap: () => _handleSwitchToVideo(provider),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: primary.withValues(alpha: 0.3), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.ondemand_video_rounded, size: 14, color: primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    '切回视频',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Sleep timer status / button
+          IconButton(
+            icon: Icon(
+              provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                  ? Icons.bedtime_rounded
+                  : Icons.bedtime_outlined,
+              size: 22,
+              color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                  ? primary
+                  : null,
+            ),
+            tooltip: '定时关闭',
+            onPressed: () => _showSleepTimerDialog(context, provider),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVinylArtwork(String coverUrl, double size) {
+    final innerPadding = size * 0.13;
+    return RepaintBoundary(
+      child: RotationTransition(
+        turns: _rotationController,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black87,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: size * 0.1,
+                spreadRadius: 2,
+                offset: Offset(0, size * 0.04),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.all(innerPadding),
+          child: ClipOval(
+            child: NetworkImageView(
+              url: coverUrl,
+              fit: BoxFit.cover,
+              memCacheWidth: 400,
+              memCacheHeight: 400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlButtons(
+    BuildContext context,
+    ListenVideoProvider provider,
+    Color primary,
+    bool isDark, {
+    bool isLandscape = false,
+  }) {
+    final btnSize = isLandscape ? 28.0 : 32.0;
+    final playBtnSize = isLandscape ? 52.0 : 64.0;
+    final playIconSize = isLandscape ? 30.0 : 36.0;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Playback Speed button
+          InkWell(
+            onTap: () => _showSpeedDialog(context, provider),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isLandscape ? 8 : 10,
+                vertical: isLandscape ? 4 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                '${provider.speed}x',
+                style: TextStyle(
+                  fontSize: isLandscape ? 11.5 : 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+
+          // -15s Seek button
+          IconButton(
+            iconSize: btnSize,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.replay_10_rounded),
+            tooltip: '后退 15 秒',
+            onPressed: () => provider.seekRelative(-15),
+          ),
+
+          // Main Play / Pause Button
+          Container(
+            width: playBtnSize,
+            height: playBtnSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: primary,
+              boxShadow: [
+                BoxShadow(
+                  color: primary.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: IconButton(
+              iconSize: playIconSize,
+              icon: provider.isBuffering
+                  ? SizedBox(
+                      width: isLandscape ? 20 : 24,
+                      height: isLandscape ? 20 : 24,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Icon(
+                      provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                    ),
+              onPressed: provider.togglePlayPause,
+            ),
+          ),
+
+          // +15s Seek button
+          IconButton(
+            iconSize: btnSize,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.forward_10_rounded),
+            tooltip: '快进 15 秒',
+            onPressed: () => provider.seekRelative(15),
+          ),
+
+          // Sleep Timer quick toggle
+          IconButton(
+            iconSize: isLandscape ? 22 : 24,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: Icon(
+              provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                  ? Icons.alarm_on_rounded
+                  : Icons.alarm_rounded,
+              color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                  ? primary
+                  : null,
+            ),
+            tooltip: '定时设置',
+            onPressed: () => _showSleepTimerDialog(context, provider),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLandscapeLayout(
+    BuildContext context,
+    ListenVideoProvider provider,
+    String currentTitle,
+    String currentCover,
+    String currentUpName,
+    Color primary,
+    bool isDark,
+  ) {
+    return Column(
+      children: [
+        _buildTopBar(context, provider, primary, isLandscape: true),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final vinylSize = (constraints.maxHeight * 0.78).clamp(90.0, 220.0);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left: Vinyl Record
+                  Expanded(
+                    flex: 4,
+                    child: Center(
+                      child: _buildVinylArtwork(currentCover, vinylSize),
+                    ),
+                  ),
+
+                  // Right: Info & Controls
+                  Expanded(
+                    flex: 5,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 20, left: 8),
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              currentTitle,
+                              maxLines: 2,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.bold,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.person_outline_rounded,
+                                  size: 13,
+                                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    currentUpName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: primary.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
+                                    style: TextStyle(fontSize: 10, color: primary),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 6),
+                            _ListenProgressSection(
+                              fallbackDuration: widget.totalDuration,
+                              primary: primary,
+                              isDark: isDark,
+                              horizontalPadding: 12,
+                            ),
+                            const SizedBox(height: 6),
+                            _buildControlButtons(context, provider, primary, isDark, isLandscape: true),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPortraitLayout(
+    BuildContext context,
+    ListenVideoProvider provider,
+    String currentTitle,
+    String currentCover,
+    String currentUpName,
+    Color primary,
+    bool isDark,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight = constraints.maxHeight;
+        final vinylSize = (availableHeight * 0.35).clamp(160.0, 260.0);
+
+        return Column(
+          children: [
+            _buildTopBar(context, provider, primary, isLandscape: false),
+
+            const Spacer(flex: 1),
+
+            Center(
+              child: _buildVinylArtwork(currentCover, vinylSize),
+            ),
+
+            const Spacer(flex: 1),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                children: [
+                  Text(
+                    currentTitle,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.person_outline_rounded,
+                        size: 14,
+                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          currentUpName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
+                          style: TextStyle(fontSize: 10.5, color: primary),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            _ListenProgressSection(
+              fallbackDuration: widget.totalDuration,
+              primary: primary,
+              isDark: isDark,
+              horizontalPadding: 24,
+            ),
+
+            const SizedBox(height: 16),
+
+            _buildControlButtons(context, provider, primary, isDark, isLandscape: false),
+
+            const Spacer(flex: 1),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ListenVideoProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     if (provider.isPlaying) {
       if (!_rotationController.isAnimating) {
@@ -274,15 +713,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     final currentCover = provider.coverUrl ?? widget.coverUrl;
     final currentUpName = provider.upName ?? widget.upName;
 
-    final dur = provider.duration > Duration.zero
-        ? provider.duration
-        : (widget.totalDuration != null && widget.totalDuration! > Duration.zero
-            ? widget.totalDuration!
-            : Duration.zero);
-    final pos = _isSeeking
-        ? Duration(milliseconds: _dragValue.toInt())
-        : (provider.position > dur && dur > Duration.zero ? dur : provider.position);
-
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) async {
@@ -295,14 +725,14 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Ambient blurred background
+            // 1. Ambient blurred background with memory-efficient low-res cache
             if (currentCover.isNotEmpty)
               Positioned.fill(
-                child: Image.network(
-                  currentCover,
+                child: NetworkImageView(
+                  url: currentCover,
                   fit: BoxFit.cover,
-                  headers: const {'Referer': 'https://www.bilibili.com'},
-                  errorBuilder: (ctx, error, stackTrace) => const SizedBox.shrink(),
+                  memCacheWidth: 100,
+                  memCacheHeight: 100,
                 ),
               ),
             Positioned.fill(
@@ -314,329 +744,120 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               ),
             ),
 
-            // 2. Main Content
+            // 2. Main Content (Landscape vs Portrait adaptive layout)
             SafeArea(
-              child: Column(
-                children: [
-                  // Top Action Bar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Minimize / Back button
-                        IconButton(
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
-                          tooltip: widget.onSwitchToVideo != null ? '返回视频' : '收起',
-                          onPressed: () => _handleMinimize(provider),
-                        ),
+              child: isLandscape
+                  ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark)
+                  : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-                        // "Switch to Video" pill button
-                        InkWell(
-                          onTap: () => _handleSwitchToVideo(provider),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: primary.withValues(alpha: 0.3), width: 1),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.ondemand_video_rounded, size: 14, color: primary),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '切回视频',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+class _ListenProgressSection extends StatefulWidget {
+  final Duration? fallbackDuration;
+  final Color primary;
+  final bool isDark;
+  final double horizontalPadding;
 
-                      // Sleep timer status / button
-                      IconButton(
-                        icon: Icon(
-                          provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                              ? Icons.bedtime_rounded
-                              : Icons.bedtime_outlined,
-                          size: 22,
-                          color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                              ? primary
-                              : null,
-                        ),
-                        tooltip: '定时关闭',
-                        onPressed: () => _showSleepTimerDialog(context, provider),
-                      ),
-                    ],
-                  ),
+  const _ListenProgressSection({
+    this.fallbackDuration,
+    required this.primary,
+    required this.isDark,
+    this.horizontalPadding = 24.0,
+  });
+
+  @override
+  State<_ListenProgressSection> createState() => _ListenProgressSectionState();
+}
+
+class _ListenProgressSectionState extends State<_ListenProgressSection> {
+  bool _isSeeking = false;
+  double _dragValue = 0.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<ListenVideoProvider, ({Duration position, Duration duration})>(
+      selector: (_, p) => (
+        position: p.position,
+        duration: p.duration > Duration.zero
+            ? p.duration
+            : (widget.fallbackDuration ?? Duration.zero),
+      ),
+      builder: (context, data, _) {
+        final dur = data.duration;
+        final pos = _isSeeking
+            ? Duration(milliseconds: _dragValue.toInt())
+            : (data.position > dur && dur > Duration.zero ? dur : data.position);
+
+        final durMs = dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
+        final currentSliderVal = (_isSeeking ? _dragValue : pos.inMilliseconds.toDouble()).clamp(0.0, durMs);
+
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: widget.horizontalPadding),
+          child: Column(
+            children: [
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3.0,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  activeTrackColor: widget.primary,
+                  inactiveTrackColor: widget.isDark ? Colors.white12 : Colors.black12,
+                  thumbColor: widget.primary,
                 ),
-
-                const Spacer(flex: 1),
-
-                // Center Vinyl / Breathing Artwork
-                Center(
-                  child: RepaintBoundary(
-                    child: RotationTransition(
-                      turns: _rotationController,
-                      child: Container(
-                        width: 240,
-                        height: 240,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.black87,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
-                              blurRadius: 24,
-                              spreadRadius: 4,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(32),
-                        child: ClipOval(
-                          child: NetworkImageView(
-                            url: currentCover,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 400,
-                            memCacheHeight: 400,
-                          ),
-                        ),
+                child: Slider(
+                  value: currentSliderVal,
+                  min: 0.0,
+                  max: durMs,
+                  onChangeStart: (val) {
+                    setState(() {
+                      _isSeeking = true;
+                      _dragValue = val;
+                    });
+                  },
+                  onChanged: (val) {
+                    setState(() {
+                      _dragValue = val;
+                    });
+                  },
+                  onChangeEnd: (val) {
+                    setState(() {
+                      _isSeeking = false;
+                    });
+                    context.read<ListenVideoProvider>().seek(Duration(milliseconds: val.toInt()));
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      Formatters.formatDuration(pos.inSeconds),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
                       ),
                     ),
-                  ),
+                    Text(
+                      Formatters.formatDuration(dur.inSeconds),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      ),
+                    ),
+                  ],
                 ),
-
-                const Spacer(flex: 1),
-
-                // Video Title & UP info
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Column(
-                    children: [
-                      Text(
-                        currentTitle,
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.person_outline_rounded,
-                            size: 14,
-                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            currentUpName,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
-                              style: TextStyle(fontSize: 10.5, color: primary),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Progress Bar & Durations
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 3.0,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                          activeTrackColor: primary,
-                          inactiveTrackColor: isDark ? Colors.white12 : Colors.black12,
-                          thumbColor: primary,
-                        ),
-                        child: Slider(
-                          value: (_isSeeking ? _dragValue : pos.inMilliseconds.toDouble()).clamp(
-                                0.0,
-                                dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0,
-                              ),
-                          min: 0.0,
-                          max: dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0,
-                          onChangeStart: (val) {
-                            setState(() {
-                              _isSeeking = true;
-                              _dragValue = val;
-                            });
-                          },
-                          onChanged: (val) {
-                            setState(() {
-                              _dragValue = val;
-                            });
-                          },
-                          onChangeEnd: (val) {
-                            setState(() {
-                              _isSeeking = false;
-                            });
-                            provider.seek(Duration(milliseconds: val.toInt()));
-                          },
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              Formatters.formatDuration(pos.inSeconds),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                              ),
-                            ),
-                            Text(
-                              Formatters.formatDuration(dur.inSeconds),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Playback Control Buttons
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Playback Speed button
-                      InkWell(
-                        onTap: () => _showSpeedDialog(context, provider),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            '${provider.speed}x',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-
-                      // -15s Seek button
-                      IconButton(
-                        iconSize: 32,
-                        icon: const Icon(Icons.replay_10_rounded),
-                        tooltip: '后退 15 秒',
-                        onPressed: () => provider.seekRelative(-15),
-                      ),
-
-                      // Main Play / Pause Button
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: primary,
-                          boxShadow: [
-                            BoxShadow(
-                              color: primary.withValues(alpha: 0.35),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          iconSize: 36,
-                          icon: provider.isBuffering
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : Icon(
-                                  provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                  color: Colors.white,
-                                ),
-                          onPressed: provider.togglePlayPause,
-                        ),
-                      ),
-
-                      // +15s Seek button
-                      IconButton(
-                        iconSize: 32,
-                        icon: const Icon(Icons.forward_10_rounded),
-                        tooltip: '快进 15 秒',
-                        onPressed: () => provider.seekRelative(15),
-                      ),
-
-                      // Sleep Timer quick toggle
-                      IconButton(
-                        icon: Icon(
-                          provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                              ? Icons.alarm_on_rounded
-                              : Icons.alarm_rounded,
-                          size: 24,
-                          color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                              ? primary
-                              : null,
-                        ),
-                        tooltip: '定时设置',
-                        onPressed: () => _showSleepTimerDialog(context, provider),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Spacer(flex: 1),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    ));
+        );
+      },
+    );
   }
 }

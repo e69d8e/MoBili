@@ -250,6 +250,7 @@ class DynamicFeedTabState extends State<_DynamicFeedTab> with AutomaticKeepAlive
         onRefresh: _handleRefresh,
         child: ListView.builder(
           controller: _scrollController,
+          cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           itemCount: _items.length + (_isLoadingMore ? 1 : 0),
           itemBuilder: (ctx, idx) {

@@ -120,9 +120,13 @@ class ListenVideoProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final session = await AudioSession.instance;
-      await session.configure(const AudioSessionConfiguration.music());
-      await session.setActive(true);
+      try {
+        final session = await AudioSession.instance;
+        await session.configure(const AudioSessionConfiguration.music());
+        await session.setActive(true);
+      } catch (e) {
+        debugPrint('AudioSession configuration non-fatal error: $e');
+      }
 
       // Clean up previous active and pending controllers
       if (_controller != null) {
@@ -146,7 +150,7 @@ class ListenVideoProvider extends ChangeNotifier {
       String? streamUrl = audioUrl;
       if (streamUrl == null || streamUrl.isEmpty) {
         final info = await VideoApiService().getVideoPlayUrl(bvid: bvid, cid: cid);
-        streamUrl = info?.primaryVideoUrl;
+        streamUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
       }
 
       if (streamUrl == null || streamUrl.isEmpty) {
@@ -179,6 +183,7 @@ class ListenVideoProvider extends ChangeNotifier {
       _pendingController = ctrl;
 
       await ctrl.initialize();
+      await ctrl.setVolume(1.0);
 
       // Guard: Check if replaced or stopped during network initialization
       if (_isDisposed || _playToken != token || _pendingController != ctrl) {

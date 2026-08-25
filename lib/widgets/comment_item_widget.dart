@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/comment_model.dart';
+import '../screens/up/up_space_screen.dart';
 import '../services/api/comment_api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
@@ -30,6 +31,16 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
     super.initState();
     _isLiked = widget.comment.isLiked;
     _likeCount = widget.comment.like;
+  }
+
+  void _navigateToUpSpace(int mid) {
+    if (mid > 0) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (ctx) => UpSpaceScreen(mid: mid),
+        ),
+      );
+    }
   }
 
   void _toggleLike() async {
@@ -64,11 +75,14 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
-          UserAvatar(
-            url: item.member.avatar,
-            size: 34,
-            level: item.member.level,
+          // Avatar (Tap to open UP space)
+          GestureDetector(
+            onTap: () => _navigateToUpSpace(item.member.mid),
+            child: UserAvatar(
+              url: item.member.avatar,
+              size: 34,
+              level: item.member.level,
+            ),
           ),
           const SizedBox(width: 10),
           // Content
@@ -76,15 +90,18 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Username & Timestamp
+                // Username & Timestamp (Tap username to open UP space)
                 Row(
                   children: [
-                    Text(
-                      item.member.uname,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                    GestureDetector(
+                      onTap: () => _navigateToUpSpace(item.member.mid),
+                      child: Text(
+                        item.member.uname,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -172,17 +189,21 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                           ...item.replies.take(3).map((sub) {
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2.0),
-                              child: RichText(
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                text: TextSpan(
+                              child: Text.rich(
+                                TextSpan(
                                   children: [
-                                    TextSpan(
-                                      text: '${sub.member.uname}: ',
-                                      style: const TextStyle(
-                                        color: AppTheme.biliBlue,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w500,
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: GestureDetector(
+                                        onTap: () => _navigateToUpSpace(sub.member.mid),
+                                        child: Text(
+                                          '${sub.member.uname}: ',
+                                          style: const TextStyle(
+                                            color: AppTheme.biliBlue,
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     TextSpan(
@@ -194,6 +215,8 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                                     ),
                                   ],
                                 ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             );
                           }),

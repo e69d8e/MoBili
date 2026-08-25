@@ -301,6 +301,7 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.separated(
+                      cacheExtent: 500.0,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                       itemCount: displayedUsers.length + (_isLoadingMore ? 1 : 0),
                       separatorBuilder: (ctx, _) => Divider(

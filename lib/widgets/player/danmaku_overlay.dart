@@ -84,18 +84,22 @@ class DanmakuController extends ChangeNotifier {
   }
 
   TextPainter getOrCreatePainter(DanmakuItem item) {
-    final key = item.hashCode ^ ((fontSizeScale * 100).toInt() << 8);
+    final key = item.hashCode ^ ((fontSizeScale * 100).toInt() << 8) ^ ((opacity * 100).toInt() << 16);
     var painter = _textPainterCache[key];
     if (painter == null) {
       final double fontSize = (item.fontSize * fontSizeScale).clamp(10.0, 26.0);
+      final double alpha = opacity.clamp(0.1, 1.0);
+      final Color textColor = item.color.withValues(alpha: (item.color.a * alpha).clamp(0.0, 1.0));
+      final Color shadowColor = Color.fromRGBO(0, 0, 0, 0.85 * alpha);
+
       final textSpan = TextSpan(
         text: item.text,
         style: TextStyle(
-          color: item.color,
+          color: textColor,
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
-          shadows: const [
-            Shadow(offset: Offset(1, 1), blurRadius: 0.0, color: Color(0xDD000000)),
+          shadows: [
+            Shadow(offset: const Offset(1, 1), blurRadius: 0.0, color: shadowColor),
           ],
         ),
       );
@@ -147,6 +151,7 @@ class DanmakuController extends ChangeNotifier {
   void setOpacity(double val) {
     _opacity = val.clamp(0.1, 1.0);
     DanmakuSettingsService.setOpacity(_opacity);
+    _clearLayoutCache();
     notifyListeners();
   }
 
@@ -233,23 +238,20 @@ class _DanmakuOverlayState extends State<DanmakuOverlay> with SingleTickerProvid
       return const SizedBox.shrink();
     }
 
-    // Wrap with IgnorePointer and static Opacity outside the 60fps tick loop
+    // Direct single-pass canvas painting with RepaintBoundary without Opacity saveLayer overhead
     return IgnorePointer(
       child: RepaintBoundary(
-        child: Opacity(
-          opacity: widget.controller.opacity,
-          child: AnimatedBuilder(
-            animation: _tickerController,
-            builder: (context, _) {
-              return CustomPaint(
-                size: Size.infinite,
-                painter: _DanmakuPainter(
-                  controller: widget.controller,
-                  currentSeconds: widget.controller.currentPositionSeconds,
-                ),
-              );
-            },
-          ),
+        child: AnimatedBuilder(
+          animation: _tickerController,
+          builder: (context, _) {
+            return CustomPaint(
+              size: Size.infinite,
+              painter: _DanmakuPainter(
+                controller: widget.controller,
+                currentSeconds: widget.controller.currentPositionSeconds,
+              ),
+            );
+          },
         ),
       ),
     );

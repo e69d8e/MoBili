@@ -118,6 +118,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                           : _folderVideos.isEmpty
                               ? const EmptyView(message: '该收藏夹暂无视频')
                               : GridView.builder(
+                                  cacheExtent: 500.0,
                                   padding: const EdgeInsets.all(12),
                                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: 2,
