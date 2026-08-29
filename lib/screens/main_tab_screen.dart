@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../widgets/audio/mini_audio_player.dart';
 import 'dynamic/dynamic_screen.dart';
@@ -47,6 +48,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
               labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
               elevation: 0,
           onDestinationSelected: (index) {
+            HapticFeedback.selectionClick();
             if (_currentIndex == index) {
               if (index == 0) {
                 _homeKey.currentState?.refreshAndScrollToTop();

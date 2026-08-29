@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/auth_api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_toast.dart';
 
 class LoginDialog extends StatefulWidget {
   const LoginDialog({super.key});
@@ -60,8 +61,10 @@ class _LoginDialogState extends State<LoginDialog> {
         onSuccess: () {
           if (!mounted) return;
           Navigator.of(context).pop(true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('登录成功！')),
+          AppToast.show(
+            context,
+            '登录成功！',
+            icon: Icons.check_circle_rounded,
           );
         },
       );

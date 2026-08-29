@@ -4,6 +4,7 @@ import '../../models/video_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/audio/mini_audio_player.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
@@ -72,8 +73,10 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
     final ok = await UserApiService().modifyRelation(widget.mid, act: _isFollowing ? 1 : 2);
     if (!ok && mounted) {
       setState(() => _isFollowing = !_isFollowing);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('操作失败，请先登录')),
+      AppToast.show(
+        context,
+        '操作失败，请先登录',
+        icon: Icons.info_outline_rounded,
       );
     }
   }

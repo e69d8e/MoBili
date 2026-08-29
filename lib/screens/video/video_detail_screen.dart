@@ -1,28 +1,35 @@
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../main.dart';
 import '../../models/comment_model.dart';
 import '../../models/danmaku_model.dart';
 import '../../models/play_url_model.dart';
+import '../../models/user_model.dart';
 import '../../models/video_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../services/api/bili_http_client.dart';
 import '../../services/api/comment_api_service.dart';
 import '../../services/api/danmaku_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/api/video_api_service.dart';
+import '../../services/player_settings_service.dart';
 import '../../services/storage/history_storage_service.dart';
+import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/comment_item_widget.dart';
 import '../../widgets/network_image_view.dart';
 import '../../widgets/player/bili_video_player.dart';
+import '../../widgets/player/video_cache_bottom_sheet.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/video_card.dart';
+import '../profile/login_dialog.dart';
 import '../up/up_space_screen.dart';
 import 'listen_video_screen.dart';
 
@@ -42,8 +49,9 @@ class VideoDetailScreen extends StatefulWidget {
   State<VideoDetailScreen> createState() => _VideoDetailScreenState();
 }
 
-class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTickerProviderStateMixin, RouteAware {
+class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProviderStateMixin, RouteAware {
   late TabController _tabController;
+  late final AnimationController _tripleComboAnimController;
   VideoDetail? _detail;
   PlayUrlInfo? _playUrlInfo;
   List<DanmakuItem> _danmakus = [];
@@ -63,6 +71,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   late String _currentBvid;
   int _selectedPageIndex = 0;
+  String? _localVideoPath;
   bool _isLiked = false;
   bool _isFav = false;
   bool _isFollowing = false;
@@ -78,7 +87,49 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
     super.initState();
     _currentBvid = widget.bvid;
     _tabController = TabController(length: 2, vsync: this);
+    _tripleComboAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..addListener(() {
+        if (mounted) setState(() {});
+      })..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _triggerTriple();
+          _tripleComboAnimController.reset();
+        }
+      });
+    if (PlayerSettingsService.autoRotateFullScreen) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+    }
+    PlayerSettingsService.autoRotateListenable.addListener(_onAutoRotateSettingChanged);
     _loadAll();
+  }
+
+  void _onAutoRotateSettingChanged() {
+    if (!mounted) return;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isFull = _isPlayerFullScreen || isLandscape;
+    if (!isFull) {
+      if (PlayerSettingsService.autoRotateFullScreen) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+      }
+    }
   }
 
   @override
@@ -93,28 +144,93 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
 
-    // 1. Fetch Video Detail
-    final detail = await VideoApiService().getVideoDetail(_currentBvid);
-    if (detail != null && mounted) {
-      setState(() {
-        _detail = detail;
-      });
+    // 0. Instant offline cache detection & zero-latency local playback
+    final cacheService = VideoCacheService();
+    final cachedTasks = cacheService.allTasks
+        .where((t) => t.bvid == _currentBvid && t.isCompleted)
+        .toList();
 
-      // 2. Fetch User-Video Relation (attention/follow, like, fav, coin) & UP fans
-      _loadRelation();
+    if (cachedTasks.isNotEmpty) {
+      final initialCid = widget.initialVideo?.cid ?? 0;
+      final primaryTask = cachedTasks.firstWhere(
+        (t) => initialCid > 0 && t.cid == initialCid,
+        orElse: () => cachedTasks.first,
+      );
 
-      // 3. Fetch PlayUrl & Danmaku for selected Page (P1 default)
-      final cid = detail.pages.isNotEmpty ? detail.pages[_selectedPageIndex].cid : detail.videoItem.cid;
-      await _loadPlayUrlAndDanmaku(cid);
+      final localPages = cachedTasks
+          .asMap()
+          .entries
+          .map((e) => VideoPage(
+                cid: e.value.cid,
+                page: e.key + 1,
+                from: 'local',
+                part: e.value.pageTitle.isNotEmpty ? e.value.pageTitle : '第 ${e.key + 1} 集',
+                duration: e.value.duration,
+              ))
+          .toList();
 
-      // 4. Fetch Related Videos
-      VideoApiService().getRelatedVideos(_currentBvid).then((list) {
-        if (mounted) setState(() => _relatedVideos = list);
-      });
+      final pageIdx = localPages.indexWhere((p) => p.cid == primaryTask.cid);
+      if (pageIdx >= 0) {
+        _selectedPageIndex = pageIdx;
+      }
 
-      // 5. Fetch Comments with the real video AID
-      _loadComments(detail.videoItem.aid, refresh: true);
-    } else {
+      _detail = VideoDetail(
+        videoItem: VideoItem(
+          aid: primaryTask.aid,
+          bvid: _currentBvid,
+          cid: primaryTask.cid,
+          title: primaryTask.title,
+          pic: primaryTask.cover,
+          desc: '',
+          duration: primaryTask.duration,
+          pubdate: 0,
+          ctime: 0,
+          owner: Owner(mid: 0, name: primaryTask.ownerName, face: primaryTask.ownerFace),
+          stat: Stat(),
+        ),
+        pages: localPages,
+      );
+
+      // Start playing local video immediately
+      await _loadPlayUrlAndDanmaku(primaryTask.cid);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    } else if (widget.initialVideo != null && widget.initialVideo!.cid > 0) {
+      // Fallback: If initial video has cid, try loading stream
+      _loadPlayUrlAndDanmaku(widget.initialVideo!.cid);
+    }
+
+    // 1. Fetch Online Video Detail
+    try {
+      final detail = await VideoApiService().getVideoDetail(_currentBvid);
+      if (detail != null && mounted) {
+        setState(() {
+          _detail = detail;
+        });
+
+        // 2. Fetch User-Video Relation (attention/follow, like, fav, coin) & UP fans
+        _loadRelation();
+
+        // 3. If stream wasn't loaded from cache, load online stream
+        if (_playUrlInfo == null) {
+          final cid = detail.pages.isNotEmpty
+              ? detail.pages[_selectedPageIndex].cid
+              : detail.videoItem.cid;
+          await _loadPlayUrlAndDanmaku(cid);
+        }
+
+        // 4. Fetch Related Videos
+        VideoApiService().getRelatedVideos(_currentBvid).then((list) {
+          if (mounted) setState(() => _relatedVideos = list);
+        });
+
+        // 5. Fetch Comments with the real video AID
+        _loadComments(detail.videoItem.aid, refresh: true);
+      } else {
+        _loadRelation();
+      }
+    } catch (_) {
       _loadRelation();
     }
 
@@ -159,17 +275,56 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   Future<void> _loadPlayUrlAndDanmaku(int cid) async {
     final token = ++_videoLoadToken;
-    final playUrl = await VideoApiService().getVideoPlayUrl(bvid: _currentBvid, cid: cid);
-    final danmakuList = await DanmakuService().getDanmakuList(cid);
+    final cacheService = VideoCacheService();
+    final isCached = cacheService.isCached(_currentBvid, cid);
+    final localVideo = cacheService.getLocalVideoPath(_currentBvid, cid);
+    final localDanmaku = cacheService.getLocalDanmakuPath(cid);
+
+    PlayUrlInfo? playUrl;
+    if (isCached && localVideo != null) {
+      final cachedItem = cacheService.getCacheItem(_currentBvid, cid);
+      final q = cachedItem?.quality ?? 80;
+      final dur = (cachedItem?.duration ?? 0) * 1000;
+      playUrl = PlayUrlInfo(
+        currentQuality: q,
+        format: 'mp4',
+        timelength: dur,
+        acceptQuality: [q],
+        acceptDescription: [cachedItem?.qualityDesc ?? '1080P 高清'],
+        durls: [
+          PlayUrlDurl(
+            order: 1,
+            length: dur,
+            size: cachedItem?.totalBytes ?? 0,
+            url: Uri.file(localVideo).toString(),
+            backupUrls: const [],
+          ),
+        ],
+        supportFormats: [
+          SupportFormat(
+            quality: q,
+            format: 'mp4',
+            newDescription: cachedItem?.qualityDesc ?? '1080P 高清',
+            displayDesc: cachedItem?.qualityDesc ?? '1080P 高清',
+          ),
+        ],
+        videoCodecid: 7,
+      );
+    } else {
+      playUrl = await VideoApiService().getVideoPlayUrl(bvid: _currentBvid, cid: cid);
+    }
+
+    final danmakuList = await DanmakuService().getDanmakuList(cid, localFilePath: localDanmaku);
 
     if (mounted && _videoLoadToken == token) {
       final listenProvider = context.read<ListenVideoProvider>();
-      if (listenProvider.isPlaying) {
+      if (listenProvider.isPlaying && listenProvider.bvid != _currentBvid) {
         await listenProvider.stopAndClear();
       }
       setState(() {
         _playUrlInfo = playUrl;
         _danmakus = danmakuList;
+        _localVideoPath = isCached ? localVideo : null;
       });
     }
   }
@@ -603,7 +758,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
         title: video.title,
         coverUrl: video.pic,
         upName: video.owner.name,
-        audioUrl: _playUrlInfo?.primaryVideoUrl,
+        audioUrl: _localVideoPath ?? _playUrlInfo?.primaryAudioUrl,
         startPosition: currentPos,
         totalDuration: totalDur,
         speed: currentSpeed,
@@ -636,6 +791,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   }
 
   void _toggleLike() async {
+    HapticFeedback.lightImpact();
     setState(() => _isLiked = !_isLiked);
     final ok = await VideoApiService().likeVideo(_currentBvid, like: _isLiked);
     if (!ok && mounted) {
@@ -645,6 +801,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   }
 
   void _triggerTriple() async {
+    HapticFeedback.heavyImpact();
     final ok = await VideoApiService().tripleCombo(_currentBvid);
     if (mounted) {
       if (ok) {
@@ -658,6 +815,55 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
         AppToast.show(context, '三连失败，请先登录', icon: Icons.info_outline_rounded);
       }
     }
+  }
+
+  void _showFavoriteBottomSheet() {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLogin || auth.userInfo.mid <= 0) {
+      showDialog(
+        context: context,
+        builder: (ctx) => const LoginDialog(),
+      );
+      return;
+    }
+
+    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid ?? 0;
+    if (aid <= 0) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _FavoriteFolderSheet(
+          aid: aid,
+          mid: auth.userInfo.mid,
+          isDark: isDark,
+          primaryColor: primaryColor,
+          onFavStatusChanged: (isFav) {
+            setState(() {
+              _isFav = isFav;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  void _showCacheBottomSheet() {
+    if (_detail == null) {
+      AppToast.show(context, '视频数据加载中，请稍候');
+      return;
+    }
+    VideoCacheBottomSheet.show(
+      context,
+      detail: _detail!,
+      playUrlInfo: _playUrlInfo,
+      initialPageIndex: _selectedPageIndex,
+    );
   }
 
   Future<void> _executeAddCoin(int selectedCoins, bool selectLike) async {
@@ -1054,6 +1260,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
   }
 
   @override
+  void didPopNext() {
+    if (PlayerSettingsService.autoRotateFullScreen) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+    }
+  }
+
+  @override
   void didPushNext() {
     // When a new route is pushed on top of this video detail, report progress and pause
     _reportFinalProgress();
@@ -1062,19 +1283,25 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
   @override
   void dispose() {
+    _tripleComboAnimController.dispose();
+    PlayerSettingsService.autoRotateListenable.removeListener(_onAutoRotateSettingChanged);
     _reportFinalProgress();
     routeObserver.unsubscribe(this);
     _tabController.dispose();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   void _startListenMode() async {
     final video = _detail?.videoItem ?? widget.initialVideo;
-    final url = _playUrlInfo?.primaryAudioUrl ?? _playUrlInfo?.primaryVideoUrl;
-    if (video == null || url == null || url.isEmpty) {
-      AppToast.show(context, '正在获取播放地址，请稍候...', icon: Icons.info_outline_rounded);
+    if (video == null) {
+      AppToast.show(context, '正在获取视频信息，请稍候...', icon: Icons.info_outline_rounded);
       return;
     }
+    final url = _localVideoPath ?? _playUrlInfo?.primaryAudioUrl;
 
     final pos = _playerKey.currentState?.controller?.value.position ?? Duration.zero;
     final speed = _playerKey.currentState?.playbackSpeed ?? 1.0;
@@ -1093,7 +1320,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
     if (!mounted) return;
 
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => ListenVideoScreen(
           bvid: video.bvid,
@@ -1118,6 +1345,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
         ),
       ),
     );
+
+    if (mounted) {
+      final listenProvider = context.read<ListenVideoProvider>();
+      if (listenProvider.hasAudio && listenProvider.bvid == _currentBvid) {
+        final curAudioPos = listenProvider.position;
+        if (curAudioPos > Duration.zero && _playerKey.currentState?.controller != null) {
+          await _playerKey.currentState?.controller?.seekTo(curAudioPos);
+        }
+      }
+    }
   }
 
   Widget _buildPlayer(VideoItem? video, Color primaryColor) {
@@ -1133,6 +1370,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
       return BiliVideoPlayer(
         key: _playerKey,
         playUrlInfo: _playUrlInfo!,
+        localFilePath: _localVideoPath,
         danmakus: _danmakus,
         chapters: _detail?.chapters ?? const [],
         title: video?.title ?? '',
@@ -1424,48 +1662,85 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
 
           const SizedBox(height: 12),
 
-          // Action Buttons Bar (Like, Coin, Fav, Watch Later, Listen Video, Triple)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildActionButton(
-                icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
-                label: Formatters.formatCount(item.stat.like + (_isLiked ? 1 : 0)),
-                active: _isLiked,
-                onTap: _toggleLike,
-              ),
-              _buildActionButton(
-                icon: _coinCount > 0 ? Icons.monetization_on_rounded : Icons.monetization_on_outlined,
-                label: _coinCount > 0 ? '已投$_coinCount币' : Formatters.formatCount(item.stat.coin),
-                active: _coinCount > 0,
-                onTap: _showCoinDialog,
-              ),
-              _buildActionButton(
-                icon: _isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-                label: Formatters.formatCount(item.stat.favorite + (_isFav ? 1 : 0)),
-                active: _isFav,
-                onTap: () => setState(() => _isFav = !_isFav),
-              ),
-              _buildActionButton(
-                icon: Icons.headphones_rounded,
-                label: '听视频',
-                active: false,
-                onTap: _startListenMode,
-              ),
-              _buildActionButton(
-                icon: _isInWatchLater ? Icons.watch_later_rounded : Icons.watch_later_outlined,
-                label: _isInWatchLater ? '已添加' : '稍后看',
-                active: _isInWatchLater,
-                onTap: _toggleWatchLater,
-              ),
-              _buildActionButton(
-                icon: Icons.auto_awesome_rounded,
-                label: '三连',
-                active: _isLiked && _isFav && _coinCount > 0,
-                color: primaryColor,
-                onTap: _triggerTriple,
-              ),
-            ],
+          // Action Buttons Bar (Like, Coin, Fav, Cache, Listen Video, Watch Later, Triple)
+          AnimatedBuilder(
+            animation: VideoCacheService(),
+            builder: (context, _) {
+              final cid = _detail != null && _detail!.pages.isNotEmpty
+                  ? _detail!.pages[_selectedPageIndex].cid
+                  : (_detail?.videoItem.cid ?? widget.initialVideo?.cid ?? 0);
+              final isCached = VideoCacheService().isCached(_currentBvid, cid);
+              final isDownloading = VideoCacheService().isDownloadingOrPending(_currentBvid, cid);
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  children: [
+                    _buildActionButton(
+                      icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
+                      label: Formatters.formatCount(item.stat.like + (_isLiked ? 1 : 0)),
+                      active: _isLiked,
+                      progress: _tripleComboAnimController.value,
+                      onTap: _toggleLike,
+                      onLongPressStart: (_) {
+                        final auth = context.read<AuthProvider>();
+                        if (!auth.isLogin) {
+                          showDialog(context: context, builder: (ctx) => const LoginDialog());
+                          return;
+                        }
+                        HapticFeedback.selectionClick();
+                        _tripleComboAnimController.forward(from: 0.0);
+                      },
+                      onLongPressEnd: (_) {
+                        if (_tripleComboAnimController.isAnimating) {
+                          _tripleComboAnimController.reverse();
+                        }
+                      },
+                      onLongPressCancel: () {
+                        if (_tripleComboAnimController.isAnimating) {
+                          _tripleComboAnimController.reverse();
+                        }
+                      },
+                    ),
+                    _buildActionButton(
+                      icon: _coinCount > 0 ? Icons.monetization_on_rounded : Icons.monetization_on_outlined,
+                      label: _coinCount > 0 ? '已投$_coinCount币' : Formatters.formatCount(item.stat.coin),
+                      active: _coinCount > 0,
+                      onTap: _showCoinDialog,
+                    ),
+                    _buildActionButton(
+                      icon: _isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+                      label: Formatters.formatCount(item.stat.favorite + (_isFav ? 1 : 0)),
+                      active: _isFav,
+                      onTap: _showFavoriteBottomSheet,
+                    ),
+                    _buildActionButton(
+                      icon: isCached
+                          ? Icons.download_done_rounded
+                          : (isDownloading
+                              ? Icons.downloading_rounded
+                              : Icons.download_for_offline_outlined),
+                      label: isCached ? '已缓存' : (isDownloading ? '缓存中' : '缓存'),
+                      active: isCached || isDownloading,
+                      color: isCached ? Colors.green : null,
+                      onTap: _showCacheBottomSheet,
+                    ),
+                    _buildActionButton(
+                      icon: Icons.headphones_rounded,
+                      label: '听视频',
+                      active: false,
+                      onTap: _startListenMode,
+                    ),
+                    _buildActionButton(
+                      icon: _isInWatchLater ? Icons.watch_later_rounded : Icons.watch_later_outlined,
+                      label: _isInWatchLater ? '已添加' : '稍后看',
+                      active: _isInWatchLater,
+                      onTap: _toggleWatchLater,
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
 
           const SizedBox(height: 16),
@@ -1780,33 +2055,68 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with SingleTicker
     required bool active,
     Color? color,
     required VoidCallback onTap,
+    GestureLongPressStartCallback? onLongPressStart,
+    GestureLongPressEndCallback? onLongPressEnd,
+    VoidCallback? onLongPressCancel,
+    double? progress,
   }) {
     final activeColor = color ?? Theme.of(context).colorScheme.primary;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 20,
-              color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.5,
-                color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                fontWeight: active ? FontWeight.bold : FontWeight.normal,
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        onLongPressStart: onLongPressStart,
+        onLongPressEnd: onLongPressEnd,
+        onLongPressCancel: onLongPressCancel,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (progress != null && progress > 0)
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                          backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                        ),
+                      ),
+                    Icon(
+                      icon,
+                      size: 21,
+                      color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2335,6 +2645,254 @@ class _SubRepliesSheetState extends State<_SubRepliesSheet> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FavoriteFolderSheet extends StatefulWidget {
+  final int aid;
+  final int mid;
+  final bool isDark;
+  final Color primaryColor;
+  final void Function(bool isFav) onFavStatusChanged;
+
+  const _FavoriteFolderSheet({
+    required this.aid,
+    required this.mid,
+    required this.isDark,
+    required this.primaryColor,
+    required this.onFavStatusChanged,
+  });
+
+  @override
+  State<_FavoriteFolderSheet> createState() => _FavoriteFolderSheetState();
+}
+
+class _FavoriteFolderSheetState extends State<_FavoriteFolderSheet> {
+  List<FavFolder> _folders = [];
+  Set<int> _initialSelectedFolderIds = {};
+  Set<int> _selectedFolderIds = {};
+  bool _isLoading = true;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFolders();
+  }
+
+  Future<void> _loadFolders() async {
+    setState(() => _isLoading = true);
+    final folders = await UserApiService().getUserFavFolders(widget.mid, rid: widget.aid);
+    if (mounted) {
+      final selected = <int>{};
+      for (final f in folders) {
+        if (f.isFav) {
+          selected.add(f.id);
+        }
+      }
+      setState(() {
+        _folders = folders;
+        _initialSelectedFolderIds = Set.from(selected);
+        _selectedFolderIds = Set.from(selected);
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveFavorites() async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+
+    final addIds = _selectedFolderIds.difference(_initialSelectedFolderIds).toList();
+    final delIds = _initialSelectedFolderIds.difference(_selectedFolderIds).toList();
+
+    if (addIds.isEmpty && delIds.isEmpty) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final success = await UserApiService().dealVideoFavorite(
+      aid: widget.aid,
+      addMediaIds: addIds,
+      delMediaIds: delIds,
+    );
+
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      if (success) {
+        final isFav = _selectedFolderIds.isNotEmpty;
+        widget.onFavStatusChanged(isFav);
+        Navigator.of(context).pop();
+        AppToast.show(
+          context,
+          isFav ? '已更新收藏' : '已取消收藏',
+          icon: isFav ? Icons.star_rounded : Icons.info_outline_rounded,
+        );
+        HapticFeedback.lightImpact();
+      } else {
+        AppToast.show(context, '操作失败，请重试', icon: Icons.info_outline_rounded);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final primaryColor = widget.primaryColor;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.65,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E24) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+            child: Row(
+              children: [
+                const Text(
+                  '添加到收藏夹',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                if (!_isLoading)
+                  TextButton(
+                    onPressed: _isSubmitting ? null : _saveFavorites,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: _isSubmitting
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+                          )
+                        : Text(
+                            '完成',
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                  ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.close_rounded, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+          ),
+
+          // Folder List
+          Flexible(
+            child: _isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: LoadingView(message: '正在获取收藏夹...'),
+                  )
+                : _folders.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: EmptyView(message: '暂无收藏夹'),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _folders.length,
+                        separatorBuilder: (ctx, _) => Divider(
+                          height: 1,
+                          thickness: 0.5,
+                          indent: 16,
+                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                        ),
+                        itemBuilder: (ctx, idx) {
+                          final folder = _folders[idx];
+                          final isSelected = _selectedFolderIds.contains(folder.id);
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (isSelected) {
+                                  _selectedFolderIds.remove(folder.id);
+                                } else {
+                                  _selectedFolderIds.add(folder.id);
+                                }
+                              });
+                              HapticFeedback.selectionClick();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isSelected ? Icons.folder_special_rounded : Icons.folder_outlined,
+                                    size: 24,
+                                    color: isSelected ? primaryColor : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          folder.title,
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${folder.mediaCount} 个内容',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Checkbox(
+                                    value: isSelected,
+                                    activeColor: primaryColor,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        if (val == true) {
+                                          _selectedFolderIds.add(folder.id);
+                                        } else {
+                                          _selectedFolderIds.remove(folder.id);
+                                        }
+                                      });
+                                      HapticFeedback.selectionClick();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

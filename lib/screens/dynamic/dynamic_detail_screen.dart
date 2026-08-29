@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/comment_model.dart';
 import '../../models/dynamic_model.dart';
@@ -228,6 +229,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   }
 
   void _toggleLike() async {
+    HapticFeedback.lightImpact();
     final auth = context.read<AuthProvider>();
     if (!auth.isLogin || BiliHttpClient().biliJct == null) {
       _showLoginDialog();
@@ -251,6 +253,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   }
 
   void _toggleFollow() async {
+    HapticFeedback.lightImpact();
     if (_item == null || _item!.author.mid <= 0) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isLogin) {

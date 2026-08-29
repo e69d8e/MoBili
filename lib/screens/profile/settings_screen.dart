@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/player_settings_service.dart';
+import '../../services/storage/history_storage_service.dart';
+import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_toast.dart';
+import 'video_cache_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -183,6 +188,49 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 20),
 
+          // Section: Playback & Screen
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              '播放与屏幕',
+              style: TextStyle(
+                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Material(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: PlayerSettingsService.autoRotateListenable,
+                  builder: (context, autoRotate, _) {
+                    return SwitchListTile(
+                      dense: true,
+                      title: const Text('感应自动横屏', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        '竖屏播放时，旋转手机自动进入横屏全屏播放',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        ),
+                      ),
+                      value: autoRotate,
+                      activeTrackColor: primaryColor,
+                      onChanged: (val) => PlayerSettingsService.setAutoRotateFullScreen(val),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
           // Section: Gestures & Interactions
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
@@ -214,6 +262,131 @@ class SettingsScreen extends StatelessWidget {
                   value: themeProvider.enablePredictiveBack,
                   activeTrackColor: primaryColor,
                   onChanged: (val) => themeProvider.setPredictiveBack(val),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Section: Storage & Cache
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              '存储与缓存',
+              style: TextStyle(
+                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Material(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                AnimatedBuilder(
+                  animation: VideoCacheService(),
+                  builder: (context, _) {
+                    final sizeStr = VideoCacheService().getFormattedTotalCacheSize();
+                    final count = VideoCacheService().totalCompletedCount;
+
+                    return ListTile(
+                      dense: true,
+                      title: const Text('视频离线缓存', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        count > 0 ? '已缓存 $count 个视频，占用 $sizeStr' : '暂无缓存视频',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            sizeStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
+                        );
+                      },
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('清理图片缓存', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '释放封面与头像网络图片所占用的内存和磁盘缓存',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.cleaning_services_rounded, size: 18),
+                  onTap: () {
+                    PaintingBinding.instance.imageCache.clear();
+                    PaintingBinding.instance.imageCache.clearLiveImages();
+                    AppToast.show(context, '已清理网络图片缓存', icon: Icons.check_circle_outline_rounded);
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('清空播放历史记录', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '清空本地保存的所有视频播放进度与历史记录',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        content: const Text('确定要清空本地保存的所有播放历史记录吗？'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('清空', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await HistoryStorageService().clearAll();
+                      if (context.mounted) {
+                        AppToast.show(context, '已清空本地播放历史');
+                      }
+                    }
+                  },
                 ),
               ],
             ),

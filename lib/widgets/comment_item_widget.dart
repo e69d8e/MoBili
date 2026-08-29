@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/comment_model.dart';
 import '../screens/up/up_space_screen.dart';
 import '../services/api/comment_api_service.dart';
@@ -44,6 +45,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
   }
 
   void _toggleLike() async {
+    HapticFeedback.lightImpact();
     final newLike = !_isLiked;
     setState(() {
       _isLiked = newLike;
@@ -136,10 +138,15 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
-                              size: 13,
-                              color: _isLiked ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                            AnimatedScale(
+                              scale: _isLiked ? 1.2 : 1.0,
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutBack,
+                              child: Icon(
+                                _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
+                                size: 13,
+                                color: _isLiked ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                              ),
                             ),
                             if (_likeCount > 0) ...[
                               const SizedBox(width: 4),

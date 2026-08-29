@@ -40,6 +40,13 @@ class ListenVideoScreen extends StatefulWidget {
 
 class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
+  ListenVideoProvider? _listenProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _listenProvider = context.read<ListenVideoProvider>();
+  }
 
   @override
   void initState() {
@@ -80,7 +87,14 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   @override
   void dispose() {
+    // Whenever exiting the listen video screen, pause playback if still playing
+    if (_listenProvider != null && _listenProvider!.isPlaying) {
+      _listenProvider!.pause();
+    }
     _rotationController.dispose();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
     super.dispose();
   }
 
@@ -252,10 +266,9 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     }
   }
 
-  void _handleMinimize(ListenVideoProvider provider) async {
-    if (widget.onSwitchToVideo != null) {
-      // Returning to VideoDetailScreen: pause audio playback
-      await provider.pause();
+  void _handleMinimize(ListenVideoProvider provider) {
+    if (provider.isPlaying) {
+      provider.pause();
     }
     if (mounted) {
       Navigator.of(context).pop();
@@ -279,7 +292,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           // Minimize / Back button
           IconButton(
             icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
-            tooltip: widget.onSwitchToVideo != null ? '返回视频' : '收起',
+            tooltip: '返回 (暂停播放)',
             onPressed: () => _handleMinimize(provider),
           ),
 
@@ -694,65 +707,95 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<ListenVideoProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    if (provider.isPlaying) {
-      if (!_rotationController.isAnimating) {
-        _rotationController.repeat();
-      }
-    } else {
-      if (_rotationController.isAnimating) {
-        _rotationController.stop();
-      }
-    }
-
-    final currentTitle = provider.title ?? widget.title;
-    final currentCover = provider.coverUrl ?? widget.coverUrl;
-    final currentUpName = provider.upName ?? widget.upName;
-
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop && widget.onSwitchToVideo != null) {
-          // If returning to VideoDetailScreen via system back, pause audio playback
-          await provider.pause();
-        }
-      },
-      child: Scaffold(
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. Ambient blurred background with memory-efficient low-res cache
-            if (currentCover.isNotEmpty)
-              Positioned.fill(
-                child: NetworkImageView(
-                  url: currentCover,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 100,
-                  memCacheHeight: 100,
-                ),
-              ),
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                child: Container(
-                  color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.78),
-                ),
-              ),
-            ),
-
-            // 2. Main Content (Landscape vs Portrait adaptive layout)
-            SafeArea(
-              child: isLandscape
-                  ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark)
-                  : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark),
-            ),
-          ],
-        ),
+    return Selector<ListenVideoProvider, ({
+      String title,
+      String coverUrl,
+      String upName,
+      bool isPlaying,
+      bool isBuffering,
+      double speed,
+      bool isSleepTimerActive,
+      Duration? sleepTimerRemaining,
+      bool isSleepEndOfTrack,
+    })>(
+      selector: (_, p) => (
+        title: p.title ?? widget.title,
+        coverUrl: p.coverUrl ?? widget.coverUrl,
+        upName: p.upName ?? widget.upName,
+        isPlaying: p.isPlaying,
+        isBuffering: p.isBuffering,
+        speed: p.speed,
+        isSleepTimerActive: p.isSleepTimerActive,
+        sleepTimerRemaining: p.sleepTimerRemaining,
+        isSleepEndOfTrack: p.isSleepEndOfTrack,
       ),
+      builder: (context, data, _) {
+        if (data.isPlaying) {
+          if (!_rotationController.isAnimating) {
+            _rotationController.repeat();
+          }
+        } else {
+          if (_rotationController.isAnimating) {
+            _rotationController.stop();
+          }
+        }
+
+        final provider = context.read<ListenVideoProvider>();
+        final currentTitle = data.title;
+        final currentCover = data.coverUrl;
+        final currentUpName = data.upName;
+
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) {
+              if (provider.isPlaying) {
+                provider.pause();
+              }
+            }
+          },
+          child: Scaffold(
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Ambient blurred background with memory-efficient low-res cache
+                if (currentCover.isNotEmpty)
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: NetworkImageView(
+                        url: currentCover,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 100,
+                        memCacheHeight: 100,
+                      ),
+                    ),
+                  ),
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                      child: Container(
+                        color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.78),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 2. Main Content (Landscape vs Portrait adaptive layout)
+                SafeArea(
+                  child: isLandscape
+                      ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark)
+                      : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

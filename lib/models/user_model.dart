@@ -179,6 +179,7 @@ class FavFolder {
   final String cover;
   final int mediaCount;
   final int viewCount;
+  final int favState; // 1 if resource is in this folder, 0 if not
 
   FavFolder({
     required this.id,
@@ -188,7 +189,32 @@ class FavFolder {
     required this.cover,
     required this.mediaCount,
     required this.viewCount,
+    this.favState = 0,
   });
+
+  bool get isFav => favState == 1;
+
+  FavFolder copyWith({
+    int? id,
+    int? fid,
+    int? mid,
+    String? title,
+    String? cover,
+    int? mediaCount,
+    int? viewCount,
+    int? favState,
+  }) {
+    return FavFolder(
+      id: id ?? this.id,
+      fid: fid ?? this.fid,
+      mid: mid ?? this.mid,
+      title: title ?? this.title,
+      cover: cover ?? this.cover,
+      mediaCount: mediaCount ?? this.mediaCount,
+      viewCount: viewCount ?? this.viewCount,
+      favState: favState ?? this.favState,
+    );
+  }
 
   factory FavFolder.fromJson(Map<String, dynamic> json) {
     String coverUrl = json['cover']?.toString() ?? '';
@@ -204,6 +230,7 @@ class FavFolder {
       cover: coverUrl,
       mediaCount: json['media_count'] is int ? json['media_count'] : 0,
       viewCount: json['view_count'] is int ? json['view_count'] : 0,
+      favState: json['fav_state'] is int ? json['fav_state'] : (json['fav_state'] == true ? 1 : 0),
     );
   }
 }

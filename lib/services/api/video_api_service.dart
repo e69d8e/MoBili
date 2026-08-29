@@ -156,7 +156,8 @@ class VideoApiService {
           'qn': 64,
           'fnval': 16, // DASH format for pure audio streams
           'fnver': 0,
-          'fourk': 0,
+          'fourk': 1,
+          'high_quality': 1,
         },
       );
 

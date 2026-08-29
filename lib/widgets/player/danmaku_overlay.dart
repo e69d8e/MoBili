@@ -11,12 +11,14 @@ class DanmakuController extends ChangeNotifier {
   double _playbackSpeed = 1.0;
   bool _isPlaying = false;
 
-  // Real-time smooth time tracking
-  double _lastSyncVideoPosition = 0.0;
-  int _lastSyncWallTimeMs = 0;
+  // Real-time monotonic smooth time tracking
+  double _baseVideoPosition = 0.0;
+  final Stopwatch _stopwatch = Stopwatch();
+  double _lastComputedSeconds = 0.0;
 
-  // Text layout cache: item hashCode + fontSizeScale -> TextPainter
+  // Text layout cache: item hashCode + fontSizeScale + opacity -> TextPainter (LRU via LinkedHashMap)
   final Map<int, TextPainter> _textPainterCache = {};
+  static const int _maxCacheSize = 1500;
 
   List<DanmakuItem> get danmakus => _sortedDanmakus;
   bool get enabled => _enabled;
@@ -27,12 +29,16 @@ class DanmakuController extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
 
   double get currentPositionSeconds {
-    if (!_isPlaying || _lastSyncWallTimeMs == 0) {
-      return _lastSyncVideoPosition;
+    if (!_isPlaying) {
+      return _baseVideoPosition;
     }
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final elapsedSec = (nowMs - _lastSyncWallTimeMs) / 1000.0;
-    return _lastSyncVideoPosition + (elapsedSec * _playbackSpeed);
+    final elapsedSec = _stopwatch.elapsedMicroseconds / 1000000.0;
+    final interpolated = _baseVideoPosition + (elapsedSec * _playbackSpeed);
+    // Guarantee non-decreasing monotonicity during continuous playback to avoid backwards jitter
+    if (interpolated >= _lastComputedSeconds) {
+      _lastComputedSeconds = interpolated;
+    }
+    return _lastComputedSeconds;
   }
 
   void setDanmakus(List<DanmakuItem> list) {
@@ -47,77 +53,120 @@ class DanmakuController extends ChangeNotifier {
     required double playbackSpeed,
   }) {
     final bool playingChanged = _isPlaying != isPlaying;
-    final bool speedChanged = _playbackSpeed != playbackSpeed;
-    final bool jumped = (positionSeconds - _lastSyncVideoPosition).abs() > 1.5;
+    final bool speedChanged = (_playbackSpeed - playbackSpeed).abs() > 0.01;
 
-    _lastSyncVideoPosition = positionSeconds;
-    _lastSyncWallTimeMs = DateTime.now().millisecondsSinceEpoch;
     _isPlaying = isPlaying;
     _playbackSpeed = playbackSpeed;
 
-    // Only trigger widget rebuilds on state transitions or major seeks
-    if (playingChanged || speedChanged || jumped) {
+    if (playingChanged || speedChanged) {
+      _baseVideoPosition = positionSeconds;
+      _lastComputedSeconds = positionSeconds;
+      _stopwatch.reset();
+      if (_isPlaying) {
+        _stopwatch.start();
+      }
       notifyListeners();
+      return;
+    }
+
+    if (!_isPlaying) {
+      _baseVideoPosition = positionSeconds;
+      _lastComputedSeconds = positionSeconds;
+      _stopwatch.reset();
+      return;
+    }
+
+    // Video is playing smoothly and speed has not changed:
+    final currentPred = _baseVideoPosition + (_stopwatch.elapsedMicroseconds / 1000000.0 * _playbackSpeed);
+    final drift = positionSeconds - currentPred;
+
+    // Noticeable seek or buffer stall (> 0.8s drift)
+    if (drift.abs() > 0.8) {
+      _baseVideoPosition = positionSeconds;
+      _lastComputedSeconds = positionSeconds;
+      _stopwatch.reset();
+      _stopwatch.start();
+      notifyListeners();
+    } else if (drift.abs() > 0.05) {
+      // Soft drift compensation: gently nudge base without hard resetting stopwatch
+      // This completely eliminates micro-stutters and backwards snaps during high-speed playback
+      _baseVideoPosition += drift * 0.15;
     }
   }
 
   void updatePosition(double seconds) {
-    _lastSyncVideoPosition = seconds;
-    _lastSyncWallTimeMs = DateTime.now().millisecondsSinceEpoch;
+    _baseVideoPosition = seconds;
+    _lastComputedSeconds = seconds;
+    _stopwatch.reset();
+    if (_isPlaying) {
+      _stopwatch.start();
+    }
     notifyListeners();
   }
 
   void setPlaying(bool playing) {
     if (_isPlaying != playing) {
-      _lastSyncVideoPosition = currentPositionSeconds;
-      _lastSyncWallTimeMs = DateTime.now().millisecondsSinceEpoch;
+      final currentPos = currentPositionSeconds;
       _isPlaying = playing;
+      _baseVideoPosition = currentPos;
+      _lastComputedSeconds = currentPos;
+      _stopwatch.reset();
+      if (_isPlaying) {
+        _stopwatch.start();
+      }
       notifyListeners();
     }
   }
 
   void setPlaybackSpeed(double speed) {
-    _lastSyncVideoPosition = currentPositionSeconds;
-    _lastSyncWallTimeMs = DateTime.now().millisecondsSinceEpoch;
+    final currentPos = currentPositionSeconds;
     _playbackSpeed = speed;
+    _baseVideoPosition = currentPos;
+    _lastComputedSeconds = currentPos;
+    _stopwatch.reset();
+    if (_isPlaying) {
+      _stopwatch.start();
+    }
     notifyListeners();
   }
 
   TextPainter getOrCreatePainter(DanmakuItem item) {
     final key = item.hashCode ^ ((fontSizeScale * 100).toInt() << 8) ^ ((opacity * 100).toInt() << 16);
-    var painter = _textPainterCache[key];
-    if (painter == null) {
-      final double fontSize = (item.fontSize * fontSizeScale).clamp(10.0, 26.0);
-      final double alpha = opacity.clamp(0.1, 1.0);
-      final Color textColor = item.color.withValues(alpha: (item.color.a * alpha).clamp(0.0, 1.0));
-      final Color shadowColor = Color.fromRGBO(0, 0, 0, 0.85 * alpha);
-
-      final textSpan = TextSpan(
-        text: item.text,
-        style: TextStyle(
-          color: textColor,
-          fontSize: fontSize,
-          fontWeight: FontWeight.w600,
-          shadows: [
-            Shadow(offset: const Offset(1, 1), blurRadius: 0.0, color: shadowColor),
-          ],
-        ),
-      );
-      painter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      )..layout();
-
-      // Gracefully evict oldest entries and release Skia/Impeller native text paragraph memory
-      if (_textPainterCache.length >= 800) {
-        final keysToRemove = _textPainterCache.keys.take(200).toList();
-        for (final k in keysToRemove) {
-          final removed = _textPainterCache.remove(k);
-          removed?.dispose();
-        }
-      }
-      _textPainterCache[key] = painter;
+    // Fast path: check cache and refresh LRU position
+    final existing = _textPainterCache.remove(key);
+    if (existing != null) {
+      _textPainterCache[key] = existing;
+      return existing;
     }
+
+    final double fontSize = (item.fontSize * fontSizeScale).clamp(10.0, 26.0);
+    final double alpha = opacity.clamp(0.1, 1.0);
+    final Color textColor = item.color.withValues(alpha: (item.color.a * alpha).clamp(0.0, 1.0));
+    final Color shadowColor = Color.fromRGBO(0, 0, 0, 0.85 * alpha);
+
+    final textSpan = TextSpan(
+      text: item.text,
+      style: TextStyle(
+        color: textColor,
+        fontSize: fontSize,
+        fontWeight: FontWeight.w600,
+        shadows: [
+          Shadow(offset: const Offset(1, 1), blurRadius: 0.0, color: shadowColor),
+        ],
+      ),
+    );
+    final painter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Evict oldest (first) entry when capacity exceeded
+    if (_textPainterCache.length >= _maxCacheSize) {
+      final firstKey = _textPainterCache.keys.first;
+      final oldest = _textPainterCache.remove(firstKey);
+      oldest?.dispose();
+    }
+    _textPainterCache[key] = painter;
     return painter;
   }
 
@@ -131,6 +180,7 @@ class DanmakuController extends ChangeNotifier {
   @override
   void dispose() {
     _clearLayoutCache();
+    _stopwatch.stop();
     super.dispose();
   }
 
@@ -262,10 +312,9 @@ class _DanmakuPainter extends CustomPainter {
   final DanmakuController controller;
   final double currentSeconds;
 
-  // Duration in seconds for a scrolling danmaku to cross the screen
+  // Duration in seconds for a scrolling danmaku to cross the screen in video timeline
   static const double scrollDuration = 6.0;
-  static const int trackCount = 12;
-  static const int maxOnScreenDanmakus = 40;
+  static const int maxOnScreenDanmakus = 60;
 
   _DanmakuPainter({
     required this.controller,
@@ -293,8 +342,10 @@ class _DanmakuPainter extends CustomPainter {
     final danmakus = controller.danmakus;
     if (danmakus.isEmpty) return;
 
+    final double baseTrackHeight = (19.0 * controller.fontSizeScale).clamp(18.0, 32.0);
     final double maxDisplayHeight = size.height * controller.areaRatio;
-    final double trackHeight = maxDisplayHeight / trackCount;
+    final int availableTracks = (maxDisplayHeight / baseTrackHeight).floor().clamp(1, 24);
+    final double trackHeight = maxDisplayHeight / availableTracks;
     final double minTime = currentSeconds - scrollDuration;
 
     // Fast binary search to find visible range
@@ -324,7 +375,7 @@ class _DanmakuPainter extends CustomPainter {
       // Cull items that have already scrolled past the left edge or haven't appeared
       if (x + tp.width < -10 || x > size.width + 10) continue;
 
-      final int trackIndex = (item.text.hashCode.abs() + item.timestamp) % trackCount;
+      final int trackIndex = (item.text.hashCode.abs() + item.timestamp) % availableTracks;
       final double y = trackIndex * trackHeight + 4;
 
       tp.paint(canvas, Offset(x, y));

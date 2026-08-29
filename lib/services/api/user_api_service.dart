@@ -258,11 +258,16 @@ class UserApiService {
   }
 
   /// Get user favorite folder list
-  Future<List<FavFolder>> getUserFavFolders(int upMid) async {
+  Future<List<FavFolder>> getUserFavFolders(int upMid, {int? rid}) async {
     try {
+      final query = <String, dynamic>{'up_mid': upMid};
+      if (rid != null && rid > 0) {
+        query['type'] = 2; // video
+        query['rid'] = rid;
+      }
       final res = await BiliHttpClient().get(
         ApiEndpoints.userFavFolders,
-        queryParameters: {'up_mid': upMid},
+        queryParameters: query,
       );
 
       if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
@@ -274,6 +279,33 @@ class UserApiService {
       return [];
     } catch (_) {
       return [];
+    }
+  }
+
+  /// Add or remove video to/from favorite folders
+  Future<bool> dealVideoFavorite({
+    required int aid,
+    required List<int> addMediaIds,
+    List<int> delMediaIds = const [],
+  }) async {
+    try {
+      final csrf = BiliHttpClient().biliJct;
+      if (csrf == null || csrf.isEmpty) return false;
+
+      final res = await BiliHttpClient().post(
+        ApiEndpoints.favVideo,
+        data: {
+          'rid': aid,
+          'type': 2, // 2: video
+          'add_media_ids': addMediaIds.join(','),
+          'del_media_ids': delMediaIds.join(','),
+          'csrf': csrf,
+        },
+      );
+
+      return res.data != null && res.data['code'] == 0;
+    } catch (_) {
+      return false;
     }
   }
 

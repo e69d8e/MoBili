@@ -73,5 +73,44 @@ void main() {
 
       controller.dispose();
     });
+
+    test('DanmakuController 2x speed timing and monotonicity test', () async {
+      final controller = DanmakuController();
+      controller.syncPlayerState(
+        positionSeconds: 10.0,
+        isPlaying: true,
+        playbackSpeed: 2.0,
+      );
+
+      expect(controller.playbackSpeed, 2.0);
+      expect(controller.isPlaying, isTrue);
+      expect(controller.currentPositionSeconds, greaterThanOrEqualTo(10.0));
+
+      await Future.delayed(const Duration(milliseconds: 60));
+      final pos1 = controller.currentPositionSeconds;
+      // At 2x speed, in ~60ms it should advance ~0.12s
+      expect(pos1, greaterThan(10.05));
+
+      // Simulate minor player position update drift (coarse platform update reporting 10.08)
+      controller.syncPlayerState(
+        positionSeconds: 10.08,
+        isPlaying: true,
+        playbackSpeed: 2.0,
+      );
+
+      // Current position must remain monotonic and not snap backwards
+      final pos2 = controller.currentPositionSeconds;
+      expect(pos2, greaterThanOrEqualTo(pos1));
+
+      // Simulate major seek to 50.0s
+      controller.syncPlayerState(
+        positionSeconds: 50.0,
+        isPlaying: true,
+        playbackSpeed: 2.0,
+      );
+      expect(controller.currentPositionSeconds, greaterThanOrEqualTo(50.0));
+
+      controller.dispose();
+    });
   });
 }

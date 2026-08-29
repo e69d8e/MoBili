@@ -10,7 +10,9 @@ import 'history_screen.dart';
 import 'login_dialog.dart';
 import 'relation_screen.dart';
 import 'settings_screen.dart';
+import 'video_cache_screen.dart';
 import 'watch_later_screen.dart';
+import '../../services/storage/video_cache_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -237,6 +239,59 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (ctx) => const FavoriteScreen()),
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 48,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                AnimatedBuilder(
+                  animation: VideoCacheService(),
+                  builder: (context, _) {
+                    final activeCount = VideoCacheService().activeDownloadingCount;
+                    final completedCount = VideoCacheService().totalCompletedCount;
+
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.download_rounded, color: Colors.teal, size: 20),
+                      title: const Text('离线缓存', style: TextStyle(fontSize: 13.5)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (activeCount > 0) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: primaryColor,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$activeCount 个下载中',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ] else if (completedCount > 0) ...[
+                            Text(
+                              '$completedCount 个视频',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
+                        );
+                      },
                     );
                   },
                 ),

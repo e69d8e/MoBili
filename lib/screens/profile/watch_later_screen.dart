@@ -4,6 +4,7 @@ import '../../services/api/user_api_service.dart';
 import '../../services/storage/history_storage_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
 import '../../widgets/state_views.dart';
 import '../video/video_detail_screen.dart';
@@ -85,15 +86,16 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
       setState(() {
         _items.insert(index, removedItem);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除失败，请重试')),
+      AppToast.show(
+        context,
+        '删除失败，请重试',
+        icon: Icons.info_outline_rounded,
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已从稍后观看移除'),
-          duration: Duration(seconds: 1),
-        ),
+      AppToast.show(
+        context,
+        '已从稍后观看移除',
+        icon: Icons.check_circle_rounded,
       );
     }
   }
@@ -124,12 +126,16 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
       setState(() {
         _items.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清空稍后观看列表')),
+      AppToast.show(
+        context,
+        '已清空稍后观看列表',
+        icon: Icons.check_circle_rounded,
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空失败，请重试')),
+      AppToast.show(
+        context,
+        '清空失败，请重试',
+        icon: Icons.info_outline_rounded,
       );
     }
   }

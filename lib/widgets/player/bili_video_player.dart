@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,12 +8,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../models/danmaku_model.dart';
 import '../../models/play_url_model.dart';
 import '../../models/video_model.dart';
+import '../../services/player_settings_service.dart';
 import '../../utils/formatters.dart';
 import '../app_toast.dart';
 import 'danmaku_overlay.dart';
 
 class BiliVideoPlayer extends StatefulWidget {
   final PlayUrlInfo playUrlInfo;
+  final String? localFilePath;
   final List<DanmakuItem> danmakus;
   final List<VideoChapter> chapters;
   final String title;
@@ -26,6 +29,7 @@ class BiliVideoPlayer extends StatefulWidget {
   const BiliVideoPlayer({
     super.key,
     required this.playUrlInfo,
+    this.localFilePath,
     this.danmakus = const [],
     this.chapters = const [],
     this.title = '',
@@ -47,6 +51,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   int _initToken = 0;
   late DanmakuController _danmakuController;
   bool _wakelockEnabled = false;
+  bool _isExplicitlyPaused = false;
 
   VideoPlayerController? get controller => _controller;
   double get playbackSpeed => _playbackSpeed;
@@ -55,6 +60,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   Timer? _hideTimer;
   bool _isFullScreen = false;
   double _playbackSpeed = 1.0;
+  DeviceOrientation _currentLandscapeOrientation = DeviceOrientation.landscapeLeft;
 
   // Screen Lock (横屏锁屏)
   bool _isScreenLocked = false;
@@ -63,6 +69,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   // Long Press 2.0X Speed (长按二倍速)
   bool _isLongPressSpeeding = false;
+  double get _effectivePlaybackSpeed => _isLongPressSpeeding ? 2.0 : _playbackSpeed;
   double _speedBeforeLongPress = 1.0;
 
   // Pan Progress Seek (左右滑动快进快退)
@@ -78,6 +85,17 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   bool _showSpeedPanel = false;
   bool _showChapterPanel = false;
 
+  // Double-tap & HUD Overlay
+  Offset _lastTapDownPosition = Offset.zero;
+  bool _showHud = false;
+  String _hudText = '';
+  IconData? _hudIcon;
+  Alignment _hudAlignment = Alignment.center;
+  Timer? _hudTimer;
+
+  // Isolated Slider Scrubbing
+  final ValueNotifier<double?> _sliderDragPosition = ValueNotifier<double?>(null);
+
   @override
   void initState() {
     super.initState();
@@ -92,8 +110,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (widget.danmakus != oldWidget.danmakus) {
       _danmakuController.setDanmakus(widget.danmakus);
     }
-    if (widget.playUrlInfo.primaryVideoUrl != oldWidget.playUrlInfo.primaryVideoUrl ||
+    if (widget.localFilePath != oldWidget.localFilePath ||
+        widget.playUrlInfo.primaryVideoUrl != oldWidget.playUrlInfo.primaryVideoUrl ||
         widget.playUrlInfo.currentQuality != oldWidget.playUrlInfo.currentQuality) {
+      _isExplicitlyPaused = false;
       final oldPos = _controller?.value.position;
       _initPlayer(initialPosition: oldPos);
     }
@@ -126,19 +146,30 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
     if (!mounted || _initToken != token) return;
 
+    final localPath = widget.localFilePath;
     final url = widget.playUrlInfo.primaryVideoUrl;
-    if (url == null || url.isEmpty) return;
+    final hasLocalFile = localPath != null &&
+        localPath.isNotEmpty &&
+        !kIsWeb &&
+        File(localPath).existsSync();
 
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: kIsWeb
-          ? const {}
-          : const {
-              'Referer': 'https://www.bilibili.com',
-              'User-Agent':
-                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
-    );
+    if (!hasLocalFile && (url == null || url.isEmpty)) return;
+
+    final VideoPlayerController controller;
+    if (hasLocalFile) {
+      controller = VideoPlayerController.file(File(localPath));
+    } else {
+      controller = VideoPlayerController.networkUrl(
+        Uri.parse(url!),
+        httpHeaders: kIsWeb
+            ? const {}
+            : const {
+                'Referer': 'https://www.bilibili.com',
+                'User-Agent':
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              },
+      );
+    }
     _pendingController = controller;
 
     try {
@@ -164,7 +195,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         }
       }
       await controller.setPlaybackSpeed(_playbackSpeed);
-      await controller.play();
+      if (!_isExplicitlyPaused) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
 
       // Second Guard: Check again after async play call
       if (!mounted || _initToken != token) {
@@ -181,13 +216,15 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
       _danmakuController.syncPlayerState(
         positionSeconds: initialPosition != null ? (initialPosition.inMilliseconds / 1000.0) : 0.0,
-        isPlaying: true,
-        playbackSpeed: _playbackSpeed,
+        isPlaying: !_isExplicitlyPaused,
+        playbackSpeed: _effectivePlaybackSpeed,
       );
 
       if (mounted) {
         setState(() {});
-        _startHideTimer();
+        if (!_isExplicitlyPaused) {
+          _startHideTimer();
+        }
       }
     } catch (_) {
       if (_initToken == token) {
@@ -236,7 +273,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     _danmakuController.syncPlayerState(
       positionSeconds: posSec,
       isPlaying: val.isPlaying,
-      playbackSpeed: _playbackSpeed,
+      playbackSpeed: _effectivePlaybackSpeed,
     );
 
     widget.onProgressUpdate?.call(val.position, val.duration);
@@ -279,18 +316,27 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   }
 
   Future<void> pause() async {
-    if (_controller != null && _controller!.value.isPlaying) {
-      await _controller!.pause();
-      _danmakuController.setPlaying(false);
-      if (mounted) {
-        setState(() {
-          _showControls = true;
-        });
-      }
+    _isExplicitlyPaused = true;
+    if (_controller != null) {
+      try {
+        await _controller!.pause();
+      } catch (_) {}
+    }
+    if (_pendingController != null) {
+      try {
+        await _pendingController!.pause();
+      } catch (_) {}
+    }
+    _danmakuController.setPlaying(false);
+    if (mounted) {
+      setState(() {
+        _showControls = true;
+      });
     }
   }
 
   Future<void> play() async {
+    _isExplicitlyPaused = false;
     if (_controller != null && !_controller!.value.isPlaying) {
       await _controller!.play();
       _danmakuController.setPlaying(true);
@@ -319,10 +365,35 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         _showChapterPanel = false;
         _showLockIcon = true;
         _startLockIconTimer();
+        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+        if (isLandscape) {
+          SystemChrome.setPreferredOrientations([_currentLandscapeOrientation]);
+        } else {
+          SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        }
       } else {
         _showControls = true;
         _showLockIcon = true;
         _startHideTimer();
+        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+        if (isLandscape || _isFullScreen) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+        } else {
+          if (PlayerSettingsService.autoRotateFullScreen) {
+            SystemChrome.setPreferredOrientations([
+              DeviceOrientation.portraitUp,
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]);
+          } else {
+            SystemChrome.setPreferredOrientations([
+              DeviceOrientation.portraitUp,
+            ]);
+          }
+        }
       }
     });
     HapticFeedback.lightImpact();
@@ -356,7 +427,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       _controller!.value.aspectRatio < 0.95;
 
   void _toggleFullScreen() {
-    _setFullScreen(!_isFullScreen);
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    if (_isFullScreen || isLandscape) {
+      exitFullScreen();
+    } else {
+      enterFullScreen();
+    }
   }
 
   bool get isFullScreen => _isFullScreen;
@@ -394,6 +470,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         ]);
       } else {
         // Horizontal video or forced landscape enters landscape fullscreen
+        _currentLandscapeOrientation = DeviceOrientation.landscapeLeft;
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.landscapeLeft,
           DeviceOrientation.landscapeRight,
@@ -404,21 +481,55 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
       ]);
+      // Re-enable sensor auto-rotation for the video detail page after restoring portrait if enabled
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && !_isFullScreen) {
+          if (PlayerSettingsService.autoRotateFullScreen) {
+            SystemChrome.setPreferredOrientations([
+              DeviceOrientation.portraitUp,
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]);
+          } else {
+            SystemChrome.setPreferredOrientations([
+              DeviceOrientation.portraitUp,
+            ]);
+          }
+        }
+      });
     }
   }
 
   void _toggleFullscreenOrientation() {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    if (isLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
+    if (isVerticalVideo) {
+      if (isLandscape) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
     } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      // Horizontal video: Flip 180° between landscapeLeft and landscapeRight
+      if (_currentLandscapeOrientation == DeviceOrientation.landscapeLeft) {
+        _currentLandscapeOrientation = DeviceOrientation.landscapeRight;
+      } else {
+        _currentLandscapeOrientation = DeviceOrientation.landscapeLeft;
+      }
+      SystemChrome.setPreferredOrientations([_currentLandscapeOrientation]);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && (_isFullScreen || MediaQuery.of(context).orientation == Orientation.landscape)) {
+          SystemChrome.setPreferredOrientations([
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]);
+        }
+      });
     }
     HapticFeedback.lightImpact();
   }
@@ -583,6 +694,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     _initToken++;
     _hideTimer?.cancel();
     _lockIconTimer?.cancel();
+    _hudTimer?.cancel();
+    _sliderDragPosition.dispose();
     _disableWakelock();
     if (_controller != null) {
       _controller!.removeListener(_onPlayerUpdate);
@@ -603,11 +716,55 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
     ]);
     super.dispose();
+  }
+
+  void _seekRelative(int deltaSeconds) {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    final current = _controller!.value.position;
+    final total = _controller!.value.duration;
+    if (total.inMilliseconds <= 0) return;
+    final targetMs = (current.inMilliseconds + deltaSeconds * 1000).clamp(0, total.inMilliseconds);
+    final target = Duration(milliseconds: targetMs);
+    _controller!.seekTo(target);
+    _danmakuController.updatePosition(targetMs / 1000.0);
+    HapticFeedback.lightImpact();
+  }
+
+  void _showSeekHud({required bool isForward, required int seconds}) {
+    _hudTimer?.cancel();
+    setState(() {
+      _showHud = true;
+      _hudIcon = isForward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded;
+      _hudText = isForward ? '+$seconds 秒' : '-$seconds 秒';
+      _hudAlignment = isForward ? const Alignment(0.65, 0.0) : const Alignment(-0.65, 0.0);
+    });
+    _hudTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) {
+        setState(() {
+          _showHud = false;
+        });
+      }
+    });
+  }
+
+  void _showPlayPauseHud() {
+    _hudTimer?.cancel();
+    final isPlaying = _controller?.value.isPlaying ?? false;
+    setState(() {
+      _showHud = true;
+      _hudIcon = isPlaying ? Icons.play_arrow_rounded : Icons.pause_rounded;
+      _hudText = isPlaying ? '播放' : '暂停';
+      _hudAlignment = Alignment.center;
+    });
+    _hudTimer = Timer(const Duration(milliseconds: 550), () {
+      if (mounted) {
+        setState(() {
+          _showHud = false;
+        });
+      }
+    });
   }
 
   Color _getPlayerAccent(BuildContext context) {
@@ -632,6 +789,9 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       color: Colors.black,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        onTapDown: (details) {
+          _lastTapDownPosition = details.localPosition;
+        },
         onTap: () {
           if (_isScreenLocked) {
             _toggleLockIconVisibility();
@@ -639,9 +799,23 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
           }
           _toggleControls();
         },
+        onDoubleTapDown: (details) {
+          _lastTapDownPosition = details.localPosition;
+        },
         onDoubleTap: () {
-          if (_isScreenLocked) return;
-          _togglePlayPause();
+          if (_isScreenLocked || !hasController) return;
+          final screenWidth = MediaQuery.of(context).size.width;
+          final x = _lastTapDownPosition.dx;
+          if (x < screenWidth * 0.35) {
+            _seekRelative(-10);
+            _showSeekHud(isForward: false, seconds: 10);
+          } else if (x > screenWidth * 0.65) {
+            _seekRelative(10);
+            _showSeekHud(isForward: true, seconds: 10);
+          } else {
+            _togglePlayPause();
+            _showPlayPauseHud();
+          }
         },
         onLongPressStart: (details) {
           if (_isScreenLocked || !hasController) return;
@@ -910,6 +1084,55 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                       ),
                     ],
                   ),
+                ),
+              ),
+
+            // Double Tap Seek / PlayPause HUD Overlay
+            if (_showHud)
+              Align(
+                alignment: _hudAlignment,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.75, end: 1.0),
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutBack,
+                  builder: (context, scale, child) {
+                    return Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xE614141C),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              blurRadius: 14,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_hudIcon != null) ...[
+                              Icon(_hudIcon, color: accent, size: 18),
+                              const SizedBox(width: 6),
+                            ],
+                            Text(
+                              _hudText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
 
@@ -1371,19 +1594,46 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
                     onPressed: () {
-                      if (_isFullScreen) {
-                        _toggleFullScreen();
+                      if (_isFullScreen || isFull) {
+                        exitFullScreen();
                       } else {
                         Navigator.of(context).maybePop();
                       }
                     },
                   ),
                   Expanded(
-                    child: Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    child: Row(
+                      children: [
+                        if (widget.localFilePath != null &&
+                            widget.localFilePath!.isNotEmpty &&
+                            !kIsWeb &&
+                            File(widget.localFilePath!).existsSync()) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '已离线',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (widget.onListenMode != null)
@@ -1397,7 +1647,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.screen_rotation_rounded, color: Colors.white, size: 17),
-                      tooltip: '旋转屏幕',
+                      tooltip: '翻转/旋转屏幕',
                       onPressed: _toggleFullscreenOrientation,
                     ),
                   IconButton(
@@ -1464,47 +1714,67 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                   // 2 & 3. Compact Time Display & Slider (listening to position)
                   if (hasController)
                     Expanded(
-                      child: ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: _controller!,
-                        builder: (context, val, _) {
-                          final position = val.position;
-                          final duration = val.duration;
-                          return Row(
-                            children: [
-                              Text(
-                                '${Formatters.formatDuration(position.inSeconds)} / ${Formatters.formatDuration(duration.inSeconds)}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: SliderTheme(
-                                  data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 2.0,
-                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4.5),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 8.0),
-                                    activeTrackColor: accent,
-                                    inactiveTrackColor: Colors.white24,
-                                    thumbColor: accent,
+                      child: ValueListenableBuilder<double?>(
+                        valueListenable: _sliderDragPosition,
+                        builder: (context, dragVal, _) {
+                          return ValueListenableBuilder<VideoPlayerValue>(
+                            valueListenable: _controller!,
+                            builder: (context, val, _) {
+                              final duration = val.duration;
+                              final currentPos = dragVal != null
+                                  ? Duration(milliseconds: dragVal.toInt())
+                                  : val.position;
+                              final maxMs = duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1.0;
+                              final curMs = (dragVal ?? val.position.inMilliseconds.toDouble()).clamp(0.0, maxMs);
+
+                              return Row(
+                                children: [
+                                  Text(
+                                    '${Formatters.formatDuration(currentPos.inSeconds)} / ${Formatters.formatDuration(duration.inSeconds)}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: -0.2,
+                                    ),
                                   ),
-                                  child: Slider(
-                                    value: position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1.0),
-                                    min: 0.0,
-                                    max: duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1.0,
-                                    onChanged: (v) {
-                                      _startHideTimer();
-                                      final ms = v.toInt();
-                                      _controller?.seekTo(Duration(milliseconds: ms));
-                                      _danmakuController.updatePosition(ms / 1000.0);
-                                    },
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 2.0,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4.5),
+                                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 8.0),
+                                        activeTrackColor: accent,
+                                        inactiveTrackColor: Colors.white24,
+                                        thumbColor: accent,
+                                      ),
+                                      child: Slider(
+                                        value: curMs,
+                                        min: 0.0,
+                                        max: maxMs,
+                                        onChangeStart: (v) {
+                                          _hideTimer?.cancel();
+                                          _sliderDragPosition.value = v;
+                                          HapticFeedback.selectionClick();
+                                        },
+                                        onChanged: (v) {
+                                          _sliderDragPosition.value = v;
+                                        },
+                                        onChangeEnd: (v) {
+                                          final ms = v.toInt();
+                                          _controller?.seekTo(Duration(milliseconds: ms));
+                                          _danmakuController.updatePosition(ms / 1000.0);
+                                          _sliderDragPosition.value = null;
+                                          _startHideTimer();
+                                          HapticFeedback.lightImpact();
+                                        },
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ],
+                                ],
+                              );
+                            },
                           );
                         },
                       ),

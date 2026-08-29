@@ -225,9 +225,28 @@ class PlayUrlInfo {
     }
 
     final List<DashAudioItem> audios = [];
-    if (json['dash'] is Map && json['dash']['audio'] is List) {
-      for (final a in json['dash']['audio']) {
-        audios.add(DashAudioItem.fromJson(a));
+    if (json['dash'] is Map) {
+      final dashMap = json['dash'] as Map;
+      if (dashMap['audio'] is List) {
+        for (final a in dashMap['audio']) {
+          if (a is Map<String, dynamic>) {
+            audios.add(DashAudioItem.fromJson(a));
+          } else if (a is Map) {
+            audios.add(DashAudioItem.fromJson(Map<String, dynamic>.from(a)));
+          }
+        }
+      }
+      if (audios.isEmpty && dashMap['dolby'] is Map && dashMap['dolby']['audio'] is List) {
+        for (final a in dashMap['dolby']['audio']) {
+          if (a is Map<String, dynamic>) {
+            audios.add(DashAudioItem.fromJson(a));
+          } else if (a is Map) {
+            audios.add(DashAudioItem.fromJson(Map<String, dynamic>.from(a)));
+          }
+        }
+      }
+      if (audios.isEmpty && dashMap['flac'] is Map && dashMap['flac']['audio'] is Map) {
+        audios.add(DashAudioItem.fromJson(Map<String, dynamic>.from(dashMap['flac']['audio'])));
       }
     }
 
@@ -256,8 +275,15 @@ class PlayUrlInfo {
   }
 
   String? get primaryAudioUrl {
-    if (audioTracks.isNotEmpty && audioTracks.first.baseUrl.isNotEmpty) {
-      return audioTracks.first.baseUrl;
+    for (final track in audioTracks) {
+      if (track.baseUrl.isNotEmpty) {
+        return track.baseUrl;
+      }
+      for (final backup in track.backupUrls) {
+        if (backup.isNotEmpty) {
+          return backup;
+        }
+      }
     }
     return primaryVideoUrl;
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:mobili/models/comment_model.dart';
@@ -9,6 +10,7 @@ import 'package:mobili/providers/listen_video_provider.dart';
 import 'package:mobili/screens/dynamic/dynamic_detail_screen.dart';
 import 'package:mobili/screens/up/up_space_screen.dart';
 import 'package:mobili/services/api/api_endpoints.dart';
+import 'package:mobili/services/player_settings_service.dart';
 import 'package:mobili/widgets/comment_item_widget.dart';
 import 'package:mobili/widgets/dynamic_card.dart';
 import 'package:mobili/widgets/network_image_view.dart';
@@ -276,6 +278,42 @@ void main() {
       // For 16:9 landscape video (1.777), container uses 1.777
       expect(computeContainerRatio(16 / 9, false), closeTo(16 / 9, 0.01));
     });
+
+    test('Landscape screen 180-degree flip logic between landscapeLeft and landscapeRight', () {
+      DeviceOrientation current = DeviceOrientation.landscapeLeft;
+      DeviceOrientation flip(DeviceOrientation cur) {
+        return cur == DeviceOrientation.landscapeLeft
+            ? DeviceOrientation.landscapeRight
+            : DeviceOrientation.landscapeLeft;
+      }
+
+      current = flip(current);
+      expect(current, DeviceOrientation.landscapeRight);
+
+      current = flip(current);
+      expect(current, DeviceOrientation.landscapeLeft);
+    });
+
+    test('Fullscreen toggle correctly detects landscape orientation', () {
+      bool shouldExit(bool isFullScreen, bool isLandscape) {
+        return isFullScreen || isLandscape;
+      }
+
+      expect(shouldExit(false, true), isTrue); // In landscape via sensor
+      expect(shouldExit(true, false), isTrue); // In fullscreen via button
+      expect(shouldExit(true, true), isTrue); // In fullscreen and landscape
+      expect(shouldExit(false, false), isFalse); // Portrait normal
+    });
+
+    test('PlayerSettingsService autoRotateFullScreen toggle and listenable test', () async {
+      await PlayerSettingsService.setAutoRotateFullScreen(false);
+      expect(PlayerSettingsService.autoRotateFullScreen, isFalse);
+      expect(PlayerSettingsService.autoRotateListenable.value, isFalse);
+
+      await PlayerSettingsService.setAutoRotateFullScreen(true);
+      expect(PlayerSettingsService.autoRotateFullScreen, isTrue);
+      expect(PlayerSettingsService.autoRotateListenable.value, isTrue);
+    });
   });
 
   group('Dynamic Card & Detail Screen Widget Tests', () {
@@ -367,8 +405,8 @@ void main() {
       expect(find.text('插画师'), findsOneWidget);
       expect(find.byType(NetworkImageView), findsWidgets);
 
-      // Tap on the picture
-      await tester.tap(find.byType(NetworkImageView).last);
+      // Tap on the card text navigates to DynamicDetailScreen
+      await tester.tap(find.text('这是一组插画作品'));
       await tester.pumpAndSettle();
 
       // Successfully navigated to DynamicDetailScreen

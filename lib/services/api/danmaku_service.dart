@@ -10,22 +10,36 @@ class DanmakuService {
   factory DanmakuService() => _instance;
   DanmakuService._internal();
 
-  /// Fetches and parses Danmaku XML list for a given video CID in a background isolate
-  Future<List<DanmakuItem>> getDanmakuList(int cid) async {
+  /// Fetches and parses Danmaku XML list for a given video CID (supports local cache file)
+  Future<List<DanmakuItem>> getDanmakuList(int cid, {String? localFilePath}) async {
     if (cid <= 0) return [];
+    
+    // 1. Try local file if provided
+    if (localFilePath != null && localFilePath.isNotEmpty) {
+      try {
+        final f = File(localFilePath);
+        if (f.existsSync()) {
+          final bytes = await f.readAsBytes();
+          if (bytes.isNotEmpty) {
+            return await compute(_decodeAndParseDanmakuBytes, bytes);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fetch from network
     try {
       final Uint8List bytes = await BiliHttpClient().getBytes(
         ApiEndpoints.danmakuList,
         queryParameters: {'oid': cid},
       );
 
-      if (bytes.isEmpty) return [];
+      if (bytes.isNotEmpty) {
+        return await compute(_decodeAndParseDanmakuBytes, bytes);
+      }
+    } catch (_) {}
 
-      // Offload heavy decompression and XML regex matching to background isolate
-      return await compute(_decodeAndParseDanmakuBytes, bytes);
-    } catch (_) {
-      return [];
-    }
+    return [];
   }
 }
 

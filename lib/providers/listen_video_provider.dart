@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
@@ -9,6 +10,9 @@ class ListenVideoProvider extends ChangeNotifier {
   VideoPlayerController? _controller;
   VideoPlayerController? _pendingController;
   int _playToken = 0;
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
+  bool _isRecovering = false;
 
   // Audio track metadata
   String? _bvid;
@@ -24,12 +28,23 @@ class ListenVideoProvider extends ChangeNotifier {
   bool _isBuffering = false;
   bool _isPlaying = false;
   bool _isDisposed = false;
+  bool _wasPlayingBeforeInterruption = false;
+
+  // Audio session subscriptions
+  StreamSubscription<void>? _noisySub;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
 
   // Sleep Timer
   Timer? _sleepTimer;
   Timer? _sleepCountdownTicker;
   Duration? _sleepTimerRemaining;
   bool _sleepEndOfTrack = false;
+
+  static const Map<String, String> _biliHeaders = {
+    'Referer': 'https://www.bilibili.com',
+    'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
 
   ListenVideoProvider() {
     _initAudioSession();
@@ -60,21 +75,88 @@ class ListenVideoProvider extends ChangeNotifier {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
       await session.setActive(true);
+
+      _noisySub = session.becomingNoisyEventStream.listen((_) {
+        pause();
+      });
+
+      _interruptionSub = session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _controller?.setVolume(0.5);
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              _wasPlayingBeforeInterruption = _isPlaying;
+              pause();
+              break;
+          }
+        } else {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _controller?.setVolume(1.0);
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              if (_wasPlayingBeforeInterruption) {
+                play();
+              }
+              break;
+          }
+        }
+      });
     } catch (e) {
       debugPrint('AudioSession configure error: $e');
     }
   }
 
+  Duration _lastNotifiedPosition = Duration.zero;
+
   void _onControllerUpdate() {
     if (_controller == null || _isDisposed) return;
 
     final val = _controller!.value;
-    _position = val.position;
-    if (val.duration > Duration.zero) {
-      _duration = val.duration;
+
+    // Check for player error and attempt auto-recovery
+    if (val.hasError) {
+      debugPrint('ListenVideoProvider controller error: ${val.errorDescription}');
+      if (!_isRecovering) {
+        _handlePlaybackError();
+      }
+      return;
     }
-    _isPlaying = val.isPlaying;
-    _isBuffering = val.isBuffering;
+
+    final newPos = val.position;
+    final newDur = val.duration;
+    final newPlaying = val.isPlaying;
+    final newBuffering = val.isBuffering;
+
+    bool needsNotify = false;
+
+    if (newPlaying != _isPlaying) {
+      _isPlaying = newPlaying;
+      needsNotify = true;
+    }
+
+    if (newBuffering != _isBuffering) {
+      _isBuffering = newBuffering;
+      needsNotify = true;
+    }
+
+    if (newDur > Duration.zero && newDur != _duration) {
+      _duration = newDur;
+      needsNotify = true;
+    }
+
+    // Throttle position updates to at most once per 250ms to prevent UI thread flooding
+    if ((newPos - _lastNotifiedPosition).abs() >= const Duration(milliseconds: 250) ||
+        newPos == Duration.zero ||
+        (newDur > Duration.zero && newPos >= newDur)) {
+      _position = newPos;
+      _lastNotifiedPosition = newPos;
+      needsNotify = true;
+    }
 
     if (val.isCompleted) {
       if (_sleepEndOfTrack) {
@@ -83,6 +165,117 @@ class ListenVideoProvider extends ChangeNotifier {
       }
     }
 
+    if (needsNotify) {
+      notifyListeners();
+    }
+  }
+
+  VideoPlayerController _createController(String streamUrl) {
+    if (!kIsWeb && (streamUrl.startsWith('/') || streamUrl.startsWith('file:'))) {
+      final cleanPath = streamUrl.replaceFirst('file://', '');
+      if (File(cleanPath).existsSync()) {
+        return VideoPlayerController.file(
+          File(cleanPath),
+          videoPlayerOptions: VideoPlayerOptions(
+            allowBackgroundPlayback: true,
+            mixWithOthers: true,
+            preventsDisplaySleepDuringVideoPlayback: false,
+          ),
+        );
+      }
+    }
+    return VideoPlayerController.networkUrl(
+      Uri.parse(streamUrl),
+      videoPlayerOptions: VideoPlayerOptions(
+        allowBackgroundPlayback: true,
+        mixWithOthers: true,
+        preventsDisplaySleepDuringVideoPlayback: false,
+      ),
+      httpHeaders: _biliHeaders,
+    );
+  }
+
+  Future<void> _handlePlaybackError() async {
+    if (_isDisposed || _bvid == null || _cid == null || _isRecovering) return;
+    _isRecovering = true;
+
+    if (_retryCount < _maxRetries) {
+      _retryCount++;
+      debugPrint(
+          'ListenVideoProvider: Auto-reconnecting attempt $_retryCount/$_maxRetries at position $_position...');
+      _isBuffering = true;
+      notifyListeners();
+
+      try {
+        await Future.delayed(Duration(milliseconds: 600 * _retryCount));
+        if (_isDisposed || _bvid == null || _cid == null) {
+          _isRecovering = false;
+          return;
+        }
+
+        // Re-fetch fresh unsegmented DASH audio stream to recover from CDN token expiration
+        String? freshUrl;
+        try {
+          freshUrl = await VideoApiService().getVideoAudioUrl(bvid: _bvid!, cid: _cid!);
+        } catch (_) {}
+
+        if (freshUrl == null || freshUrl.isEmpty) {
+          final info = await VideoApiService().getVideoPlayUrl(bvid: _bvid!, cid: _cid!, qn: 16);
+          freshUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
+        }
+
+        if (freshUrl != null && freshUrl.isNotEmpty && !_isDisposed) {
+          _audioUrl = freshUrl;
+          final savedPos = _position;
+
+          if (_controller != null) {
+            _controller!.removeListener(_onControllerUpdate);
+            try {
+              await _controller!.pause();
+              await _controller!.dispose();
+            } catch (_) {}
+            _controller = null;
+          }
+
+          final newCtrl = _createController(freshUrl);
+
+          await newCtrl.initialize();
+          await newCtrl.setVolume(1.0);
+          if (savedPos > Duration.zero) {
+            await newCtrl.seekTo(savedPos);
+          }
+          await newCtrl.setPlaybackSpeed(_speed);
+          await newCtrl.play();
+
+          if (_isDisposed) {
+            try {
+              await newCtrl.dispose();
+            } catch (_) {}
+            _isRecovering = false;
+            return;
+          }
+
+          _controller = newCtrl;
+          _isPlaying = newCtrl.value.isPlaying;
+          _isBuffering = newCtrl.value.isBuffering;
+          if (newCtrl.value.duration > Duration.zero) {
+            _duration = newCtrl.value.duration;
+          }
+          _controller!.addListener(_onControllerUpdate);
+
+          _retryCount = 0;
+          _isRecovering = false;
+          notifyListeners();
+          return;
+        }
+      } catch (e) {
+        debugPrint('ListenVideoProvider: Reconnect failed: $e');
+      }
+    }
+
+    _isRecovering = false;
+    _isBuffering = false;
+    _isPlaying = false;
     notifyListeners();
   }
 
@@ -99,6 +292,8 @@ class ListenVideoProvider extends ChangeNotifier {
     double speed = 1.0,
   }) async {
     final token = ++_playToken;
+    _retryCount = 0;
+    _isRecovering = false;
     _bvid = bvid;
     _cid = cid;
     _title = title;
@@ -147,10 +342,44 @@ class ListenVideoProvider extends ChangeNotifier {
 
       if (_isDisposed || _playToken != token) return;
 
-      String? streamUrl = audioUrl;
+      String? streamUrl;
+      // 1. If audioUrl is a valid local cached file, use it directly
+      if (audioUrl != null &&
+          audioUrl.isNotEmpty &&
+          !kIsWeb &&
+          (audioUrl.startsWith('/') || audioUrl.startsWith('file:'))) {
+        final cleanPath = audioUrl.replaceFirst('file://', '');
+        if (File(cleanPath).existsSync()) {
+          streamUrl = cleanPath;
+        }
+      }
+
+      // 2. Fetch unsegmented continuous DASH audio stream (fnval=16) for listen mode
       if (streamUrl == null || streamUrl.isEmpty) {
-        final info = await VideoApiService().getVideoPlayUrl(bvid: bvid, cid: cid);
-        streamUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
+        try {
+          streamUrl = await VideoApiService().getVideoAudioUrl(bvid: bvid, cid: cid);
+        } catch (e) {
+          debugPrint('ListenVideoProvider: Failed to fetch DASH audio URL: $e');
+        }
+      }
+
+      // 3. Fallback to provided audioUrl if DASH stream retrieval failed
+      if (streamUrl == null || streamUrl.isEmpty) {
+        streamUrl = audioUrl;
+      }
+
+      // 4. Final fallback: standard play url (360P smooth stream)
+      if (streamUrl == null || streamUrl.isEmpty) {
+        try {
+          final info = await VideoApiService().getVideoPlayUrl(bvid: bvid, cid: cid, qn: 16);
+          streamUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
+        } catch (_) {}
+      }
+      if (streamUrl == null || streamUrl.isEmpty) {
+        try {
+          final info = await VideoApiService().getVideoPlayUrl(bvid: bvid, cid: cid);
+          streamUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
+        } catch (_) {}
       }
 
       if (streamUrl == null || streamUrl.isEmpty) {
@@ -167,19 +396,7 @@ class ListenVideoProvider extends ChangeNotifier {
 
       _audioUrl = streamUrl;
 
-      final ctrl = VideoPlayerController.networkUrl(
-        Uri.parse(streamUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          allowBackgroundPlayback: true,
-          mixWithOthers: true,
-          preventsDisplaySleepDuringVideoPlayback: false,
-        ),
-        httpHeaders: const {
-          'Referer': 'https://www.bilibili.com',
-          'User-Agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      );
+      final ctrl = _createController(streamUrl);
       _pendingController = ctrl;
 
       await ctrl.initialize();
@@ -261,11 +478,13 @@ class ListenVideoProvider extends ChangeNotifier {
   }
 
   Future<void> seek(Duration pos) async {
+    _position = pos;
     if (_controller != null) {
-      await _controller!.seekTo(pos);
-      _position = pos;
-      if (!_isDisposed) notifyListeners();
+      try {
+        await _controller!.seekTo(pos);
+      } catch (_) {}
     }
+    if (!_isDisposed) notifyListeners();
   }
 
   Future<void> seekRelative(int seconds) async {
@@ -332,6 +551,8 @@ class ListenVideoProvider extends ChangeNotifier {
   Future<void> stopAndClear() async {
     _playToken++;
     cancelSleepTimer();
+    _retryCount = 0;
+    _isRecovering = false;
     if (_controller != null) {
       _controller!.removeListener(_onControllerUpdate);
       try {
@@ -365,6 +586,8 @@ class ListenVideoProvider extends ChangeNotifier {
     _isDisposed = true;
     _playToken++;
     cancelSleepTimer();
+    _noisySub?.cancel();
+    _interruptionSub?.cancel();
     if (_controller != null) {
       _controller!.removeListener(_onControllerUpdate);
       try {

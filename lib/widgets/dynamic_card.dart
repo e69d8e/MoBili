@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/dynamic_model.dart';
 import '../providers/auth_provider.dart';
@@ -11,6 +12,8 @@ import '../services/api/bili_http_client.dart';
 import '../services/api/dynamic_api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
+import 'app_toast.dart';
+import 'image_viewer.dart';
 import 'network_image_view.dart';
 import 'user_avatar.dart';
 
@@ -67,8 +70,10 @@ class _DynamicCardState extends State<DynamicCard> {
         _isLiked = !targetLike;
         _likeCount += targetLike ? -1 : 1;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('点赞操作失败，请重试')),
+      AppToast.show(
+        context,
+        '点赞操作失败，请重试',
+        icon: Icons.info_outline_rounded,
       );
     }
   }
@@ -456,7 +461,16 @@ class _DynamicCardState extends State<DynamicCard> {
         }
 
         return GestureDetector(
-          onTap: _navigateToDetail,
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ImageViewer.show(
+              context,
+              pictures: [pic],
+              initialIndex: 0,
+              heroPrefix: heroPrefix,
+            );
+          },
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Container(
@@ -472,8 +486,8 @@ class _DynamicCardState extends State<DynamicCard> {
                     height: displayHeight,
                     fit: BoxFit.cover,
                     alignment: alignment,
-                    memCacheWidth: (displayWidth * 2.5).round().clamp(200, 1200),
-                    memCacheHeight: (displayHeight * 2.5).round().clamp(200, 1200),
+                    memCacheWidth: (displayWidth * 2.2).round().clamp(200, 960),
+                    memCacheHeight: (displayHeight * 2.2).round().clamp(200, 960),
                   ),
                   if (isLong)
                     Positioned(
@@ -527,7 +541,16 @@ class _DynamicCardState extends State<DynamicCard> {
 
               rowItems.add(
                 GestureDetector(
-                  onTap: _navigateToDetail,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    ImageViewer.show(
+                      context,
+                      pictures: pictures,
+                      initialIndex: idx,
+                      heroPrefix: heroPrefix,
+                    );
+                  },
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
@@ -543,8 +566,8 @@ class _DynamicCardState extends State<DynamicCard> {
                             height: itemHeight,
                             fit: BoxFit.cover,
                             alignment: isLong ? Alignment.topCenter : Alignment.center,
-                            memCacheWidth: (itemWidth * 2.5).round().clamp(150, 600),
-                            memCacheHeight: (itemHeight * 2.5).round().clamp(150, 600),
+                            memCacheWidth: (itemWidth * 2.2).round().clamp(150, 480),
+                            memCacheHeight: (itemHeight * 2.2).round().clamp(150, 480),
                           ),
                           if (isLastOfNine)
                             Container(
@@ -632,13 +655,21 @@ class _DynamicCardState extends State<DynamicCard> {
     final color = active ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight);
 
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: color),
+            AnimatedScale(
+              scale: active ? 1.15 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutBack,
+              child: Icon(icon, size: 16, color: color),
+            ),
             const SizedBox(width: 4),
             Text(
               label,
