@@ -60,6 +60,9 @@ class HistoryStorageService {
     return _cache[bvid];
   }
 
+  /// Total number of stored playback history records
+  int get totalRecordCount => _cache.length;
+
   /// Save playback progress with in-memory instant update and debounced disk persistence
   void saveProgress({
     required String bvid,

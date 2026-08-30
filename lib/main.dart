@@ -8,6 +8,7 @@ import 'providers/theme_provider.dart';
 import 'screens/main_tab_screen.dart';
 import 'services/danmaku_settings_service.dart';
 import 'services/player_settings_service.dart';
+import 'services/storage/app_cache_service.dart';
 import 'services/storage/history_storage_service.dart';
 import 'services/storage/video_cache_service.dart';
 import 'theme/app_theme.dart';
@@ -32,6 +33,7 @@ void main() async {
     PlayerSettingsService.init(),
     HistoryStorageService().init(),
     VideoCacheService().init(),
+    AppCacheService().init(),
   ]);
 
   runApp(

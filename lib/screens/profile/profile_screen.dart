@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/user_avatar.dart';
 import '../dynamic/dynamic_screen.dart';
+import 'cache_management_screen.dart';
 import 'favorite_screen.dart';
 import 'history_screen.dart';
 import 'login_dialog.dart';
@@ -292,6 +293,23 @@ class ProfileScreen extends StatelessWidget {
                           MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
                         );
                       },
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 48,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.cleaning_services_rounded, color: Colors.blueGrey, size: 20),
+                  title: const Text('缓存管理', style: TextStyle(fontSize: 13.5)),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (ctx) => const CacheManagementScreen()),
                     );
                   },
                 ),

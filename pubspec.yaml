@@ -40,6 +40,7 @@ dependencies:
   shared_preferences: ^2.5.5
   video_player: ^2.14.0
   cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
   qr_flutter: ^4.1.0
   intl: ^0.20.3
   just_audio: ^0.10.6
