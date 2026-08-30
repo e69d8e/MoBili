@@ -37,12 +37,16 @@ class VideoDetailScreen extends StatefulWidget {
   final String bvid;
   final VideoItem? initialVideo;
   final Duration? initialPosition;
+  final List<WatchLaterItem>? watchLaterList;
+  final int initialWatchLaterIndex;
 
   const VideoDetailScreen({
     super.key,
     required this.bvid,
     this.initialVideo,
     this.initialPosition,
+    this.watchLaterList,
+    this.initialWatchLaterIndex = 0,
   });
 
   @override
@@ -56,6 +60,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
   PlayUrlInfo? _playUrlInfo;
   List<DanmakuItem> _danmakus = [];
   List<VideoItem> _relatedVideos = [];
+
+  // Watch Later Playlist state
+  List<WatchLaterItem>? _watchLaterList;
+  int _currentWatchLaterIndex = 0;
+  bool _isAutoPlayingNext = false;
+  Duration? _overrideInitialPosition;
 
   // Comments
   List<CommentItem> _comments = [];
@@ -86,6 +96,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
   void initState() {
     super.initState();
     _currentBvid = widget.bvid;
+    _watchLaterList = widget.watchLaterList != null ? List<WatchLaterItem>.from(widget.watchLaterList!) : null;
+    _currentWatchLaterIndex = widget.initialWatchLaterIndex;
+    _overrideInitialPosition = widget.initialPosition;
     _tabController = TabController(length: 2, vsync: this);
     _tripleComboAnimController = AnimationController(
       vsync: this,
@@ -437,6 +450,28 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _switchWatchLaterItem(WatchLaterItem item, int index) async {
+    if (item.bvid == _currentBvid && index == _currentWatchLaterIndex) return;
+    _reportFinalProgress();
+    final effectiveProgress = item.progress > 0
+        ? item.progress
+        : HistoryStorageService().getProgress(item.bvid);
+
+    setState(() {
+      _currentWatchLaterIndex = index;
+      _currentBvid = item.bvid;
+      _selectedPageIndex = 0;
+      _isLoading = true;
+      _playUrlInfo = null;
+      _danmakus = [];
+      _comments = [];
+      _relatedVideos = [];
+      _overrideInitialPosition = effectiveProgress > 0 ? Duration(seconds: effectiveProgress) : Duration.zero;
+    });
+
+    _loadAll();
   }
 
   void _showUgcSeasonBottomSheet(UgcSeason season) {
@@ -1221,6 +1256,24 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
         );
       }
     }
+
+    // 3. Auto-play next video in Watch Later playlist if reached end
+    if (_watchLaterList != null &&
+        durSec > 0 &&
+        currentSec >= durSec &&
+        !_isAutoPlayingNext &&
+        _currentWatchLaterIndex + 1 < _watchLaterList!.length) {
+      _isAutoPlayingNext = true;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && _watchLaterList != null && _currentWatchLaterIndex + 1 < _watchLaterList!.length) {
+          final nextIdx = _currentWatchLaterIndex + 1;
+          final nextItem = _watchLaterList![nextIdx];
+          AppToast.show(context, '正在自动播放下一条稍后看: ${nextItem.title}', icon: Icons.playlist_play_rounded);
+          _switchWatchLaterItem(nextItem, nextIdx);
+          _isAutoPlayingNext = false;
+        }
+      });
+    }
   }
 
   void _reportFinalProgress() {
@@ -1318,6 +1371,52 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
         ? Duration(milliseconds: _playUrlInfo!.timelength)
         : (video.duration > 0 ? Duration(seconds: video.duration) : null);
 
+    List<ListenPlaylistItem>? listenPlaylist;
+    int initialPlaylistIndex = 0;
+
+    if (_watchLaterList != null && _watchLaterList!.isNotEmpty) {
+      listenPlaylist = _watchLaterList!.map((item) {
+        return ListenPlaylistItem(
+          bvid: item.bvid,
+          cid: item.cid,
+          title: item.title,
+          coverUrl: item.pic,
+          upName: item.ownerName,
+          duration: item.duration > 0 ? Duration(seconds: item.duration) : null,
+          progress: item.progress,
+        );
+      }).toList();
+      initialPlaylistIndex = _currentWatchLaterIndex;
+    } else if (_detail?.ugcSeason != null && _detail!.ugcSeason!.sections.isNotEmpty) {
+      final episodes = _detail!.ugcSeason!.sections.expand((s) => s.episodes).toList();
+      if (episodes.length > 1) {
+        listenPlaylist = episodes.map((ep) {
+          return ListenPlaylistItem(
+            bvid: ep.bvid,
+            cid: ep.cid,
+            title: ep.title,
+            coverUrl: ep.cover.isNotEmpty ? ep.cover : video.pic,
+            upName: video.owner.name,
+            duration: ep.duration > 0 ? Duration(seconds: ep.duration) : null,
+          );
+        }).toList();
+        final epIdx = episodes.indexWhere((ep) => ep.bvid == _currentBvid);
+        initialPlaylistIndex = epIdx >= 0 ? epIdx : 0;
+      }
+    } else if (_detail != null && _detail!.pages.length > 1) {
+      listenPlaylist = _detail!.pages.map((p) {
+        return ListenPlaylistItem(
+          bvid: _currentBvid,
+          cid: p.cid,
+          title: '${video.title} - ${p.part}',
+          coverUrl: video.pic,
+          upName: video.owner.name,
+          duration: p.duration > 0 ? Duration(seconds: p.duration) : null,
+        );
+      }).toList();
+      initialPlaylistIndex = _selectedPageIndex;
+    }
+
     if (!mounted) return;
 
     await Navigator.of(context).push(
@@ -1332,6 +1431,20 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
           initialPosition: pos,
           totalDuration: totalDur,
           initialSpeed: speed,
+          playlist: listenPlaylist,
+          initialPlaylistIndex: initialPlaylistIndex,
+          onSwitchPlaylistItem: (item, idx) {
+            if (_watchLaterList != null && idx >= 0 && idx < _watchLaterList!.length) {
+              _switchWatchLaterItem(_watchLaterList![idx], idx);
+            } else if (_detail?.ugcSeason != null) {
+              final episodes = _detail!.ugcSeason!.sections.expand((s) => s.episodes).toList();
+              if (idx >= 0 && idx < episodes.length) {
+                _switchEpisode(episodes[idx]);
+              }
+            } else if (_detail != null && idx >= 0 && idx < _detail!.pages.length) {
+              _switchPart(idx);
+            }
+          },
           onSwitchToVideo: (curPos) async {
             await _playerKey.currentState?.controller?.seekTo(curPos);
             await _playerKey.currentState?.play();
@@ -1359,7 +1472,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
 
   Widget _buildPlayer(VideoItem? video, Color primaryColor) {
     if (_playUrlInfo != null) {
-      Duration? effectiveInitialPos = widget.initialPosition;
+      Duration? effectiveInitialPos = _overrideInitialPosition ?? widget.initialPosition;
       if (effectiveInitialPos == null || effectiveInitialPos == Duration.zero) {
         final savedSec = HistoryStorageService().getProgress(_currentBvid);
         if (savedSec > 0) {
@@ -1745,6 +1858,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
 
           const SizedBox(height: 16),
 
+          // Watch Later Playlist (稍后看播放列表)
+          if (_watchLaterList != null && _watchLaterList!.isNotEmpty)
+            _buildWatchLaterSection(isDark, primaryColor),
+
           // UGC Season (合集)
           if (_detail?.ugcSeason != null && _detail!.ugcSeason!.sections.isNotEmpty) ...[
             Builder(builder: (ctx) {
@@ -2048,6 +2165,362 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
   ],
 );
 }
+
+  Widget _buildWatchLaterSection(bool isDark, Color primaryColor) {
+    if (_watchLaterList == null || _watchLaterList!.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.surfaceDark.withValues(alpha: 0.5) : AppTheme.surfaceLight.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.watch_later_rounded, size: 16, color: primaryColor),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '稍后看列表 · 第 ${_currentWatchLaterIndex + 1}/${_watchLaterList!.length} 个视频',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: _showWatchLaterBottomSheet,
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    children: [
+                      Text(
+                        '共 ${_watchLaterList!.length} 个',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 74,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _watchLaterList!.length,
+              separatorBuilder: (c, _) => const SizedBox(width: 8),
+              itemBuilder: (c, idx) {
+                final item = _watchLaterList![idx];
+                final isPlaying = idx == _currentWatchLaterIndex || item.bvid == _currentBvid;
+
+                return InkWell(
+                  onTap: () => _switchWatchLaterItem(item, idx),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 220,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: isPlaying
+                          ? primaryColor.withValues(alpha: 0.12)
+                          : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isPlaying ? primaryColor : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 88,
+                          child: AspectRatio(
+                            aspectRatio: 16 / 10,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  NetworkImageView(
+                                    url: item.pic,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 200,
+                                    memCacheHeight: 125,
+                                  ),
+                                  if (item.duration > 0)
+                                    Positioned(
+                                      bottom: 2,
+                                      right: 2,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.7),
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          Formatters.formatDuration(item.duration),
+                                          style: const TextStyle(color: Colors.white, fontSize: 8.5),
+                                        ),
+                                      ),
+                                    ),
+                                  if (isPlaying)
+                                    Positioned(
+                                      top: 2,
+                                      left: 2,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: primaryColor,
+                                          borderRadius: BorderRadius.circular(3),
+                                        ),
+                                        child: const Text(
+                                          '播放中',
+                                          style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                item.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
+                                  color: isPlaying
+                                      ? primaryColor
+                                      : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                  height: 1.25,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                item.ownerName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWatchLaterBottomSheet() {
+    if (_watchLaterList == null || _watchLaterList!.isEmpty) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.watch_later_rounded, size: 18, color: primaryColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      '稍后观看列表 (共 ${_watchLaterList!.length} 个视频)',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  itemCount: _watchLaterList!.length,
+                  separatorBuilder: (c, _) => const SizedBox(height: 8),
+                  itemBuilder: (c, idx) {
+                    final item = _watchLaterList![idx];
+                    final isPlaying = idx == _currentWatchLaterIndex || item.bvid == _currentBvid;
+
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _switchWatchLaterItem(item, idx);
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isPlaying
+                              ? primaryColor.withValues(alpha: 0.12)
+                              : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isPlaying ? primaryColor : Colors.transparent,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              child: AspectRatio(
+                                aspectRatio: 16 / 10,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      NetworkImageView(
+                                        url: item.pic,
+                                        fit: BoxFit.cover,
+                                        memCacheWidth: 240,
+                                        memCacheHeight: 150,
+                                      ),
+                                      if (item.duration > 0)
+                                        Positioned(
+                                          bottom: 3,
+                                          right: 3,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(alpha: 0.7),
+                                              borderRadius: BorderRadius.circular(3),
+                                            ),
+                                            child: Text(
+                                              Formatters.formatDuration(item.duration),
+                                              style: const TextStyle(color: Colors.white, fontSize: 9),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
+                                      color: isPlaying
+                                          ? primaryColor
+                                          : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          item.ownerName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isPlaying)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: primaryColor,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            '播放中',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildActionButton({
     required IconData icon,

@@ -487,6 +487,8 @@ class ListenVideoProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
+  Future<void> seekTo(Duration pos) => seek(pos);
+
   Future<void> seekRelative(int seconds) async {
     final newPos = _position + Duration(seconds: seconds);
     final clamped = newPos < Duration.zero

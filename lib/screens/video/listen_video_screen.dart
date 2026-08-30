@@ -1,12 +1,37 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
+import '../../services/api/video_api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
 import 'video_detail_screen.dart';
+
+class ListenPlaylistItem {
+  final String bvid;
+  final int cid;
+  final String title;
+  final String coverUrl;
+  final String upName;
+  final String? localFilePath;
+  final Duration? duration;
+  final int progress;
+
+  const ListenPlaylistItem({
+    required this.bvid,
+    required this.cid,
+    required this.title,
+    required this.coverUrl,
+    required this.upName,
+    this.localFilePath,
+    this.duration,
+    this.progress = 0,
+  });
+}
 
 class ListenVideoScreen extends StatefulWidget {
   final String bvid;
@@ -19,6 +44,9 @@ class ListenVideoScreen extends StatefulWidget {
   final Duration? totalDuration;
   final double initialSpeed;
   final void Function(Duration currentPosition)? onSwitchToVideo;
+  final List<ListenPlaylistItem>? playlist;
+  final int initialPlaylistIndex;
+  final void Function(ListenPlaylistItem item, int index)? onSwitchPlaylistItem;
 
   const ListenVideoScreen({
     super.key,
@@ -32,6 +60,9 @@ class ListenVideoScreen extends StatefulWidget {
     this.totalDuration,
     this.initialSpeed = 1.0,
     this.onSwitchToVideo,
+    this.playlist,
+    this.initialPlaylistIndex = 0,
+    this.onSwitchPlaylistItem,
   });
 
   @override
@@ -41,16 +72,42 @@ class ListenVideoScreen extends StatefulWidget {
 class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
   ListenVideoProvider? _listenProvider;
+  List<ListenPlaylistItem>? _playlist;
+  int _currentPlaylistIndex = 0;
+  bool _isAutoAdvancing = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _listenProvider = context.read<ListenVideoProvider>();
+    final newProvider = context.read<ListenVideoProvider>();
+    if (_listenProvider != newProvider) {
+      _listenProvider?.removeListener(_onListenProviderUpdate);
+      _listenProvider = newProvider;
+      _listenProvider?.addListener(_onListenProviderUpdate);
+    }
+  }
+
+  void _onListenProviderUpdate() {
+    if (!mounted || _listenProvider == null) return;
+    final p = _listenProvider!;
+    if (p.duration > Duration.zero && p.position >= p.duration && !p.isBuffering && !_isAutoAdvancing) {
+      if (_playlist != null && _currentPlaylistIndex + 1 < _playlist!.length) {
+        _isAutoAdvancing = true;
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted && _playlist != null && _currentPlaylistIndex + 1 < _playlist!.length) {
+            _switchPlaylistItem(_currentPlaylistIndex + 1);
+            _isAutoAdvancing = false;
+          }
+        });
+      }
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    _playlist = widget.playlist != null ? List<ListenPlaylistItem>.from(widget.playlist!) : null;
+    _currentPlaylistIndex = widget.initialPlaylistIndex;
     _rotationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
@@ -87,6 +144,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   @override
   void dispose() {
+    _listenProvider?.removeListener(_onListenProviderUpdate);
     // Whenever exiting the listen video screen, pause playback if still playing
     if (_listenProvider != null && _listenProvider!.isPlaying) {
       _listenProvider!.pause();
@@ -96,6 +154,54 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       DeviceOrientation.portraitUp,
     ]);
     super.dispose();
+  }
+
+  Future<void> _switchPlaylistItem(int newIndex) async {
+    if (_playlist == null || newIndex < 0 || newIndex >= _playlist!.length) return;
+    final item = _playlist![newIndex];
+    final provider = context.read<ListenVideoProvider>();
+    if (newIndex == _currentPlaylistIndex && provider.cid == item.cid && item.cid != 0) return;
+
+    setState(() {
+      _currentPlaylistIndex = newIndex;
+    });
+
+    int targetCid = item.cid;
+    String? localPath = item.localFilePath;
+
+    if (localPath != null && localPath.isNotEmpty && File(localPath).existsSync()) {
+      await provider.playAudio(
+        bvid: item.bvid,
+        cid: targetCid,
+        title: item.title,
+        coverUrl: item.coverUrl,
+        upName: item.upName,
+        audioUrl: localPath,
+        totalDuration: item.duration,
+        speed: provider.speed,
+      );
+    } else {
+      if (targetCid == 0) {
+        try {
+          final detail = await VideoApiService().getVideoDetail(item.bvid);
+          if (detail != null && detail.pages.isNotEmpty) {
+            targetCid = detail.pages[0].cid;
+          }
+        } catch (_) {}
+      }
+
+      await provider.playAudio(
+        bvid: item.bvid,
+        cid: targetCid,
+        title: item.title,
+        coverUrl: item.coverUrl,
+        upName: item.upName,
+        totalDuration: item.duration,
+        speed: provider.speed,
+      );
+    }
+
+    widget.onSwitchPlaylistItem?.call(item, newIndex);
   }
 
   void _showSpeedDialog(BuildContext context, ListenVideoProvider provider) {
@@ -248,6 +354,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   void _handleSwitchToVideo(ListenVideoProvider provider) async {
     final curPos = provider.position;
+    final activeBvid = provider.bvid ?? widget.bvid;
     await provider.stopAndClear();
     if (!mounted) return;
 
@@ -258,7 +365,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (ctx) => VideoDetailScreen(
-            bvid: widget.bvid,
+            bvid: activeBvid,
             initialPosition: curPos,
           ),
         ),
@@ -299,21 +406,21 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           // "Switch to Video" pill button
           InkWell(
             onTap: () => _handleSwitchToVideo(provider),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: primary.withValues(alpha: 0.3), width: 1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: primary.withValues(alpha: 0.4), width: 1),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.ondemand_video_rounded, size: 14, color: primary),
-                  const SizedBox(width: 4),
+                  Icon(Icons.smart_display_rounded, size: 16, color: primary),
+                  const SizedBox(width: 5),
                   Text(
-                    '切回视频',
+                    '转为视频播放',
                     style: TextStyle(
                       fontSize: 12,
                       color: primary,
@@ -385,12 +492,16 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     bool isDark, {
     bool isLandscape = false,
   }) {
+    final hasPlaylist = _playlist != null && _playlist!.isNotEmpty;
+    final canPrev = hasPlaylist ? _currentPlaylistIndex > 0 : true;
+    final canNext = hasPlaylist ? _currentPlaylistIndex < _playlist!.length - 1 : true;
+
     final btnSize = isLandscape ? 28.0 : 32.0;
     final playBtnSize = isLandscape ? 52.0 : 64.0;
     final playIconSize = isLandscape ? 30.0 : 36.0;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 24),
+      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -417,14 +528,31 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             ),
           ),
 
-          // -15s Seek button
+          // Previous Track / -15s Button
           IconButton(
-            iconSize: btnSize,
+            iconSize: btnSize + 2,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            icon: const Icon(Icons.replay_10_rounded),
-            tooltip: '后退 15 秒',
-            onPressed: () => provider.seekRelative(-15),
+            icon: Icon(
+              hasPlaylist ? Icons.skip_previous_rounded : Icons.replay_10_rounded,
+              color: (hasPlaylist && !canPrev)
+                  ? (isDark ? Colors.white24 : Colors.black26)
+                  : null,
+            ),
+            tooltip: hasPlaylist ? '上一首' : '后退 15 秒',
+            onPressed: () {
+              if (hasPlaylist) {
+                if (provider.position.inSeconds > 3) {
+                  provider.seekTo(Duration.zero);
+                } else if (canPrev) {
+                  _switchPlaylistItem(_currentPlaylistIndex - 1);
+                } else {
+                  provider.seekTo(Duration.zero);
+                }
+              } else {
+                provider.seekRelative(-15);
+              }
+            },
           ),
 
           // Main Play / Pause Button
@@ -461,34 +589,216 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             ),
           ),
 
-          // +15s Seek button
+          // Next Track / +15s Button
           IconButton(
-            iconSize: btnSize,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            icon: const Icon(Icons.forward_10_rounded),
-            tooltip: '快进 15 秒',
-            onPressed: () => provider.seekRelative(15),
-          ),
-
-          // Sleep Timer quick toggle
-          IconButton(
-            iconSize: isLandscape ? 22 : 24,
+            iconSize: btnSize + 2,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             icon: Icon(
-              provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                  ? Icons.alarm_on_rounded
-                  : Icons.alarm_rounded,
-              color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                  ? primary
+              hasPlaylist ? Icons.skip_next_rounded : Icons.forward_10_rounded,
+              color: (hasPlaylist && !canNext)
+                  ? (isDark ? Colors.white24 : Colors.black26)
                   : null,
             ),
-            tooltip: '定时设置',
-            onPressed: () => _showSleepTimerDialog(context, provider),
+            tooltip: hasPlaylist ? '下一首' : '快进 15 秒',
+            onPressed: () {
+              if (hasPlaylist) {
+                if (canNext) {
+                  _switchPlaylistItem(_currentPlaylistIndex + 1);
+                } else {
+                  AppToast.show(context, '已经是最后一首了');
+                }
+              } else {
+                provider.seekRelative(15);
+              }
+            },
           ),
+
+          // Playlist button (if playlist exists) or Sleep Timer quick toggle
+          if (hasPlaylist)
+            IconButton(
+              iconSize: isLandscape ? 24 : 26,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.queue_music_rounded),
+              tooltip: '播放列表',
+              onPressed: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+            )
+          else
+            IconButton(
+              iconSize: isLandscape ? 22 : 24,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: Icon(
+                provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                    ? Icons.alarm_on_rounded
+                    : Icons.alarm_rounded,
+                color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
+                    ? primary
+                    : null,
+              ),
+              tooltip: '定时设置',
+              onPressed: () => _showSleepTimerDialog(context, provider),
+            ),
         ],
       ),
+    );
+  }
+
+  void _showPlaylistBottomSheet(
+    BuildContext context,
+    ListenVideoProvider provider,
+    Color primary,
+    bool isDark,
+  ) {
+    if (_playlist == null || _playlist!.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.queue_music_rounded, size: 18, color: primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      '听视频播放列表 (共 ${_playlist!.length} 个)',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  itemCount: _playlist!.length,
+                  separatorBuilder: (c, _) => const SizedBox(height: 6),
+                  itemBuilder: (c, idx) {
+                    final item = _playlist![idx];
+                    final isPlaying = idx == _currentPlaylistIndex;
+
+                    return InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _switchPlaylistItem(idx);
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isPlaying
+                              ? primary.withValues(alpha: 0.12)
+                              : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isPlaying ? primary : Colors.transparent,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            if (isPlaying)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(Icons.volume_up_rounded, color: primary, size: 16),
+                              )
+                            else
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Text(
+                                  '${idx + 1}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            if (item.coverUrl.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: NetworkImageView(
+                                    url: item.coverUrl,
+                                    width: 44,
+                                    height: 28,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 100,
+                                    memCacheHeight: 64,
+                                  ),
+                                ),
+                              ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                                      color: isPlaying
+                                          ? primary
+                                          : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                    ),
+                                  ),
+                                  if (item.upName.isNotEmpty)
+                                    Text(
+                                      item.upName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (item.duration != null && item.duration! > Duration.zero)
+                              Text(
+                                Formatters.formatDuration(item.duration!.inSeconds),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -564,6 +874,32 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                 ),
                               ],
                             ),
+                            if (_playlist != null && _playlist!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              InkWell(
+                                onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: primary.withValues(alpha: 0.3), width: 0.8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.queue_music_rounded, size: 12, color: primary),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '播放列表 · ${_currentPlaylistIndex + 1}/${_playlist!.length}',
+                                        style: TextStyle(fontSize: 10.5, color: primary, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                             if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
@@ -666,6 +1002,32 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                       ),
                     ],
                   ),
+                  if (_playlist != null && _playlist!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: primary.withValues(alpha: 0.3), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.queue_music_rounded, size: 13, color: primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              '播放列表 · ${_currentPlaylistIndex + 1}/${_playlist!.length}',
+                              style: TextStyle(fontSize: 11, color: primary, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),

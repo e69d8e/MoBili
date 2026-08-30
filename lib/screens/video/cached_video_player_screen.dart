@@ -49,6 +49,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     _refreshCachedEpisodes();
     _loadCurrentEpisode();
 
+    PlayerSettingsService.autoRotateListenable.addListener(_onAutoRotateSettingChanged);
     if (PlayerSettingsService.autoRotateFullScreen) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -62,8 +63,25 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     }
   }
 
+  void _onAutoRotateSettingChanged() {
+    if (mounted && !_isPlayerFullScreen) {
+      if (PlayerSettingsService.autoRotateFullScreen) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+      }
+    }
+  }
+
   @override
   void dispose() {
+    PlayerSettingsService.autoRotateListenable.removeListener(_onAutoRotateSettingChanged);
     _reportProgress();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -173,12 +191,33 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
 
     if (!mounted) return;
 
+    final playlist = _cachedEpisodes.map((e) {
+      final epTitle = e.pageTitle.isNotEmpty && e.pageCount > 1
+          ? '${e.title} · ${e.pageTitle}'
+          : e.title;
+      return ListenPlaylistItem(
+        bvid: e.bvid,
+        cid: e.cid,
+        title: epTitle,
+        coverUrl: e.cover,
+        upName: e.ownerName,
+        localFilePath: e.localVideoPath,
+        duration: e.duration > 0 ? Duration(seconds: e.duration) : null,
+        progress: HistoryStorageService().getProgress(e.bvid),
+      );
+    }).toList();
+
+    final curIdx = _cachedEpisodes.indexWhere((e) => e.taskId == _currentItem.taskId);
+    final initialIdx = curIdx >= 0 ? curIdx : 0;
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => ListenVideoScreen(
           bvid: _currentItem.bvid,
           cid: _currentItem.cid,
-          title: _currentItem.title,
+          title: _currentItem.pageTitle.isNotEmpty && _currentItem.pageCount > 1
+              ? '${_currentItem.title} · ${_currentItem.pageTitle}'
+              : _currentItem.title,
           coverUrl: _currentItem.cover,
           upName: _currentItem.ownerName,
           playUrl: localPath,
@@ -187,6 +226,13 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
               ? Duration(seconds: _currentItem.duration)
               : null,
           initialSpeed: speed,
+          playlist: playlist,
+          initialPlaylistIndex: initialIdx,
+          onSwitchPlaylistItem: (item, idx) {
+            if (idx >= 0 && idx < _cachedEpisodes.length) {
+              _switchEpisode(_cachedEpisodes[idx]);
+            }
+          },
           onSwitchToVideo: (curPos) async {
             await _playerKey.currentState?.controller?.seekTo(curPos);
             await _playerKey.currentState?.play();
@@ -280,6 +326,9 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     final primaryColor = theme.colorScheme.primary;
     final onPrimary = theme.colorScheme.onPrimary;
 
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isFullScreen = _isPlayerFullScreen || isLandscape;
+
     final savedProgress = HistoryStorageService().getProgress(_currentItem.bvid);
     final initialPos = savedProgress > 0 ? Duration(seconds: savedProgress) : null;
 
@@ -287,40 +336,37 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
         ? DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(_currentItem.completedAt))
         : DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(_currentItem.createdAt));
 
-    return Scaffold(
-      body: SafeArea(
-        top: !_isPlayerFullScreen,
-        bottom: !_isPlayerFullScreen,
-        child: Column(
-          children: [
-            // Video Player Container
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: _playUrlInfo != null
-                  ? BiliVideoPlayer(
-                      key: _playerKey,
-                      playUrlInfo: _playUrlInfo!,
-                      localFilePath: _currentItem.localVideoPath,
-                      danmakus: _danmakus,
-                      title: _currentItem.pageTitle.isNotEmpty && _currentItem.pageCount > 1
-                          ? '${_currentItem.title} · ${_currentItem.pageTitle}'
-                          : _currentItem.title,
-                      initialPosition: initialPos,
-                      onFullScreenChanged: (full) {
-                        setState(() => _isPlayerFullScreen = full);
-                      },
-                      onListenMode: _startListenMode,
-                    )
-                  : Container(
-                      color: Colors.black,
-                      alignment: Alignment.center,
-                      child: const CircularProgressIndicator(strokeWidth: 2),
-                    ),
-            ),
+    return PopScope(
+      canPop: !isFullScreen,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (isFullScreen) {
+          _playerKey.currentState?.exitFullScreen();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: isFullScreen ? Colors.black : theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          top: !isFullScreen,
+          bottom: false,
+          left: !isFullScreen,
+          right: !isFullScreen,
+          child: Column(
+            children: [
+              // Video Player Container (Expanded in fullscreen, 16:9 in portrait)
+              if (isFullScreen)
+                Expanded(
+                  child: _buildPlayer(initialPos),
+                )
+              else
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: _buildPlayer(initialPos),
+                ),
 
-            if (!_isPlayerFullScreen)
-              Expanded(
-                child: ListView(
+              if (!isFullScreen)
+                Expanded(
+                  child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   children: [
                     // Video Title
@@ -576,8 +622,9 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildActionButton(
     BuildContext context, {
@@ -629,6 +676,30 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPlayer(Duration? initialPos) {
+    if (_playUrlInfo != null) {
+      return BiliVideoPlayer(
+        key: _playerKey,
+        playUrlInfo: _playUrlInfo!,
+        localFilePath: _currentItem.localVideoPath,
+        danmakus: _danmakus,
+        title: _currentItem.pageTitle.isNotEmpty && _currentItem.pageCount > 1
+            ? '${_currentItem.title} · ${_currentItem.pageTitle}'
+            : _currentItem.title,
+        initialPosition: initialPos,
+        onFullScreenChanged: (full) {
+          setState(() => _isPlayerFullScreen = full);
+        },
+        onListenMode: _startListenMode,
+      );
+    }
+    return Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: const CircularProgressIndicator(strokeWidth: 2),
     );
   }
 }

@@ -154,6 +154,8 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
           initialPosition: firstProgress > 0
               ? Duration(seconds: firstProgress)
               : null,
+          watchLaterList: List<WatchLaterItem>.from(_items),
+          initialWatchLaterIndex: 0,
         ),
       ),
     );
@@ -261,6 +263,8 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                       initialPosition: effectiveProgress > 0
                                           ? Duration(seconds: effectiveProgress)
                                           : null,
+                                      watchLaterList: List<WatchLaterItem>.from(_items),
+                                      initialWatchLaterIndex: itemIndex,
                                     ),
                                   ),
                                 );
