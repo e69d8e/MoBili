@@ -34,6 +34,17 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
     _likeCount = widget.comment.like;
   }
 
+  @override
+  void didUpdateWidget(covariant CommentItemWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.comment.rpid != oldWidget.comment.rpid ||
+        widget.comment.isLiked != oldWidget.comment.isLiked ||
+        widget.comment.like != oldWidget.comment.like) {
+      _isLiked = widget.comment.isLiked;
+      _likeCount = widget.comment.like;
+    }
+  }
+
   void _navigateToUpSpace(int mid) {
     if (mid > 0) {
       Navigator.of(context).push(

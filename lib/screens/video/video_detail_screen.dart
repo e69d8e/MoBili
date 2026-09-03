@@ -103,9 +103,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
     _tripleComboAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..addListener(() {
-        if (mounted) setState(() {});
-      })..addStatusListener((status) {
+    )..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
           _triggerTriple();
           _tripleComboAnimController.reset();
@@ -1789,30 +1787,35 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> with TickerProvid
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 child: Row(
                   children: [
-                    _buildActionButton(
-                      icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
-                      label: Formatters.formatCount(item.stat.like + (_isLiked ? 1 : 0)),
-                      active: _isLiked,
-                      progress: _tripleComboAnimController.value,
-                      onTap: _toggleLike,
-                      onLongPressStart: (_) {
-                        final auth = context.read<AuthProvider>();
-                        if (!auth.isLogin) {
-                          showDialog(context: context, builder: (ctx) => const LoginDialog());
-                          return;
-                        }
-                        HapticFeedback.selectionClick();
-                        _tripleComboAnimController.forward(from: 0.0);
-                      },
-                      onLongPressEnd: (_) {
-                        if (_tripleComboAnimController.isAnimating) {
-                          _tripleComboAnimController.reverse();
-                        }
-                      },
-                      onLongPressCancel: () {
-                        if (_tripleComboAnimController.isAnimating) {
-                          _tripleComboAnimController.reverse();
-                        }
+                    AnimatedBuilder(
+                      animation: _tripleComboAnimController,
+                      builder: (context, _) {
+                        return _buildActionButton(
+                          icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
+                          label: Formatters.formatCount(item.stat.like + (_isLiked ? 1 : 0)),
+                          active: _isLiked,
+                          progress: _tripleComboAnimController.value,
+                          onTap: _toggleLike,
+                          onLongPressStart: (_) {
+                            final auth = context.read<AuthProvider>();
+                            if (!auth.isLogin) {
+                              showDialog(context: context, builder: (ctx) => const LoginDialog());
+                              return;
+                            }
+                            HapticFeedback.selectionClick();
+                            _tripleComboAnimController.forward(from: 0.0);
+                          },
+                          onLongPressEnd: (_) {
+                            if (_tripleComboAnimController.isAnimating) {
+                              _tripleComboAnimController.reverse();
+                            }
+                          },
+                          onLongPressCancel: () {
+                            if (_tripleComboAnimController.isAnimating) {
+                              _tripleComboAnimController.reverse();
+                            }
+                          },
+                        );
                       },
                     ),
                     _buildActionButton(

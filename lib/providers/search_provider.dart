@@ -6,6 +6,11 @@ import '../models/video_model.dart';
 import '../services/api/search_api_service.dart';
 
 class SearchProvider extends ChangeNotifier {
+  final SearchApiService _searchApiService;
+
+  SearchProvider({SearchApiService? searchApiService})
+      : _searchApiService = searchApiService ?? SearchApiService();
+
   List<SearchHotItem> _hotSearches = [];
   List<SearchSuggestItem> _suggestions = [];
   List<String> _history = [];
@@ -43,7 +48,7 @@ class SearchProvider extends ChangeNotifier {
 
   Future<void> init() async {
     await _loadHistory();
-    loadHotSearches();
+    await loadHotSearches();
   }
 
   Future<void> _loadHistory() async {
@@ -73,9 +78,13 @@ class SearchProvider extends ChangeNotifier {
   }
 
   Future<void> loadHotSearches() async {
-    final list = await SearchApiService().getHotSearch();
-    _hotSearches = list;
-    notifyListeners();
+    try {
+      final list = await _searchApiService.getHotSearch();
+      _hotSearches = list;
+    } catch (_) {
+    } finally {
+      notifyListeners();
+    }
   }
 
   Timer? _suggestDebounceTimer;
@@ -93,11 +102,13 @@ class SearchProvider extends ChangeNotifier {
 
     final token = ++_suggestToken;
     _suggestDebounceTimer = Timer(const Duration(milliseconds: 250), () async {
-      final list = await SearchApiService().getSearchSuggest(cleanQuery);
-      if (_suggestToken == token) {
-        _suggestions = list;
-        notifyListeners();
-      }
+      try {
+        final list = await _searchApiService.getSearchSuggest(cleanQuery);
+        if (_suggestToken == token) {
+          _suggestions = list;
+          notifyListeners();
+        }
+      } catch (_) {}
     });
   }
 
@@ -127,29 +138,31 @@ class SearchProvider extends ChangeNotifier {
 
     await addHistory(_currentKeyword);
 
-    if (_currentCategory == 'video') {
-      _videoPage = 1;
-      _searchResults = await SearchApiService().searchVideos(
-        keyword: _currentKeyword,
-        page: _videoPage,
-        order: _currentOrder,
-      );
-    } else if (_currentCategory == 'user') {
-      _userPage = 1;
-      _searchUsers = await SearchApiService().searchUsers(
-        keyword: _currentKeyword,
-        page: _userPage,
-      );
-    } else if (_currentCategory == 'article') {
-      _articlePage = 1;
-      _searchArticles = await SearchApiService().searchArticles(
-        keyword: _currentKeyword,
-        page: _articlePage,
-      );
+    try {
+      if (_currentCategory == 'video') {
+        _videoPage = 1;
+        _searchResults = await _searchApiService.searchVideos(
+          keyword: _currentKeyword,
+          page: _videoPage,
+          order: _currentOrder,
+        );
+      } else if (_currentCategory == 'user') {
+        _userPage = 1;
+        _searchUsers = await _searchApiService.searchUsers(
+          keyword: _currentKeyword,
+          page: _userPage,
+        );
+      } else if (_currentCategory == 'article') {
+        _articlePage = 1;
+        _searchArticles = await _searchApiService.searchArticles(
+          keyword: _currentKeyword,
+          page: _articlePage,
+        );
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
   Future<void> setCategory(String cat) async {
@@ -179,32 +192,34 @@ class SearchProvider extends ChangeNotifier {
     _isLoadingMore = true;
     notifyListeners();
 
-    if (_currentCategory == 'video') {
-      _videoPage++;
-      final results = await SearchApiService().searchVideos(
-        keyword: _currentKeyword,
-        page: _videoPage,
-        order: _currentOrder,
-      );
-      _searchResults.addAll(results);
-    } else if (_currentCategory == 'user') {
-      _userPage++;
-      final results = await SearchApiService().searchUsers(
-        keyword: _currentKeyword,
-        page: _userPage,
-      );
-      _searchUsers.addAll(results);
-    } else if (_currentCategory == 'article') {
-      _articlePage++;
-      final results = await SearchApiService().searchArticles(
-        keyword: _currentKeyword,
-        page: _articlePage,
-      );
-      _searchArticles.addAll(results);
+    try {
+      if (_currentCategory == 'video') {
+        _videoPage++;
+        final results = await _searchApiService.searchVideos(
+          keyword: _currentKeyword,
+          page: _videoPage,
+          order: _currentOrder,
+        );
+        _searchResults.addAll(results);
+      } else if (_currentCategory == 'user') {
+        _userPage++;
+        final results = await _searchApiService.searchUsers(
+          keyword: _currentKeyword,
+          page: _userPage,
+        );
+        _searchUsers.addAll(results);
+      } else if (_currentCategory == 'article') {
+        _articlePage++;
+        final results = await _searchApiService.searchArticles(
+          keyword: _currentKeyword,
+          page: _articlePage,
+        );
+        _searchArticles.addAll(results);
+      }
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
     }
-
-    _isLoadingMore = false;
-    notifyListeners();
   }
 
   void resetSearch() {

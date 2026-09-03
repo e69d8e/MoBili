@@ -89,23 +89,24 @@ class _SearchScreenState extends State<SearchScreen> {
                 color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
               ),
               prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36, maxWidth: 36, maxHeight: 36),
-              suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36, maxWidth: 36, maxHeight: 36),
-              suffixIcon: _textController.text.isNotEmpty
-                  ? IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.clear_rounded, size: 16),
-                      onPressed: () {
-                        _textController.clear();
-                        searchProvider.clearSuggestions();
-                        setState(() {});
-                      },
-                    )
-                  : null,
+              suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _textController,
+                builder: (context, value, _) {
+                  if (value.text.isEmpty) return const SizedBox.shrink();
+                  return IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.clear_rounded, size: 16),
+                    onPressed: () {
+                      _textController.clear();
+                      searchProvider.clearSuggestions();
+                    },
+                  );
+                },
+              ),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
             ),
             onChanged: (val) {
-              setState(() {});
               searchProvider.fetchSuggestions(val);
             },
             onSubmitted: _doSearch,

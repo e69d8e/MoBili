@@ -37,6 +37,17 @@ class _DynamicCardState extends State<DynamicCard> {
     _likeCount = widget.item.stat.likeCount;
   }
 
+  @override
+  void didUpdateWidget(covariant DynamicCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.item.id != oldWidget.item.id ||
+        widget.item.stat.isLiked != oldWidget.item.stat.isLiked ||
+        widget.item.stat.likeCount != oldWidget.item.stat.likeCount) {
+      _isLiked = widget.item.stat.isLiked;
+      _likeCount = widget.item.stat.likeCount;
+    }
+  }
+
   void _navigateToDetail() {
     Navigator.of(context).push(
       MaterialPageRoute(

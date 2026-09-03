@@ -11,6 +11,7 @@ class BiliHttpClient {
   late final Dio dio;
   final Map<String, String> _cookies = {};
   bool _initialized = false;
+  Future<void>? _initFuture;
 
   String _cachedCookieHeader = '';
   SharedPreferences? _prefs;
@@ -69,28 +70,40 @@ class BiliHttpClient {
     return _prefs!;
   }
 
-  Future<void> init() async {
-    if (_initialized) return;
-    await BiliSecurityService().init();
-    await _loadPersistedCookies();
+  Future<void> init() {
+    if (_initialized) return Future.value();
+    _initFuture ??= _doInit();
+    return _initFuture!;
+  }
 
-    // Ensure buvid3 exists
-    if (!_cookies.containsKey('buvid3') || BiliSecurityService().buvid3 == null) {
-      await refreshSpiFingerprint();
-    } else {
-      _cookies['buvid3'] = BiliSecurityService().buvid3!;
-      if (BiliSecurityService().buvid4 != null) {
-        _cookies['buvid4'] = BiliSecurityService().buvid4!;
+  Future<void> _doInit() async {
+    try {
+      await BiliSecurityService().init();
+      await _loadPersistedCookies();
+
+      // Ensure buvid3 exists
+      if (!_cookies.containsKey('buvid3') || BiliSecurityService().buvid3 == null) {
+        await refreshSpiFingerprint();
+      } else {
+        _cookies['buvid3'] = BiliSecurityService().buvid3!;
+        if (BiliSecurityService().buvid4 != null) {
+          _cookies['buvid4'] = BiliSecurityService().buvid4!;
+        }
       }
-    }
-    _updateCookieHeaderCache();
+      _updateCookieHeaderCache();
 
-    // Ensure WBI keys are up-to-date
-    if (!BiliSecurityService().areWbiKeysValid()) {
-      await refreshWbiKeys();
-    }
+      // Ensure WBI keys are up-to-date
+      if (!BiliSecurityService().areWbiKeysValid()) {
+        await refreshWbiKeys();
+      }
 
-    _initialized = true;
+      _initialized = true;
+    } catch (_) {
+      if (!_initialized) {
+        _initFuture = null;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _loadPersistedCookies() async {

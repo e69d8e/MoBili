@@ -3,6 +3,11 @@ import '../models/video_model.dart';
 import '../services/api/video_api_service.dart';
 
 class HomeProvider extends ChangeNotifier {
+  final VideoApiService _videoApiService;
+
+  HomeProvider({VideoApiService? videoApiService})
+      : _videoApiService = videoApiService ?? VideoApiService();
+
   int _currentTab = 0;
 
   // Recommend
@@ -55,15 +60,18 @@ class HomeProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    final list = await VideoApiService().getRecommendFeed(freshIdx: _rcmdIdx);
-    if (isRefresh || _recommendVideos.isEmpty) {
-      _recommendVideos = list;
-    } else {
-      _recommendVideos.addAll(list);
+    try {
+      final list = await _videoApiService.getRecommendFeed(freshIdx: _rcmdIdx);
+      if (isRefresh || _recommendVideos.isEmpty) {
+        _recommendVideos = list;
+      } else {
+        _recommendVideos.addAll(list);
+      }
+      _rcmdIdx++;
+    } finally {
+      _rcmdLoading = false;
+      notifyListeners();
     }
-    _rcmdIdx++;
-    _rcmdLoading = false;
-    notifyListeners();
   }
 
   Future<void> loadMoreRecommend() async {
@@ -71,11 +79,14 @@ class HomeProvider extends ChangeNotifier {
     _rcmdLoadingMore = true;
     notifyListeners();
 
-    final list = await VideoApiService().getRecommendFeed(freshIdx: _rcmdIdx);
-    _recommendVideos.addAll(list);
-    _rcmdIdx++;
-    _rcmdLoadingMore = false;
-    notifyListeners();
+    try {
+      final list = await _videoApiService.getRecommendFeed(freshIdx: _rcmdIdx);
+      _recommendVideos.addAll(list);
+      _rcmdIdx++;
+    } finally {
+      _rcmdLoadingMore = false;
+      notifyListeners();
+    }
   }
 
   // === Popular ===
@@ -87,15 +98,18 @@ class HomeProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    final list = await VideoApiService().getPopularVideos(pn: _popularPn);
-    if (isRefresh || _popularVideos.isEmpty) {
-      _popularVideos = list;
-    } else {
-      _popularVideos.addAll(list);
+    try {
+      final list = await _videoApiService.getPopularVideos(pn: _popularPn);
+      if (isRefresh || _popularVideos.isEmpty) {
+        _popularVideos = list;
+      } else {
+        _popularVideos.addAll(list);
+      }
+      _popularPn++;
+    } finally {
+      _popularLoading = false;
+      notifyListeners();
     }
-    _popularPn++;
-    _popularLoading = false;
-    notifyListeners();
   }
 
   Future<void> loadMorePopular() async {
@@ -103,11 +117,14 @@ class HomeProvider extends ChangeNotifier {
     _popularLoadingMore = true;
     notifyListeners();
 
-    final list = await VideoApiService().getPopularVideos(pn: _popularPn);
-    _popularVideos.addAll(list);
-    _popularPn++;
-    _popularLoadingMore = false;
-    notifyListeners();
+    try {
+      final list = await _videoApiService.getPopularVideos(pn: _popularPn);
+      _popularVideos.addAll(list);
+      _popularPn++;
+    } finally {
+      _popularLoadingMore = false;
+      notifyListeners();
+    }
   }
 
   // === Ranking ===
@@ -116,9 +133,12 @@ class HomeProvider extends ChangeNotifier {
     _rankingLoading = true;
     notifyListeners();
 
-    final list = await VideoApiService().getRankingVideos();
-    _rankingVideos = list;
-    _rankingLoading = false;
-    notifyListeners();
+    try {
+      final list = await _videoApiService.getRankingVideos();
+      _rankingVideos = list;
+    } finally {
+      _rankingLoading = false;
+      notifyListeners();
+    }
   }
 }

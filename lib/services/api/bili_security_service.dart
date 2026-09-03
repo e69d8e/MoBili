@@ -19,19 +19,35 @@ class BiliSecurityService {
   String? _imgKey;
   String? _subKey;
   DateTime? _keyUpdateTime;
+  bool _initialized = false;
+  Future<void>? _initFuture;
 
   String? get buvid3 => _buvid3;
   String? get buvid4 => _buvid4;
 
-  Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _buvid3 = prefs.getString('buvid3');
-    _buvid4 = prefs.getString('buvid4');
-    _imgKey = prefs.getString('wbi_img_key');
-    _subKey = prefs.getString('wbi_sub_key');
-    final updateMs = prefs.getInt('wbi_key_time');
-    if (updateMs != null) {
-      _keyUpdateTime = DateTime.fromMillisecondsSinceEpoch(updateMs);
+  Future<void> init() {
+    if (_initialized) return Future.value();
+    _initFuture ??= _doInit();
+    return _initFuture!;
+  }
+
+  Future<void> _doInit() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _buvid3 = prefs.getString('buvid3');
+      _buvid4 = prefs.getString('buvid4');
+      _imgKey = prefs.getString('wbi_img_key');
+      _subKey = prefs.getString('wbi_sub_key');
+      final updateMs = prefs.getInt('wbi_key_time');
+      if (updateMs != null) {
+        _keyUpdateTime = DateTime.fromMillisecondsSinceEpoch(updateMs);
+      }
+      _initialized = true;
+    } catch (_) {
+      if (!_initialized) {
+        _initFuture = null;
+      }
+      rethrow;
     }
   }
 

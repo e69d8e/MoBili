@@ -6,6 +6,18 @@ import '../services/api/bili_http_client.dart';
 import '../services/api/user_api_service.dart';
 
 class AuthProvider extends ChangeNotifier {
+  final UserApiService _userApiService;
+  final AuthApiService _authApiService;
+  final BiliHttpClient _biliHttpClient;
+
+  AuthProvider({
+    UserApiService? userApiService,
+    AuthApiService? authApiService,
+    BiliHttpClient? biliHttpClient,
+  })  : _userApiService = userApiService ?? UserApiService(),
+        _authApiService = authApiService ?? AuthApiService(),
+        _biliHttpClient = biliHttpClient ?? BiliHttpClient();
+
   UserInfo _userInfo = UserInfo(isLogin: false);
   bool _isLoading = false;
 
@@ -17,7 +29,7 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    await BiliHttpClient().init();
+    await _biliHttpClient.init();
     await refreshUserInfo();
 
     _isLoading = false;
@@ -26,7 +38,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> refreshUserInfo() async {
     try {
-      _userInfo = await UserApiService().getUserNav();
+      _userInfo = await _userApiService.getUserNav();
       notifyListeners();
     } catch (_) {}
   }
@@ -47,7 +59,7 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
 
-      final result = await AuthApiService().pollQrCode(qrcodeKey);
+      final result = await _authApiService.pollQrCode(qrcodeKey);
       if (cancelled) return;
 
       onStatus(result);
@@ -68,7 +80,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await AuthApiService().logout();
+    await _authApiService.logout();
     _userInfo = UserInfo(isLogin: false);
     notifyListeners();
   }
