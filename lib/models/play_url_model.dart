@@ -29,6 +29,7 @@ class PlayUrlDurl {
       backupUrls: backups,
     );
   }
+  String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(url, backupUrls);
 }
 
 class SupportFormat {
@@ -94,6 +95,8 @@ class DashVideoItem {
     this.segmentBase,
   });
 
+  String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(baseUrl, backupUrls);
+
   factory DashVideoItem.fromJson(Map<String, dynamic> json) {
     final List<String> backups = [];
     final rawBackup = json['backupUrl'] ?? json['backup_url'];
@@ -138,6 +141,8 @@ class DashAudioItem {
     required this.backupUrls,
     this.segmentBase,
   });
+
+  String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(baseUrl, backupUrls);
 
   factory DashAudioItem.fromJson(Map<String, dynamic> json) {
     final List<String> backups = [];
@@ -187,6 +192,42 @@ class PlayUrlInfo {
     this.audioTracks = const [],
     required this.videoCodecid,
   });
+
+  /// Check if a URL belongs to Bilibili's P2P MCDN domains which are prone to 404s/connection failures.
+  static bool isMcdn(String url) {
+    if (url.isEmpty) return false;
+    final lower = url.toLowerCase();
+    return lower.contains('mcdn') ||
+        lower.contains('szbdyd.com') ||
+        lower.contains('mountaintoys.cn') ||
+        lower.contains(':8082') ||
+        lower.contains(':4483') ||
+        lower.contains(':8000');
+  }
+
+  /// Resolve effective stream URL, prioritizing high-speed official UPOS CDN over unreliable P2P MCDN nodes.
+  static String getEffectiveUrl(String primary, List<String> backups) {
+    // 1. If primary is official UPOS CDN and not MCDN, use it directly
+    if (primary.isNotEmpty && !isMcdn(primary) && primary.contains('bilivideo.com')) {
+      return primary;
+    }
+    // 2. Look for official upos bilivideo.com backup
+    for (final b in backups) {
+      if (b.isNotEmpty && !isMcdn(b) && b.contains('bilivideo.com')) {
+        return b;
+      }
+    }
+    // 3. Fallback: Any non-MCDN primary or backup
+    if (primary.isNotEmpty && !isMcdn(primary)) {
+      return primary;
+    }
+    for (final b in backups) {
+      if (b.isNotEmpty && !isMcdn(b)) {
+        return b;
+      }
+    }
+    return primary;
+  }
 
   factory PlayUrlInfo.fromJson(Map<String, dynamic> json) {
     final List<int> acceptQ = [];
@@ -264,26 +305,59 @@ class PlayUrlInfo {
     );
   }
 
-  String? get primaryVideoUrl {
-    if (durls.isNotEmpty && durls.first.url.isNotEmpty) {
-      return durls.first.url;
+  bool get isDash => videoTracks.isNotEmpty && audioTracks.isNotEmpty;
+
+  String? getVideoUrlForQuality(int targetQuality) {
+    if (durls.isNotEmpty) {
+      final u = durls.first.effectiveUrl;
+      if (u.isNotEmpty) return u;
     }
-    if (videoTracks.isNotEmpty && videoTracks.first.baseUrl.isNotEmpty) {
-      return videoTracks.first.baseUrl;
+    // 1. Prioritize AVC (H.264 / avc1) for target quality (universal hardware/software compatibility)
+    for (final track in videoTracks) {
+      if (track.id == targetQuality && track.codecs.startsWith('avc1')) {
+        final u = track.effectiveUrl;
+        if (u.isNotEmpty) return u;
+      }
+    }
+    // 2. Fall back to any codec for target quality
+    for (final track in videoTracks) {
+      if (track.id == targetQuality) {
+        final u = track.effectiveUrl;
+        if (u.isNotEmpty) return u;
+      }
+    }
+    // 3. Fall back to AVC in first available track
+    for (final track in videoTracks) {
+      if (track.codecs.startsWith('avc1')) {
+        final u = track.effectiveUrl;
+        if (u.isNotEmpty) return u;
+      }
+    }
+    if (videoTracks.isNotEmpty) {
+      final u = videoTracks.first.effectiveUrl;
+      if (u.isNotEmpty) return u;
+    }
+    return null;
+  }
+
+  String? get primaryVideoUrl {
+    final url = getVideoUrlForQuality(currentQuality);
+    if (url != null && url.isNotEmpty) return url;
+    if (durls.isNotEmpty) {
+      final u = durls.first.effectiveUrl;
+      if (u.isNotEmpty) return u;
+    }
+    if (videoTracks.isNotEmpty) {
+      final u = videoTracks.first.effectiveUrl;
+      if (u.isNotEmpty) return u;
     }
     return null;
   }
 
   String? get primaryAudioUrl {
     for (final track in audioTracks) {
-      if (track.baseUrl.isNotEmpty) {
-        return track.baseUrl;
-      }
-      for (final backup in track.backupUrls) {
-        if (backup.isNotEmpty) {
-          return backup;
-        }
-      }
+      final u = track.effectiveUrl;
+      if (u.isNotEmpty) return u;
     }
     return primaryVideoUrl;
   }

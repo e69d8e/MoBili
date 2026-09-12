@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../models/video_model.dart';
 import '../../providers/home_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/video_card.dart';
@@ -16,12 +18,16 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  final GlobalKey<_RecommendFeedTabState> _rcmdKey = GlobalKey<_RecommendFeedTabState>();
-  final GlobalKey<_PopularVideosTabState> _popularKey = GlobalKey<_PopularVideosTabState>();
-  final GlobalKey<_RankingVideosTabState> _rankingKey = GlobalKey<_RankingVideosTabState>();
+  final GlobalKey<_RecommendFeedTabState> _rcmdKey =
+      GlobalKey<_RecommendFeedTabState>();
+  final GlobalKey<_PopularVideosTabState> _popularKey =
+      GlobalKey<_PopularVideosTabState>();
+  final GlobalKey<_RankingVideosTabState> _rankingKey =
+      GlobalKey<_RankingVideosTabState>();
 
   @override
   void initState() {
@@ -89,7 +95,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                   height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    color: isDark
+                        ? AppTheme.surfaceDark
+                        : AppTheme.surfaceLight,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(
@@ -97,14 +105,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                       Icon(
                         Icons.search_rounded,
                         size: 16,
-                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: isDark
+                            ? AppTheme.textHintDark
+                            : AppTheme.textHintLight,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         '搜索视频、UP主、图文...',
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: isDark
+                              ? AppTheme.textHintDark
+                              : AppTheme.textHintLight,
                         ),
                       ),
                     ],
@@ -141,9 +153,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 indicatorWeight: 2.5,
                 indicatorSize: TabBarIndicatorSize.label,
                 labelColor: primaryColor,
-                unselectedLabelColor: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
+                unselectedLabelColor: isDark
+                    ? AppTheme.textSubDark
+                    : AppTheme.textSubLight,
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                ),
                 dividerColor: Colors.transparent,
                 dividerHeight: 0,
                 onTap: (idx) {
@@ -181,9 +201,11 @@ class _RecommendFeedTab extends StatefulWidget {
   State<_RecommendFeedTab> createState() => _RecommendFeedTabState();
 }
 
-class _RecommendFeedTabState extends State<_RecommendFeedTab> with AutomaticKeepAliveClientMixin {
+class _RecommendFeedTabState extends State<_RecommendFeedTab>
+    with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final GlobalKey<RefreshIndicatorState> _refreshKey =
+      GlobalKey<RefreshIndicatorState>();
 
   @override
   bool get wantKeepAlive => true;
@@ -234,25 +256,32 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final hp = context.watch<HomeProvider>();
+    final isLoading = context.select<HomeProvider, bool>((p) => p.rcmdLoading);
+    final isLoadingMore = context.select<HomeProvider, bool>(
+      (p) => p.rcmdLoadingMore,
+    );
+    final videos = context.select<HomeProvider, List<VideoItem>>(
+      (p) => p.recommendVideos,
+    );
 
-    if (hp.rcmdLoading && hp.recommendVideos.isEmpty) {
-      return const LoadingView(message: '正在加载推荐...');
+    if (isLoading && videos.isEmpty) {
+      return const VideoGridSkeleton();
     }
 
-    if (hp.recommendVideos.isEmpty) {
+    if (videos.isEmpty) {
       return ErrorView(
-        onRetry: () => hp.loadRecommendFeed(isRefresh: true),
+        onRetry: () =>
+            context.read<HomeProvider>().loadRecommendFeed(isRefresh: true),
       );
     }
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
       scrollController: _scrollController,
-      videos: hp.recommendVideos,
-      isLoadingMore: hp.rcmdLoadingMore,
+      videos: videos,
+      isLoadingMore: isLoadingMore,
       onRefresh: _handleRefresh,
-      onLoadMore: () => hp.loadMoreRecommend(),
+      onLoadMore: () => context.read<HomeProvider>().loadMoreRecommend(),
     );
   }
 }
@@ -267,9 +296,11 @@ class _PopularVideosTab extends StatefulWidget {
   State<_PopularVideosTab> createState() => _PopularVideosTabState();
 }
 
-class _PopularVideosTabState extends State<_PopularVideosTab> with AutomaticKeepAliveClientMixin {
+class _PopularVideosTabState extends State<_PopularVideosTab>
+    with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final GlobalKey<RefreshIndicatorState> _refreshKey =
+      GlobalKey<RefreshIndicatorState>();
 
   @override
   bool get wantKeepAlive => true;
@@ -317,25 +348,34 @@ class _PopularVideosTabState extends State<_PopularVideosTab> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final hp = context.watch<HomeProvider>();
+    final isLoading = context.select<HomeProvider, bool>(
+      (p) => p.popularLoading,
+    );
+    final isLoadingMore = context.select<HomeProvider, bool>(
+      (p) => p.popularLoadingMore,
+    );
+    final videos = context.select<HomeProvider, List<VideoItem>>(
+      (p) => p.popularVideos,
+    );
 
-    if (hp.popularLoading && hp.popularVideos.isEmpty) {
-      return const LoadingView(message: '正在获取热门...');
+    if (isLoading && videos.isEmpty) {
+      return const VideoGridSkeleton();
     }
 
-    if (hp.popularVideos.isEmpty) {
+    if (videos.isEmpty) {
       return ErrorView(
-        onRetry: () => hp.loadPopularVideos(isRefresh: true),
+        onRetry: () =>
+            context.read<HomeProvider>().loadPopularVideos(isRefresh: true),
       );
     }
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
       scrollController: _scrollController,
-      videos: hp.popularVideos,
-      isLoadingMore: hp.popularLoadingMore,
+      videos: videos,
+      isLoadingMore: isLoadingMore,
       onRefresh: _handleRefresh,
-      onLoadMore: () => hp.loadMorePopular(),
+      onLoadMore: () => context.read<HomeProvider>().loadMorePopular(),
     );
   }
 }
@@ -350,9 +390,11 @@ class _RankingVideosTab extends StatefulWidget {
   State<_RankingVideosTab> createState() => _RankingVideosTabState();
 }
 
-class _RankingVideosTabState extends State<_RankingVideosTab> with AutomaticKeepAliveClientMixin {
+class _RankingVideosTabState extends State<_RankingVideosTab>
+    with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final GlobalKey<RefreshIndicatorState> _refreshKey =
+      GlobalKey<RefreshIndicatorState>();
 
   @override
   bool get wantKeepAlive => true;
@@ -400,22 +442,27 @@ class _RankingVideosTabState extends State<_RankingVideosTab> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final hp = context.watch<HomeProvider>();
+    final isLoading = context.select<HomeProvider, bool>(
+      (p) => p.rankingLoading,
+    );
+    final videos = context.select<HomeProvider, List<VideoItem>>(
+      (p) => p.rankingVideos,
+    );
 
-    if (hp.rankingLoading && hp.rankingVideos.isEmpty) {
-      return const LoadingView(message: '正在获取排行榜...');
+    if (isLoading && videos.isEmpty) {
+      return const VideoGridSkeleton();
     }
 
-    if (hp.rankingVideos.isEmpty) {
+    if (videos.isEmpty) {
       return ErrorView(
-        onRetry: () => hp.loadRankingVideos(),
+        onRetry: () => context.read<HomeProvider>().loadRankingVideos(),
       );
     }
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
       scrollController: _scrollController,
-      videos: hp.rankingVideos,
+      videos: videos,
       isLoadingMore: false,
       onRefresh: _handleRefresh,
       onLoadMore: null,
@@ -445,10 +492,18 @@ class _CommonVideoGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final crossAxisCount = ResponsiveGridConfig.calculateCrossAxisCount(
+      context,
+    );
+    final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
+      context,
+    );
+
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollInfo) {
         if (onLoadMore != null &&
-            scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 300) {
+            scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 300) {
           onLoadMore!();
         }
         return false;
@@ -461,9 +516,9 @@ class _CommonVideoGrid extends StatelessWidget {
           controller: scrollController,
           cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.96,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: childAspectRatio,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
@@ -474,13 +529,14 @@ class _CommonVideoGrid extends StatelessWidget {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               );
             }
-            return RepaintBoundary(
-              child: VideoCard(video: videos[idx]),
-            );
+            return RepaintBoundary(child: VideoCard(video: videos[idx]));
           },
         ),
       ),

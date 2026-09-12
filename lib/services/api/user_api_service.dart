@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../models/user_model.dart';
 import '../../models/video_model.dart';
+import '../player_settings_service.dart';
 import 'api_endpoints.dart';
 import 'bili_http_client.dart';
 
@@ -65,7 +66,7 @@ class UserApiService {
     String bvid = '',
     int duration = 0,
   }) async {
-    if (aid <= 0 || cid <= 0) return false;
+    if (PlayerSettingsService.incognitoMode || aid <= 0 || cid <= 0) return false;
     try {
       final csrf = BiliHttpClient().biliJct;
       final body = <String, dynamic>{

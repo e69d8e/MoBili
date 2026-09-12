@@ -111,13 +111,13 @@ class VideoApiService {
     }
   }
 
-  /// Get Video Stream Play URL (qn: 16=360P, 32=480P, 64=720P, 80=1080P, 112=1080P+, 116=1080P60, 120=4K)
-  /// fnval=0 requests progressive stream with full resolution unlocked for logged-in accounts
+  /// Get Video Stream Play URL (qn: 16=360P, 32=480P, 64=720P)
+  /// fnval=0 requests progressive stream with video+audio merged (zero delay, instant load, native playback)
   Future<PlayUrlInfo?> getVideoPlayUrl({
     required String bvid,
     required int cid,
-    int qn = 80, // Default 1080P (server auto-downgrades if guest or lower resolution)
-    int fnval = 0, // 0 = Progressive stream with video+audio (zero delay, instant load)
+    int qn = 64, // Default 720P (maximum progressive single-stream MP4)
+    int fnval = 0, // 0 = Progressive stream with video+audio
   }) async {
     try {
       final res = await BiliHttpClient().getWbi(

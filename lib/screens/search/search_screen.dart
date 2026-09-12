@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
 import '../../models/search_model.dart';
 import '../../providers/search_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../utils/responsive_util.dart';
 import '../../widgets/network_image_view.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
@@ -46,6 +49,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _doSearch(String keyword) {
     if (keyword.trim().isEmpty) return;
+    HapticFeedback.lightImpact();
     _textController.text = keyword.trim();
     _focusNode.unfocus();
     context.read<SearchProvider>().search(keyword.trim(), order: 'totalrank');
@@ -71,7 +75,8 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _textController,
             focusNode: _focusNode,
-            autofocus: widget.initialKeyword == null || widget.initialKeyword!.isEmpty,
+            autofocus:
+                widget.initialKeyword == null || widget.initialKeyword!.isEmpty,
             textAlignVertical: TextAlignVertical.center,
             textInputAction: TextInputAction.search,
             style: const TextStyle(fontSize: 13.5),
@@ -88,7 +93,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 size: 18,
                 color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
               ),
-              prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36, maxWidth: 36, maxHeight: 36),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 36,
+                minHeight: 36,
+                maxWidth: 36,
+                maxHeight: 36,
+              ),
               suffixIcon: ValueListenableBuilder<TextEditingValue>(
                 valueListenable: _textController,
                 builder: (context, value, _) {
@@ -104,7 +114,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 },
               ),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 0,
+                vertical: 0,
+              ),
             ),
             onChanged: (val) {
               searchProvider.fetchSuggestions(val);
@@ -115,7 +128,14 @@ class _SearchScreenState extends State<SearchScreen> {
         actions: [
           TextButton(
             onPressed: () => _doSearch(_textController.text),
-            child: Text('搜索', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13.5)),
+            child: Text(
+              '搜索',
+              style: TextStyle(
+                color: primaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13.5,
+              ),
+            ),
           ),
           const SizedBox(width: 6),
         ],
@@ -126,7 +146,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildBody(SearchProvider sp, bool isDark) {
     // 1. If typing and suggestions available
-    if (_textController.text.isNotEmpty && sp.suggestions.isNotEmpty && _focusNode.hasFocus) {
+    if (_textController.text.isNotEmpty &&
+        sp.suggestions.isNotEmpty &&
+        _focusNode.hasFocus) {
       return ListView.separated(
         itemCount: sp.suggestions.length,
         separatorBuilder: (ctx, _) => Divider(
@@ -183,7 +205,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                  color: isDark
+                      ? AppTheme.textHintDark
+                      : AppTheme.textHintLight,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () => sp.clearHistory(),
@@ -198,16 +222,23 @@ class _SearchScreenState extends State<SearchScreen> {
                 return GestureDetector(
                   onTap: () => _doSearch(h),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
-                      color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                      color: isDark
+                          ? AppTheme.surfaceDark
+                          : AppTheme.surfaceLight,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
                       h,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                        color: isDark
+                            ? AppTheme.textSubDark
+                            : AppTheme.textSubLight,
                       ),
                     ),
                   ),
@@ -220,7 +251,11 @@ class _SearchScreenState extends State<SearchScreen> {
           // Trending / Hot Search
           Row(
             children: [
-              const Icon(Icons.local_fire_department_rounded, size: 16, color: Color(0xFFFF6699)),
+              const Icon(
+                Icons.local_fire_department_rounded,
+                size: 16,
+                color: Color(0xFFFF6699),
+              ),
               const SizedBox(width: 4),
               const Text(
                 '热搜榜',
@@ -236,32 +271,49 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             )
           else
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: sp.hotSearches.length,
-              itemBuilder: (ctx, idx) {
-                final item = sp.hotSearches[idx];
+            Column(
+              children: sp.hotSearches.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final item = entry.value;
                 final rank = idx + 1;
-                Color rankColor = isDark ? AppTheme.textHintDark : AppTheme.textHintLight;
-                if (rank == 1) rankColor = const Color(0xFFFF3366);
-                if (rank == 2) rankColor = const Color(0xFFFF6C00);
-                if (rank == 3) rankColor = const Color(0xFFFFB027);
+                Color rankColor = isDark
+                    ? AppTheme.textHintDark
+                    : AppTheme.textHintLight;
+                Color? rankBadgeBg;
+                if (rank == 1) {
+                  rankColor = const Color(0xFFC0483E); // 朱砂
+                  rankBadgeBg = const Color(0xFFC0483E).withValues(alpha: 0.12);
+                } else if (rank == 2) {
+                  rankColor = const Color(0xFFE67E22); // 琥珀
+                  rankBadgeBg = const Color(0xFFE67E22).withValues(alpha: 0.12);
+                } else if (rank == 3) {
+                  rankColor = const Color(0xFF2A6F97); // 霁蓝
+                  rankBadgeBg = const Color(0xFF2A6F97).withValues(alpha: 0.12);
+                }
 
                 return ListTile(
                   dense: true,
                   visualDensity: const VisualDensity(vertical: -2),
-                  leading: SizedBox(
-                    width: 20,
+                  leading: Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: rankBadgeBg ?? Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                     child: Text(
                       '$rank',
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.bold,
                         color: rankColor,
                       ),
@@ -279,17 +331,16 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                       if (item.icon.isNotEmpty) ...[
                         const SizedBox(width: 6),
-                        NetworkImageView(
-                          url: item.icon,
-                          width: 14,
-                          height: 14,
-                        ),
+                        NetworkImageView(url: item.icon, width: 14, height: 14),
                       ],
                     ],
                   ),
-                  onTap: () => _doSearch(item.keyword),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _doSearch(item.keyword);
+                  },
                 );
-              },
+              }).toList(),
             ),
         ],
       ),
@@ -347,7 +398,12 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildCategoryChip(String label, String catKey, SearchProvider sp, bool isDark) {
+  Widget _buildCategoryChip(
+    String label,
+    String catKey,
+    SearchProvider sp,
+    bool isDark,
+  ) {
     final isSelected = sp.currentCategory == catKey;
     final primaryColor = Theme.of(context).colorScheme.primary;
     final onPrimary = Theme.of(context).colorScheme.onPrimary;
@@ -376,7 +432,12 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildSortChip(String label, String orderKey, SearchProvider sp, bool isDark) {
+  Widget _buildSortChip(
+    String label,
+    String orderKey,
+    SearchProvider sp,
+    bool isDark,
+  ) {
     final isSelected = sp.currentOrder == orderKey;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
@@ -406,12 +467,25 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildCategoryContent(SearchProvider sp, bool isDark) {
     if (sp.currentCategory == 'video') {
+      if (sp.isLoading && sp.searchResults.isEmpty) {
+        return const VideoGridSkeleton(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        );
+      }
       if (sp.searchResults.isEmpty) {
         return const EmptyView(message: '未找到相关视频');
       }
+      final crossAxisCount = ResponsiveGridConfig.calculateCrossAxisCount(
+        context,
+      );
+      final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
+        context,
+      );
+
       return NotificationListener<ScrollNotification>(
         onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+          if (scrollInfo.metrics.pixels >=
+              scrollInfo.metrics.maxScrollExtent - 200) {
             sp.loadMore();
           }
           return false;
@@ -419,9 +493,9 @@ class _SearchScreenState extends State<SearchScreen> {
         child: GridView.builder(
           cacheExtent: 600.0,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.96,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: childAspectRatio,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
@@ -432,7 +506,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               );
             }
@@ -442,13 +519,15 @@ class _SearchScreenState extends State<SearchScreen> {
           },
         ),
       );
-    } else if (sp.currentCategory == 'user' || sp.currentCategory == 'bili_user') {
+    } else if (sp.currentCategory == 'user' ||
+        sp.currentCategory == 'bili_user') {
       if (sp.searchUsers.isEmpty) {
         return const EmptyView(message: '未找到相关UP主');
       }
       return NotificationListener<ScrollNotification>(
         onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+          if (scrollInfo.metrics.pixels >=
+              scrollInfo.metrics.maxScrollExtent - 200) {
             sp.loadMore();
           }
           return false;
@@ -468,7 +547,10 @@ class _SearchScreenState extends State<SearchScreen> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               );
             }
@@ -485,7 +567,8 @@ class _SearchScreenState extends State<SearchScreen> {
       }
       return NotificationListener<ScrollNotification>(
         onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+          if (scrollInfo.metrics.pixels >=
+              scrollInfo.metrics.maxScrollExtent - 200) {
             sp.loadMore();
           }
           return false;
@@ -500,7 +583,10 @@ class _SearchScreenState extends State<SearchScreen> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               );
             }
@@ -519,9 +605,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (ctx) => UpSpaceScreen(mid: user.mid),
-          ),
+          MaterialPageRoute(builder: (ctx) => UpSpaceScreen(mid: user.mid)),
         );
       },
       borderRadius: BorderRadius.circular(10),
@@ -542,12 +626,18 @@ class _SearchScreenState extends State<SearchScreen> {
                           user.uname,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: primaryColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
@@ -568,7 +658,9 @@ class _SearchScreenState extends State<SearchScreen> {
                     '粉丝: ${Formatters.formatCount(user.fans)} · 视频: ${user.videos}',
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: isDark
+                          ? AppTheme.textHintDark
+                          : AppTheme.textHintLight,
                     ),
                   ),
                   if (user.usign.isNotEmpty) ...[
@@ -579,7 +671,9 @@ class _SearchScreenState extends State<SearchScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                        color: isDark
+                            ? AppTheme.textSubDark
+                            : AppTheme.textSubLight,
                       ),
                     ),
                   ],
@@ -624,7 +718,11 @@ class _SearchScreenState extends State<SearchScreen> {
             article.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, height: 1.35),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              height: 1.35,
+            ),
           ),
           if (article.desc.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -691,7 +789,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 '阅读 ${Formatters.formatCount(article.view)} · 点赞 ${Formatters.formatCount(article.like)}',
                 style: TextStyle(
                   fontSize: 10.5,
-                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                  color: isDark
+                      ? AppTheme.textHintDark
+                      : AppTheme.textHintLight,
                 ),
               ),
             ],

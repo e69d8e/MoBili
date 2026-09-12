@@ -70,6 +70,20 @@ class BiliHttpClient {
     return _prefs!;
   }
 
+  Future<void> initLocal() async {
+    try {
+      await BiliSecurityService().init();
+      await _loadPersistedCookies();
+      if (_cookies.containsKey('buvid3')) {
+        _cookies['buvid3'] = BiliSecurityService().buvid3 ?? _cookies['buvid3']!;
+      }
+      if (BiliSecurityService().buvid4 != null) {
+        _cookies['buvid4'] = BiliSecurityService().buvid4!;
+      }
+      _updateCookieHeaderCache();
+    } catch (_) {}
+  }
+
   Future<void> init() {
     if (_initialized) return Future.value();
     _initFuture ??= _doInit();
@@ -78,8 +92,7 @@ class BiliHttpClient {
 
   Future<void> _doInit() async {
     try {
-      await BiliSecurityService().init();
-      await _loadPersistedCookies();
+      await initLocal();
 
       // Ensure buvid3 exists
       if (!_cookies.containsKey('buvid3') || BiliSecurityService().buvid3 == null) {
@@ -157,6 +170,7 @@ class BiliHttpClient {
   }
 
   Map<String, String> get cookies => Map.unmodifiable(_cookies);
+  String get cookieHeader => _cachedCookieHeader;
   String? get sessData => _cookies['SESSDATA'];
   String? get biliJct => _cookies['bili_jct'];
   String? get dedeUserId => _cookies['DedeUserID'];

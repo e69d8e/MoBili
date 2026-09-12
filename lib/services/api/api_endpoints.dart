@@ -17,7 +17,10 @@ class ApiEndpoints {
   static const String videoView = '$biliBase/x/web-interface/view';
   static const String playUrl = '$biliBase/x/player/wbi/playurl';
   static const String playUrlV2 = '$biliBase/x/player/playurl';
+  static const String playerV2 = '$biliBase/x/player/wbi/v2';
+  static const String playerInfo = '$biliBase/x/player/v2';
   static const String danmakuList = '$biliBase/x/v1/dm/list.so';
+  static const String danmakuSeg = '$biliBase/x/v2/dm/web/seg.so';
   static const String relatedVideos = '$biliBase/x/web-interface/archive/related';
 
   // Video Comments

@@ -762,7 +762,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  NetworkImageView(url: video.cover, fit: BoxFit.cover),
+                  NetworkImageView(
+                    url: video.cover,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 240,
+                    memCacheHeight: 150,
+                  ),
                   if (video.durationText.isNotEmpty)
                     Positioned(
                       bottom: 4,
@@ -893,6 +898,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                             url: pic.url,
                             fit: BoxFit.cover,
                             alignment: pic.isLongImage ? Alignment.topCenter : Alignment.center,
+                            memCacheWidth: 720,
                           ),
                         )
                       : ConstrainedBox(
@@ -900,6 +906,8 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                           child: NetworkImageView(
                             url: pic.url,
                             fit: BoxFit.contain,
+                            memCacheWidth: 720,
+                            memCacheHeight: 720,
                           ),
                         ),
                 ),

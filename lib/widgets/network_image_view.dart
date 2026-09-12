@@ -64,6 +64,13 @@ class NetworkImageView extends StatelessWidget {
       }
     }
 
+    // Optimize download size at Bilibili CDN level with WebP & on-the-fly thumbnail resizing
+    formattedUrl = formatBiliCdnUrl(
+      formattedUrl,
+      cacheWidth: effectiveCacheWidth,
+      cacheHeight: effectiveCacheHeight,
+    );
+
     Widget image = CachedNetworkImage(
       imageUrl: formattedUrl,
       width: width,
@@ -115,5 +122,43 @@ class NetworkImageView extends StatelessWidget {
         size: 24,
       ),
     );
+  }
+
+  /// Transforms raw Bilibili CDN URLs to request compressed WebP thumbnails at target resolution,
+  /// avoiding downloading 1080P/4K original images into disk cache and mobile data waste.
+  static String formatBiliCdnUrl(String url, {int? cacheWidth, int? cacheHeight}) {
+    if (url.isEmpty) return url;
+    // Skip GIFs and URLs that already have CDN formatting/crop suffixes
+    if (url.contains('@') || url.toLowerCase().contains('.gif')) {
+      return url;
+    }
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+    final host = uri.host.toLowerCase();
+    if (!host.contains('hdslb.com') && !host.contains('biliimg.com')) {
+      return url;
+    }
+
+    // Determine target dimensions
+    final int? w = cacheWidth != null && cacheWidth > 0 ? cacheWidth.clamp(60, 1920) : null;
+    final int? h = cacheHeight != null && cacheHeight > 0 ? cacheHeight.clamp(60, 1920) : null;
+
+    String suffix;
+    if (w != null && h != null) {
+      suffix = '@${w}w_${h}h_1c.webp';
+    } else if (w != null) {
+      suffix = '@${w}w.webp';
+    } else if (h != null) {
+      suffix = '@${h}h.webp';
+    } else {
+      suffix = '@1080w.webp';
+    }
+
+    if (url.contains('?')) {
+      final parts = url.split('?');
+      return '${parts[0]}$suffix?${parts.sublist(1).join('?')}';
+    }
+    return '$url$suffix';
   }
 }

@@ -64,7 +64,10 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
   }
 
   void _onAutoRotateSettingChanged() {
-    if (mounted && !_isPlayerFullScreen) {
+    if (!mounted) return;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isFull = _isPlayerFullScreen || isLandscape;
+    if (!isFull) {
       if (PlayerSettingsService.autoRotateFullScreen) {
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
@@ -74,6 +77,19 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
       } else {
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
+        ]);
+      }
+    } else {
+      if (PlayerSettingsService.autoRotateFullScreen) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
         ]);
       }
     }
@@ -109,32 +125,77 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     final durMs = _currentItem.duration * 1000;
     final q = _currentItem.quality;
     final qDesc = _currentItem.qualityDesc.isNotEmpty ? _currentItem.qualityDesc : '${q}P';
+    final localAudio = _currentItem.localAudioPath;
+    final hasLocalAudio = localAudio.isNotEmpty && File(localAudio).existsSync();
 
-    final playInfo = PlayUrlInfo(
-      currentQuality: q,
-      format: 'mp4',
-      timelength: durMs,
-      acceptQuality: [q],
-      acceptDescription: [qDesc],
-      durls: [
-        PlayUrlDurl(
-          order: 1,
-          length: durMs,
-          size: _currentItem.totalBytes,
-          url: Uri.file(localPath).toString(),
-          backupUrls: const [],
-        ),
-      ],
-      supportFormats: [
-        SupportFormat(
-          quality: q,
-          format: 'mp4',
-          newDescription: qDesc,
-          displayDesc: qDesc,
-        ),
-      ],
-      videoCodecid: 7,
-    );
+    final PlayUrlInfo playInfo;
+    if (hasLocalAudio) {
+      playInfo = PlayUrlInfo(
+        currentQuality: q,
+        format: 'dash',
+        timelength: durMs,
+        acceptQuality: [q],
+        acceptDescription: [qDesc],
+        durls: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: q,
+            baseUrl: Uri.file(localPath).toString(),
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640028',
+            width: 1920,
+            height: 1080,
+            bandwidth: 1500000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: [
+          DashAudioItem(
+            id: 30280,
+            baseUrl: Uri.file(localAudio).toString(),
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.2',
+            bandwidth: 128000,
+            backupUrls: const [],
+          ),
+        ],
+        supportFormats: [
+          SupportFormat(
+            quality: q,
+            format: 'dash',
+            newDescription: qDesc,
+            displayDesc: qDesc,
+          ),
+        ],
+        videoCodecid: 7,
+      );
+    } else {
+      playInfo = PlayUrlInfo(
+        currentQuality: q,
+        format: 'mp4',
+        timelength: durMs,
+        acceptQuality: [q],
+        acceptDescription: [qDesc],
+        durls: [
+          PlayUrlDurl(
+            order: 1,
+            length: durMs,
+            size: _currentItem.totalBytes,
+            url: Uri.file(localPath).toString(),
+            backupUrls: const [],
+          ),
+        ],
+        supportFormats: [
+          SupportFormat(
+            quality: q,
+            format: 'mp4',
+            newDescription: qDesc,
+            displayDesc: qDesc,
+          ),
+        ],
+        videoCodecid: 7,
+      );
+    }
 
     // Load local danmakus
     final danmakuList = await DanmakuService().getDanmakuList(
@@ -242,6 +303,17 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     );
 
     if (mounted) {
+      if (PlayerSettingsService.autoRotateFullScreen) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+      }
       final listenProvider = context.read<ListenVideoProvider>();
       if (listenProvider.hasAudio && listenProvider.bvid == _currentItem.bvid) {
         final curAudioPos = listenProvider.position;
@@ -683,6 +755,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     if (_playUrlInfo != null) {
       return BiliVideoPlayer(
         key: _playerKey,
+        videoKey: '${_currentItem.bvid}_${_currentItem.cid}',
         playUrlInfo: _playUrlInfo!,
         localFilePath: _currentItem.localVideoPath,
         danmakus: _danmakus,

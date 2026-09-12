@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/player_settings_service.dart';
+import '../../services/sleep_timer_service.dart';
 import '../../services/storage/app_cache_service.dart';
 import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/app_constants.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/player/sleep_timer_bottom_sheet.dart';
 import 'cache_management_screen.dart';
 import 'video_cache_screen.dart';
 
@@ -237,7 +240,214 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       value: autoRotate,
                       activeTrackColor: primaryColor,
-                      onChanged: (val) => PlayerSettingsService.setAutoRotateFullScreen(val),
+                      onChanged: (val) {
+                        setState(() {
+                          PlayerSettingsService.setAutoRotateFullScreen(val);
+                        });
+                      },
+                    );
+                  },
+                ),
+                 Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: PlayerSettingsService.subtitleEnabledListenable,
+                  builder: (context, subtitleEnabled, _) {
+                    return SwitchListTile(
+                      dense: true,
+                      title: const Text('默认开启字幕', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        '视频含字幕时自动开启，并记忆播放器中的开关状态',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        ),
+                      ),
+                      value: subtitleEnabled,
+                      activeTrackColor: primaryColor,
+                      onChanged: (val) {
+                        setState(() {
+                          PlayerSettingsService.setSubtitleEnabled(val);
+                        });
+                      },
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: PlayerSettingsService.qualityListenable,
+                  builder: (context, currentQuality, _) {
+                    return ListTile(
+                      dense: true,
+                      title: const Text('默认首选画质', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        _getQualityLabel(currentQuality),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                      onTap: () => _showQualityPicker(context),
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('默认播放倍速', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '${PlayerSettingsService.defaultPlaybackSpeed}x',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                  onTap: () => _showSpeedPicker(context),
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('双击快进步长', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '${PlayerSettingsService.doubleTapSeekSeconds} 秒',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                  onTap: () => _showSeekSecondsPicker(context),
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('自动连播下一分P', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '当前分P播放结束时，自动连播下一集',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  value: PlayerSettingsService.autoPlayNextEpisode,
+                  activeTrackColor: primaryColor,
+                  onChanged: (val) {
+                    setState(() {
+                      PlayerSettingsService.setAutoPlayNextEpisode(val);
+                    });
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                AnimatedBuilder(
+                  animation: SleepTimerService(),
+                  builder: (context, _) {
+                    final sleepService = SleepTimerService();
+                    final statusText = sleepService.isActive
+                        ? (sleepService.isEndOfVideoMode
+                            ? '播完本视频后停止'
+                            : '倒计时中: ${sleepService.formatRemaining()}')
+                        : '已关闭';
+
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        Icons.bedtime_outlined,
+                        size: 20,
+                        color: sleepService.isActive ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                      ),
+                      title: const Text('睡眠定时器', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: sleepService.isActive ? primaryColor : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (sleepService.isActive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: primaryColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                sleepService.formatRemaining(),
+                                style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                        ],
+                      ),
+                      onTap: () => SleepTimerBottomSheet.show(context),
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: PlayerSettingsService.incognitoListenable,
+                  builder: (context, incognito, _) {
+                    return SwitchListTile(
+                      dense: true,
+                      title: const Text('无痕浏览模式 (隐私)', style: TextStyle(fontSize: 13.5)),
+                      subtitle: Text(
+                        '开启后不上报播放进度至哔哩哔哩，本地亦不记录播放历史',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: incognito ? Colors.orangeAccent : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                        ),
+                      ),
+                      value: incognito,
+                      activeTrackColor: Colors.orangeAccent,
+                      onChanged: (val) {
+                        setState(() {
+                          PlayerSettingsService.setIncognitoMode(val);
+                        });
+                        AppToast.show(
+                          context,
+                          val ? '已开启无痕浏览模式' : '已关闭无痕浏览模式',
+                          icon: val ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        );
+                      },
                     );
                   },
                 ),
@@ -265,6 +475,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('长按 2.0x 倍速播放', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '在播放器上长按手指即可触发 2.0x 高速播放，松手恢复',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  value: PlayerSettingsService.enableLongPressSpeed,
+                  activeTrackColor: primaryColor,
+                  onChanged: (val) {
+                    setState(() {
+                      PlayerSettingsService.setEnableLongPressSpeed(val);
+                    });
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('屏幕两侧滑动调节 (亮度/音量)', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '左侧上下滑动调节屏幕亮度，右侧上下滑动调节音量',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  value: PlayerSettingsService.enableVerticalPanVolumeBrightness,
+                  activeTrackColor: primaryColor,
+                  onChanged: (val) {
+                    setState(() {
+                      PlayerSettingsService.setEnableVerticalPan(val);
+                    });
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
+                SwitchListTile(
+                  dense: true,
+                  title: const Text('水平滑动手势快进快退', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    '在画面上左右平移拖动即可精确快进或快退',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                  value: PlayerSettingsService.enableHorizontalPanSeek,
+                  activeTrackColor: primaryColor,
+                  onChanged: (val) {
+                    setState(() {
+                      PlayerSettingsService.setEnableHorizontalPan(val);
+                    });
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                ),
                 SwitchListTile(
                   dense: true,
                   title: const Text('手势预返回 (Predictive Back)', style: TextStyle(fontSize: 13.5)),
@@ -496,7 +778,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   dense: true,
                   title: const Text('软件版本', style: TextStyle(fontSize: 13.5)),
                   trailing: Text(
-                    'v1.0.1',
+                    AppConstants.versionDisplay,
                     style: TextStyle(
                       fontSize: 12.5,
                       color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
@@ -513,7 +795,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   dense: true,
                   title: const Text('技术栈', style: TextStyle(fontSize: 13.5)),
                   trailing: Text(
-                    'Flutter + Bili WBI API',
+                    AppConstants.techStack,
                     style: TextStyle(
                       fontSize: 12.5,
                       color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
@@ -635,6 +917,203 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? Icon(Icons.check_rounded, color: primaryColor, size: 18)
           : null,
       onTap: onTap,
+    );
+  }
+
+  String _getQualityLabel(int quality) {
+    switch (quality) {
+      case 120:
+        return '4K 超清';
+      case 116:
+        return '1080P 60帧';
+      case 80:
+        return '1080P 高清';
+      case 64:
+        return '720P 高清';
+      case 32:
+        return '480P 清晰';
+      case 16:
+        return '360P 流畅';
+      default:
+        return '${quality}P';
+    }
+  }
+
+  void _showQualityPicker(BuildContext context) {
+    final qualities = [
+      {'val': 120, 'label': '4K 超清 (需大会员/设备支持)'},
+      {'val': 116, 'label': '1080P 60帧 (流畅高帧率)'},
+      {'val': 80, 'label': '1080P 高清 (推荐)'},
+      {'val': 64, 'label': '720P 高清 (省流优先)'},
+      {'val': 32, 'label': '480P 清晰'},
+      {'val': 16, 'label': '360P 流畅'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primaryColor = Theme.of(ctx).colorScheme.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).padding.bottom + 16,
+            top: 14,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('选择默认首选画质', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              for (final q in qualities) ...[
+                ListTile(
+                  dense: true,
+                  title: Text(q['label'] as String, style: const TextStyle(fontSize: 13.5)),
+                  trailing: PlayerSettingsService.defaultQuality == q['val']
+                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      PlayerSettingsService.setDefaultQuality(q['val'] as int);
+                    });
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSpeedPicker(BuildContext context) {
+    final speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primaryColor = Theme.of(ctx).colorScheme.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).padding.bottom + 16,
+            top: 14,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('选择默认播放倍速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              for (final sp in speeds) ...[
+                ListTile(
+                  dense: true,
+                  title: Text('${sp}x', style: const TextStyle(fontSize: 13.5)),
+                  trailing: PlayerSettingsService.defaultPlaybackSpeed == sp
+                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      PlayerSettingsService.setDefaultPlaybackSpeed(sp);
+                    });
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSeekSecondsPicker(BuildContext context) {
+    final secs = [5, 10, 15, 30];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primaryColor = Theme.of(ctx).colorScheme.primary;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).padding.bottom + 16,
+            top: 14,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('双击快进步长', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              for (final s in secs) ...[
+                ListTile(
+                  dense: true,
+                  title: Text('$s 秒', style: const TextStyle(fontSize: 13.5)),
+                  trailing: PlayerSettingsService.doubleTapSeekSeconds == s
+                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      PlayerSettingsService.setDoubleTapSeekSeconds(s);
+                    });
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -69,8 +69,11 @@ class VideoCacheService extends ChangeNotifier {
                 final item = VideoCacheItem.fromJson(itemJson);
                 // Verify completed file on disk
                 if (item.status == VideoCacheStatus.completed) {
-                  if (item.localVideoPath.isNotEmpty &&
-                      File(item.localVideoPath).existsSync()) {
+                  final hasVideo = item.localVideoPath.isNotEmpty &&
+                      File(item.localVideoPath).existsSync();
+                  final hasAudio = item.localAudioPath.isEmpty ||
+                      File(item.localAudioPath).existsSync();
+                  if (hasVideo && hasAudio) {
                     _tasks[item.taskId] = item;
                   }
                 } else {
@@ -98,8 +101,9 @@ class VideoCacheService extends ChangeNotifier {
     final taskId = '${bvid}_$cid';
     final task = _tasks[taskId];
     if (task == null || task.status != VideoCacheStatus.completed) return false;
-    if (task.localVideoPath.isEmpty) return false;
-    return File(task.localVideoPath).existsSync();
+    if (task.localVideoPath.isEmpty || !File(task.localVideoPath).existsSync()) return false;
+    if (task.localAudioPath.isNotEmpty && !File(task.localAudioPath).existsSync()) return false;
+    return true;
   }
 
   /// Check if a video CID is in queue or downloading
@@ -122,6 +126,17 @@ class VideoCacheService extends ChangeNotifier {
         task.localVideoPath.isNotEmpty &&
         File(task.localVideoPath).existsSync()) {
       return task.localVideoPath;
+    }
+    return null;
+  }
+
+  String? getLocalAudioPath(String bvid, int cid) {
+    final task = _tasks['${bvid}_$cid'];
+    if (task != null &&
+        task.status == VideoCacheStatus.completed &&
+        task.localAudioPath.isNotEmpty &&
+        File(task.localAudioPath).existsSync()) {
+      return task.localAudioPath;
     }
     return null;
   }
@@ -150,18 +165,27 @@ class VideoCacheService extends ChangeNotifier {
     int duration = 0,
     int quality = 80,
     String qualityDesc = '1080P 高清',
+    bool isAudioOnly = false,
   }) async {
     await init();
     if (_cacheDir == null) return;
 
-    final taskId = '${bvid}_$cid';
+    final taskId = isAudioOnly ? 'audio_${bvid}_$cid' : '${bvid}_$cid';
     if (_tasks.containsKey(taskId) &&
         _tasks[taskId]!.status == VideoCacheStatus.completed &&
         File(_tasks[taskId]!.localVideoPath).existsSync()) {
       return;
     }
 
-    final localVideoPath = '${_cacheDir!.path}/video_${bvid}_$cid.mp4';
+    final isDash = !isAudioOnly && quality >= 80;
+    final localVideoPath = isAudioOnly
+        ? '${_cacheDir!.path}/audio_${bvid}_$cid.m4a'
+        : (isDash
+            ? '${_cacheDir!.path}/video_${bvid}_$cid.m4s'
+            : '${_cacheDir!.path}/video_${bvid}_$cid.mp4');
+    final localAudioPath = isDash
+        ? '${_cacheDir!.path}/audio_${bvid}_$cid.m4s'
+        : '';
     final localDanmakuPath = '${_cacheDir!.path}/danmaku_$cid.xml';
     final localCoverPath = '${_cacheDir!.path}/cover_$bvid.jpg';
 
@@ -179,12 +203,14 @@ class VideoCacheService extends ChangeNotifier {
       pageCount: pageCount,
       duration: duration,
       quality: quality,
-      qualityDesc: qualityDesc,
+      qualityDesc: isAudioOnly ? '纯音频 (极省空间)' : qualityDesc,
       localVideoPath: localVideoPath,
+      localAudioPath: localAudioPath,
       localDanmakuPath: localDanmakuPath,
       localCoverPath: localCoverPath,
       status: VideoCacheStatus.pending,
       createdAt: DateTime.now().millisecondsSinceEpoch,
+      isAudioOnly: isAudioOnly,
     );
 
     _tasks[taskId] = task;
@@ -303,6 +329,13 @@ class VideoCacheService extends ChangeNotifier {
         final tmpFile = File('${task.localVideoPath}.tmp');
         if (tmpFile.existsSync()) tmpFile.deleteSync();
 
+        if (task.localAudioPath.isNotEmpty) {
+          final audioFile = File(task.localAudioPath);
+          if (audioFile.existsSync()) audioFile.deleteSync();
+        }
+        final tmpAudioFile = File('${task.localAudioPath}.tmp');
+        if (tmpAudioFile.existsSync()) tmpAudioFile.deleteSync();
+
         if (task.localDanmakuPath.isNotEmpty) {
           final danmakuFile = File(task.localDanmakuPath);
           if (danmakuFile.existsSync()) danmakuFile.deleteSync();
@@ -368,45 +401,71 @@ class VideoCacheService extends ChangeNotifier {
       // 1. Download Danmaku if not already cached
       _downloadDanmakuQuietly(task.cid, task.localDanmakuPath);
 
-      // 2. Fetch fresh progressive MP4 Play URL (fnval = 0)
+      // 2. Fetch fresh Play URL (Audio stream for audio-only, progressive/DASH for video)
       String videoUrl = task.videoUrl;
+      String audioUrl = task.audioUrl;
       int currentQuality = task.quality;
       String qualityDesc = task.qualityDesc;
 
-      final playUrlInfo = await VideoApiService().getVideoPlayUrl(
-        bvid: task.bvid,
-        cid: task.cid,
-        qn: task.quality,
-        fnval: 0, // Progressive MP4 stream with audio+video combined
-      );
-
-      if (playUrlInfo != null && playUrlInfo.primaryVideoUrl != null) {
-        videoUrl = playUrlInfo.primaryVideoUrl!;
-        currentQuality = playUrlInfo.currentQuality;
-        final sf = playUrlInfo.supportFormats.firstWhere(
-          (f) => f.quality == currentQuality,
-          orElse: () => SupportFormat(
-            quality: currentQuality,
-            format: '',
-            newDescription: '${currentQuality}P',
-            displayDesc: '${currentQuality}P',
-          ),
+      if (task.isAudioOnly) {
+        final aUrl = await VideoApiService().getVideoAudioUrl(
+          bvid: task.bvid,
+          cid: task.cid,
         );
-        qualityDesc = sf.newDescription.isNotEmpty
-            ? sf.newDescription
-            : (sf.displayDesc.isNotEmpty ? sf.displayDesc : '${currentQuality}P');
+        if (aUrl != null && aUrl.isNotEmpty) {
+          videoUrl = aUrl;
+          qualityDesc = '纯音频 (极省空间)';
+        } else {
+          throw Exception('无法获取音频流地址');
+        }
+      } else {
+        final playUrlInfo = await VideoApiService().getVideoPlayUrl(
+          bvid: task.bvid,
+          cid: task.cid,
+          qn: task.quality,
+        );
+
+        if (playUrlInfo != null) {
+          currentQuality = playUrlInfo.currentQuality;
+          if (playUrlInfo.isDash &&
+              playUrlInfo.primaryVideoUrl != null &&
+              playUrlInfo.primaryAudioUrl != null) {
+            videoUrl = playUrlInfo.primaryVideoUrl!;
+            audioUrl = playUrlInfo.primaryAudioUrl!;
+          } else if (playUrlInfo.primaryVideoUrl != null) {
+            videoUrl = playUrlInfo.primaryVideoUrl!;
+          }
+
+          final sf = playUrlInfo.supportFormats.firstWhere(
+            (f) => f.quality == currentQuality,
+            orElse: () => SupportFormat(
+              quality: currentQuality,
+              format: '',
+              newDescription: '${currentQuality}P',
+              displayDesc: '${currentQuality}P',
+            ),
+          );
+          final baseDesc = sf.newDescription.isNotEmpty
+              ? sf.newDescription
+              : (sf.displayDesc.isNotEmpty ? sf.displayDesc : '${currentQuality}P');
+          if (currentQuality < task.quality) {
+            qualityDesc = '$baseDesc (权限自动适配)';
+          } else {
+            qualityDesc = baseDesc;
+          }
+        }
       }
 
       if (videoUrl.isEmpty) {
-        throw Exception('无法获取视频播放地址');
+        throw Exception(task.isAudioOnly ? '无法获取音频下载地址' : '无法获取视频播放地址');
       }
 
-      // 3. Prepare File & Range Header for resuming
-      final tmpFile = File('${task.localVideoPath}.tmp');
-      int downloaded = 0;
-      if (tmpFile.existsSync()) {
-        downloaded = tmpFile.lengthSync();
-      }
+      _tasks[taskId] = _tasks[taskId]!.copyWith(
+        videoUrl: videoUrl,
+        audioUrl: audioUrl,
+        quality: currentQuality,
+        qualityDesc: qualityDesc,
+      );
 
       final dio = Dio(
         BaseOptions(
@@ -420,86 +479,39 @@ class VideoCacheService extends ChangeNotifier {
         ),
       );
 
-      final openMode = downloaded > 0 ? FileMode.append : FileMode.write;
-      final fileSink = tmpFile.openWrite(mode: openMode);
+      int totalDownloaded = 0;
 
-      final response = await dio.get<ResponseBody>(
-        videoUrl,
+      // 3. Download Video Stream
+      final videoBytes = await _downloadStreamToFile(
+        url: videoUrl,
+        targetPath: task.localVideoPath,
         cancelToken: cancelToken,
-        options: Options(
-          responseType: ResponseType.stream,
-          headers: downloaded > 0 ? {'Range': 'bytes=$downloaded-'} : null,
-        ),
+        taskId: taskId,
+        initialDownloaded: 0,
+        dio: dio,
       );
+      totalDownloaded += videoBytes;
 
-      final isPartial = response.statusCode == 206;
-      if (!isPartial && downloaded > 0) {
-        // Range not supported, restart from beginning
-        await fileSink.close();
-        tmpFile.writeAsBytesSync([], mode: FileMode.write);
-        downloaded = 0;
+      // 4. Download Audio Stream if separate DASH audio exists
+      if (audioUrl.isNotEmpty && task.localAudioPath.isNotEmpty) {
+        final audioBytes = await _downloadStreamToFile(
+          url: audioUrl,
+          targetPath: task.localAudioPath,
+          cancelToken: cancelToken,
+          taskId: taskId,
+          initialDownloaded: totalDownloaded,
+          dio: dio,
+        );
+        totalDownloaded += audioBytes;
       }
-
-      final contentLength = response.headers.value(Headers.contentLengthHeader);
-      int total = task.totalBytes;
-      if (contentLength != null) {
-        final serverBytes = int.tryParse(contentLength) ?? 0;
-        total = isPartial ? (downloaded + serverBytes) : serverBytes;
-      }
-
-      _tasks[taskId] = _tasks[taskId]!.copyWith(
-        videoUrl: videoUrl,
-        quality: currentQuality,
-        qualityDesc: qualityDesc,
-        totalBytes: total > 0 ? total : task.totalBytes,
-        downloadedBytes: downloaded,
-      );
-
-      _lastReportedTime[taskId] = DateTime.now().millisecondsSinceEpoch;
-      _lastReportedBytes[taskId] = downloaded;
-
-      // Pipe stream
-      await response.data!.stream.listen(
-        (chunk) {
-          fileSink.add(chunk);
-          downloaded += chunk.length;
-
-          final now = DateTime.now().millisecondsSinceEpoch;
-          final lastTime = _lastReportedTime[taskId] ?? now;
-          final elapsed = now - lastTime;
-
-          if (elapsed >= 400) {
-            final lastBytes = _lastReportedBytes[taskId] ?? downloaded;
-            final bytesDelta = downloaded - lastBytes;
-            final speed = (bytesDelta / (elapsed / 1000.0)).round();
-
-            _lastReportedTime[taskId] = now;
-            _lastReportedBytes[taskId] = downloaded;
-
-            _tasks[taskId] = _tasks[taskId]!.copyWith(
-              downloadedBytes: downloaded,
-              totalBytes: total > 0 ? total : downloaded,
-              downloadSpeed: speed > 0 ? speed : 0,
-            );
-            notifyListeners();
-          }
-        },
-        cancelOnError: true,
-      ).asFuture();
-
-      await fileSink.flush();
-      await fileSink.close();
-
-      // Download complete: Rename .tmp to .mp4
-      final finalFile = File(task.localVideoPath);
-      if (finalFile.existsSync()) finalFile.deleteSync();
-      tmpFile.renameSync(task.localVideoPath);
 
       _cancelTokens.remove(taskId);
       _tasks[taskId] = _tasks[taskId]!.copyWith(
         status: VideoCacheStatus.completed,
-        downloadedBytes: downloaded,
-        totalBytes: downloaded,
+        downloadedBytes: totalDownloaded,
+        totalBytes: totalDownloaded,
+        quality: currentQuality,
+        qualityDesc: qualityDesc,
         downloadSpeed: 0,
         completedAt: DateTime.now().millisecondsSinceEpoch,
         errorMsg: null,
@@ -529,6 +541,105 @@ class VideoCacheService extends ChangeNotifier {
     }
   }
 
+  Future<int> _downloadStreamToFile({
+    required String url,
+    required String targetPath,
+    required CancelToken cancelToken,
+    required String taskId,
+    required int initialDownloaded,
+    required Dio dio,
+  }) async {
+    final tmpFile = File('$targetPath.tmp');
+    int downloaded = 0;
+    if (tmpFile.existsSync()) {
+      downloaded = tmpFile.lengthSync();
+    }
+
+    final openMode = downloaded > 0 ? FileMode.append : FileMode.write;
+    final fileSink = tmpFile.openWrite(mode: openMode);
+
+    try {
+      final response = await dio.get<ResponseBody>(
+        url,
+        cancelToken: cancelToken,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: downloaded > 0 ? {'Range': 'bytes=$downloaded-'} : null,
+        ),
+      );
+
+      final isPartial = response.statusCode == 206;
+      if (!isPartial && downloaded > 0) {
+        // Range not supported, restart from beginning
+        await fileSink.close();
+        tmpFile.writeAsBytesSync([], mode: FileMode.write);
+        downloaded = 0;
+      }
+
+      final contentLength = response.headers.value(Headers.contentLengthHeader);
+      int streamTotal = 0;
+      if (contentLength != null) {
+        final serverBytes = int.tryParse(contentLength) ?? 0;
+        streamTotal = isPartial ? (downloaded + serverBytes) : serverBytes;
+      }
+
+      final currentTotal = initialDownloaded + (streamTotal > 0 ? streamTotal : downloaded);
+      if (_tasks.containsKey(taskId)) {
+        _tasks[taskId] = _tasks[taskId]!.copyWith(
+          totalBytes: currentTotal > _tasks[taskId]!.totalBytes
+              ? currentTotal
+              : _tasks[taskId]!.totalBytes,
+          downloadedBytes: initialDownloaded + downloaded,
+        );
+      }
+
+      _lastReportedTime[taskId] = DateTime.now().millisecondsSinceEpoch;
+      _lastReportedBytes[taskId] = initialDownloaded + downloaded;
+
+      // Pipe stream
+      await response.data!.stream.listen(
+        (chunk) {
+          fileSink.add(chunk);
+          downloaded += chunk.length;
+
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final lastTime = _lastReportedTime[taskId] ?? now;
+          final elapsed = now - lastTime;
+
+          if (elapsed >= 400) {
+            final totalCurrent = initialDownloaded + downloaded;
+            final lastBytes = _lastReportedBytes[taskId] ?? totalCurrent;
+            final bytesDelta = totalCurrent - lastBytes;
+            final speed = (bytesDelta / (elapsed / 1000.0)).round();
+
+            _lastReportedTime[taskId] = now;
+            _lastReportedBytes[taskId] = totalCurrent;
+
+            if (_tasks.containsKey(taskId)) {
+              _tasks[taskId] = _tasks[taskId]!.copyWith(
+                downloadedBytes: totalCurrent,
+                totalBytes: currentTotal > totalCurrent ? currentTotal : totalCurrent,
+                downloadSpeed: speed > 0 ? speed : 0,
+              );
+              notifyListeners();
+            }
+          }
+        },
+        cancelOnError: true,
+      ).asFuture();
+
+      await fileSink.flush();
+    } finally {
+      await fileSink.close();
+    }
+
+    final finalFile = File(targetPath);
+    if (finalFile.existsSync()) finalFile.deleteSync();
+    tmpFile.renameSync(targetPath);
+
+    return downloaded;
+  }
+
   /// Download and parse Danmaku XML to local cache directory
   Future<void> _downloadDanmakuQuietly(int cid, String targetPath) async {
     if (targetPath.isEmpty) return;
@@ -550,11 +661,18 @@ class VideoCacheService extends ChangeNotifier {
   int getTotalCacheSizeBytes() {
     int total = 0;
     for (final task in _tasks.values) {
-      if (task.status == VideoCacheStatus.completed &&
-          task.localVideoPath.isNotEmpty) {
-        final f = File(task.localVideoPath);
-        if (f.existsSync()) {
-          total += f.lengthSync();
+      if (task.status == VideoCacheStatus.completed) {
+        if (task.localVideoPath.isNotEmpty) {
+          final f = File(task.localVideoPath);
+          if (f.existsSync()) {
+            total += f.lengthSync();
+          }
+        }
+        if (task.localAudioPath.isNotEmpty) {
+          final f = File(task.localAudioPath);
+          if (f.existsSync()) {
+            total += f.lengthSync();
+          }
         }
       }
     }

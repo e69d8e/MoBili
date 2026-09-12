@@ -10,10 +10,12 @@ class DanmakuService {
   factory DanmakuService() => _instance;
   DanmakuService._internal();
 
-  /// Fetches and parses Danmaku XML list for a given video CID (supports local cache file)
+  final Map<int, List<DanmakuItem>> _sessionCache = {};
+
+  /// Fetches and parses Danmaku XML list for a given video CID (supports local cache file, deduplication and memory cache)
   Future<List<DanmakuItem>> getDanmakuList(int cid, {String? localFilePath}) async {
     if (cid <= 0) return [];
-    
+
     // 1. Try local file if provided
     if (localFilePath != null && localFilePath.isNotEmpty) {
       try {
@@ -21,13 +23,21 @@ class DanmakuService {
         if (f.existsSync()) {
           final bytes = await f.readAsBytes();
           if (bytes.isNotEmpty) {
-            return await compute(_decodeAndParseDanmakuBytes, bytes);
+            final parsed = await compute(_decodeAndParseDanmakuBytes, bytes);
+            final deduplicated = deduplicateDanmakus(parsed);
+            _sessionCache[cid] = deduplicated;
+            return deduplicated;
           }
         }
       } catch (_) {}
     }
 
-    // 2. Fetch from network
+    // 2. Check in-memory session cache
+    if (_sessionCache.containsKey(cid) && _sessionCache[cid]!.isNotEmpty) {
+      return _sessionCache[cid]!;
+    }
+
+    // 3. Fetch from primary network endpoint (list.so)
     try {
       final Uint8List bytes = await BiliHttpClient().getBytes(
         ApiEndpoints.danmakuList,
@@ -35,11 +45,37 @@ class DanmakuService {
       );
 
       if (bytes.isNotEmpty) {
-        return await compute(_decodeAndParseDanmakuBytes, bytes);
+        final parsed = await compute(_decodeAndParseDanmakuBytes, bytes);
+        final deduplicated = deduplicateDanmakus(parsed);
+        _sessionCache[cid] = deduplicated;
+        return deduplicated;
       }
     } catch (_) {}
 
     return [];
+  }
+
+  /// Deduplicate danmakus by dmid or (timePoint + text), maintaining chronological order
+  static List<DanmakuItem> deduplicateDanmakus(List<DanmakuItem> list) {
+    if (list.isEmpty) return [];
+
+    final Map<String, DanmakuItem> uniqueMap = {};
+    for (final item in list) {
+      final key = item.dmid.isNotEmpty
+          ? 'id_${item.dmid}'
+          : 't_${item.timePoint.toStringAsFixed(1)}_${item.text.trim()}';
+      if (!uniqueMap.containsKey(key)) {
+        uniqueMap[key] = item;
+      }
+    }
+
+    final result = uniqueMap.values.toList()
+      ..sort((a, b) => a.timePoint.compareTo(b.timePoint));
+    return result;
+  }
+
+  void clearCache() {
+    _sessionCache.clear();
   }
 }
 

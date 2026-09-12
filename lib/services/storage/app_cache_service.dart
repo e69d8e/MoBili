@@ -245,16 +245,16 @@ class AppCacheService extends ChangeNotifier {
     return freed;
   }
 
-  /// Calculate total size of a directory recursively
+  /// Calculate total size of a directory recursively using non-blocking asynchronous stream
   Future<int> _calculateDirectorySize(Directory? dir) async {
     if (dir == null || !dir.existsSync()) return 0;
     int totalSize = 0;
     try {
-      final List<FileSystemEntity> entities = dir.listSync(recursive: true, followLinks: false);
-      for (final entity in entities) {
+      final Stream<FileSystemEntity> stream = dir.list(recursive: true, followLinks: false);
+      await for (final entity in stream) {
         if (entity is File) {
           try {
-            totalSize += entity.lengthSync();
+            totalSize += await entity.length();
           } catch (_) {}
         }
       }
@@ -293,12 +293,12 @@ class AppCacheService extends ChangeNotifier {
       try {
         final tempDir = await getTemporaryDirectory();
         if (tempDir.existsSync()) {
-          final List<FileSystemEntity> entities = tempDir.listSync(recursive: false, followLinks: false);
-          for (final entity in entities) {
+          final Stream<FileSystemEntity> stream = tempDir.list(recursive: false, followLinks: false);
+          await for (final entity in stream) {
             if (entity.path.endsWith('libCachedImageData')) continue;
             if (entity is File) {
               try {
-                tempBytes += entity.lengthSync();
+                tempBytes += await entity.length();
               } catch (_) {}
             } else if (entity is Directory) {
               tempBytes += await _calculateDirectorySize(entity);
@@ -358,7 +358,7 @@ class AppCacheService extends ChangeNotifier {
       final imageCacheDir = Directory('${tempDir.path}/libCachedImageData');
       if (imageCacheDir.existsSync()) {
         try {
-          imageCacheDir.deleteSync(recursive: true);
+          await imageCacheDir.delete(recursive: true);
         } catch (_) {}
       }
 
@@ -366,7 +366,7 @@ class AppCacheService extends ChangeNotifier {
         final cacheDir = await getApplicationCacheDirectory();
         final cacheImgDir = Directory('${cacheDir.path}/libCachedImageData');
         if (cacheImgDir.existsSync()) {
-          cacheImgDir.deleteSync(recursive: true);
+          await cacheImgDir.delete(recursive: true);
         }
       } catch (_) {}
     } catch (_) {}
@@ -381,14 +381,14 @@ class AppCacheService extends ChangeNotifier {
     try {
       final tempDir = await getTemporaryDirectory();
       if (tempDir.existsSync()) {
-        final List<FileSystemEntity> entities = tempDir.listSync(recursive: false, followLinks: false);
-        for (final entity in entities) {
+        final Stream<FileSystemEntity> stream = tempDir.list(recursive: false, followLinks: false);
+        await for (final entity in stream) {
           if (entity.path.endsWith('libCachedImageData')) continue;
           try {
             if (entity is File) {
-              entity.deleteSync();
+              await entity.delete();
             } else if (entity is Directory) {
-              entity.deleteSync(recursive: true);
+              await entity.delete(recursive: true);
             }
           } catch (_) {}
         }
@@ -414,13 +414,13 @@ class AppCacheService extends ChangeNotifier {
       try {
         final tempDir = await getTemporaryDirectory();
         if (tempDir.existsSync()) {
-          final List<FileSystemEntity> entities = tempDir.listSync(recursive: false, followLinks: false);
-          for (final entity in entities) {
+          final Stream<FileSystemEntity> stream = tempDir.list(recursive: false, followLinks: false);
+          await for (final entity in stream) {
             try {
               if (entity is File) {
-                entity.deleteSync();
+                await entity.delete();
               } else if (entity is Directory) {
-                entity.deleteSync(recursive: true);
+                await entity.delete(recursive: true);
               }
             } catch (_) {}
           }
@@ -431,13 +431,13 @@ class AppCacheService extends ChangeNotifier {
       try {
         final cacheDir = await getApplicationCacheDirectory();
         if (cacheDir.existsSync()) {
-          final List<FileSystemEntity> entities = cacheDir.listSync(recursive: false, followLinks: false);
-          for (final entity in entities) {
+          final Stream<FileSystemEntity> stream = cacheDir.list(recursive: false, followLinks: false);
+          await for (final entity in stream) {
             try {
               if (entity is File) {
-                entity.deleteSync();
+                await entity.delete();
               } else if (entity is Directory) {
-                entity.deleteSync(recursive: true);
+                await entity.delete(recursive: true);
               }
             } catch (_) {}
           }

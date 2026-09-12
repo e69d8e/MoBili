@@ -16,6 +16,7 @@ class DanmakuItem {
   final int timestamp;
   final String senderHash;
   final String text;
+  final String dmid;
 
   DanmakuItem({
     required this.timePoint,
@@ -25,6 +26,7 @@ class DanmakuItem {
     required this.timestamp,
     required this.senderHash,
     required this.text,
+    this.dmid = '',
   });
 
   /// Parse from Bilibili XML `<d p="...">text</d>` parameter string
@@ -39,6 +41,7 @@ class DanmakuItem {
     final colorInt = int.tryParse(parts[3]) ?? 16777215;
     final ts = int.tryParse(parts[4]) ?? 0;
     final hash = parts.length > 6 ? parts[6] : '';
+    final id = parts.length > 7 ? parts[7] : '';
 
     DanmakuMode dMode = DanmakuMode.scroll;
     if (modeInt == 4) {
@@ -59,14 +62,18 @@ class DanmakuItem {
       timestamp: ts,
       senderHash: hash,
       text: content,
+      dmid: id,
     );
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is DanmakuItem &&
-        other.timePoint == timePoint &&
+    if (other is! DanmakuItem) return false;
+    if (dmid.isNotEmpty && other.dmid.isNotEmpty) {
+      return dmid == other.dmid;
+    }
+    return other.timePoint == timePoint &&
         other.mode == mode &&
         other.color.toARGB32() == color.toARGB32() &&
         other.text == text &&
@@ -74,6 +81,8 @@ class DanmakuItem {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(timePoint, mode, color.toARGB32(), text, fontSize);
+  int get hashCode {
+    if (dmid.isNotEmpty) return dmid.hashCode;
+    return Object.hash(timePoint, mode, color.toARGB32(), text, fontSize);
+  }
 }

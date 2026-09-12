@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/play_url_model.dart';
 import '../../models/video_model.dart';
 import '../../screens/profile/video_cache_screen.dart';
+import '../../services/api/bili_http_client.dart';
 import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
@@ -45,11 +46,16 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
   late int _selectedQuality;
   late String _selectedQualityDesc;
   final Set<int> _selectedPageIndices = {};
+  bool _isAudioOnly = false;
 
   @override
   void initState() {
     super.initState();
-    final q = widget.playUrlInfo?.currentQuality ?? 80;
+    final isLoggedIn = BiliHttpClient().isLoggedIn;
+    int q = widget.playUrlInfo?.currentQuality ?? (isLoggedIn ? 80 : 64);
+    if (!isLoggedIn && q > 64) {
+      q = 64;
+    }
     _selectedQuality = q;
     _selectedQualityDesc = _getQualityDesc(q);
 
@@ -157,6 +163,53 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
     });
   }
 
+  void _invertSelection(List<_CacheEpisodeItem> episodes) {
+    final cacheService = VideoCacheService();
+    final selectableIndices = <int>[];
+
+    for (int i = 0; i < episodes.length; i++) {
+      final cid = episodes[i].cid;
+      if (!cacheService.isCached(widget.detail.videoItem.bvid, cid) &&
+          !cacheService.isDownloadingOrPending(widget.detail.videoItem.bvid, cid)) {
+        selectableIndices.add(i);
+      }
+    }
+
+    setState(() {
+      final newSelected = <int>{};
+      for (final idx in selectableIndices) {
+        if (!_selectedPageIndices.contains(idx)) {
+          newSelected.add(idx);
+        }
+      }
+      _selectedPageIndices.clear();
+      _selectedPageIndices.addAll(newSelected);
+    });
+  }
+
+  void _selectRange(List<_CacheEpisodeItem> episodes, int count, bool fromStart) {
+    final cacheService = VideoCacheService();
+    final selectableIndices = <int>[];
+
+    for (int i = 0; i < episodes.length; i++) {
+      final cid = episodes[i].cid;
+      if (!cacheService.isCached(widget.detail.videoItem.bvid, cid) &&
+          !cacheService.isDownloadingOrPending(widget.detail.videoItem.bvid, cid)) {
+        selectableIndices.add(i);
+      }
+    }
+
+    setState(() {
+      _selectedPageIndices.clear();
+      if (fromStart) {
+        _selectedPageIndices.addAll(selectableIndices.take(count));
+      } else {
+        final skipCount = (selectableIndices.length - count).clamp(0, selectableIndices.length);
+        _selectedPageIndices.addAll(selectableIndices.skip(skipCount));
+      }
+    });
+  }
+
   void _startCaching(List<_CacheEpisodeItem> episodes) {
     if (_selectedPageIndices.isEmpty) {
       AppToast.show(context, '请先选择需要缓存的剧集/分P');
@@ -182,7 +235,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
           pageCount: episodes.length,
           duration: ep.duration,
           quality: _selectedQuality,
-          qualityDesc: _selectedQualityDesc,
+          qualityDesc: _isAudioOnly ? '纯音频' : _selectedQualityDesc,
+          isAudioOnly: _isAudioOnly,
         );
         addedCount++;
       }
@@ -191,7 +245,9 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
     Navigator.of(context).pop();
     AppToast.show(
       context,
-      '已将 $addedCount 个视频加入离线缓存队列',
+      _isAudioOnly
+          ? '已将 $addedCount 个纯音频加入离线缓存队列'
+          : '已将 $addedCount 个视频加入离线缓存队列',
       icon: Icons.download_done_rounded,
     );
   }
@@ -204,6 +260,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
     final onPrimary = theme.colorScheme.onPrimary;
     final episodes = _getEpisodes();
     final cacheService = VideoCacheService();
+    final isLoggedIn = BiliHttpClient().isLoggedIn;
 
     final qualities = widget.playUrlInfo != null &&
             widget.playUrlInfo!.acceptQuality.isNotEmpty
@@ -311,76 +368,177 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                   color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
                 ),
 
-                // Quality Selector Section
+                // Cache Mode Selector (Video vs Audio Only)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                  child: Row(
                     children: [
                       Text(
-                        '清晰度',
+                        '缓存类型',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: qualities.map((q) {
-                            final isSelected = _selectedQuality == q;
-                            final desc = _getQualityDesc(q);
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedQuality = q;
-                                    _selectedQualityDesc = desc;
-                                  });
-                                },
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? primaryColor
-                                        : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? primaryColor
-                                          : (isDark ? Colors.white12 : Colors.black12),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    desc,
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                      color: isSelected
-                                          ? onPrimary
-                                          : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
+                      const SizedBox(width: 12),
+                      ChoiceChip(
+                        avatar: Icon(Icons.videocam_outlined, size: 15, color: !_isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
+                        label: const Text('完整视频'),
+                        selected: !_isAudioOnly,
+                        selectedColor: primaryColor,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: !_isAudioOnly ? FontWeight.bold : FontWeight.normal,
+                          color: !_isAudioOnly ? onPrimary : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
                         ),
+                        onSelected: (val) {
+                          if (val) setState(() => _isAudioOnly = false);
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        avatar: Icon(Icons.headphones_outlined, size: 15, color: _isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
+                        label: const Text('仅纯音频 (省空间)'),
+                        selected: _isAudioOnly,
+                        selectedColor: primaryColor,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _isAudioOnly ? FontWeight.bold : FontWeight.normal,
+                          color: _isAudioOnly ? onPrimary : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                        ),
+                        onSelected: (val) {
+                          if (val) setState(() => _isAudioOnly = true);
+                        },
                       ),
                     ],
                   ),
                 ),
 
+                // Quality Selector Section
+                if (!_isAudioOnly)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '清晰度',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: (isLoggedIn ? Colors.green : Colors.orange).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                isLoggedIn ? '已登录 (支持1080P)' : '未登录 (最高720P)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: isLoggedIn ? Colors.green : Colors.orange,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: qualities.map((q) {
+                              final isSelected = _selectedQuality == q;
+                              final desc = _getQualityDesc(q);
+                              final bool needLogin = q >= 80 && !isLoggedIn;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
+                                  onTap: () {
+                                    if (needLogin) {
+                                      AppToast.show(
+                                        context,
+                                        '$desc需登录哔哩哔哩账号，当前未登录最高支持 720P 缓存',
+                                        icon: Icons.lock_outline_rounded,
+                                      );
+                                      return;
+                                    }
+                                    setState(() {
+                                      _selectedQuality = q;
+                                      _selectedQualityDesc = desc;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? primaryColor
+                                          : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? primaryColor
+                                            : (isDark ? Colors.white12 : Colors.black12),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          desc,
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            color: isSelected
+                                                ? onPrimary
+                                                : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                          ),
+                                        ),
+                                        if (needLogin) ...[
+                                          const SizedBox(width: 4),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: (isSelected ? onPrimary : Colors.orange).withValues(alpha: 0.2),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              '需登录',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: isSelected ? onPrimary : Colors.orange,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const SizedBox(height: 6),
 
-                // Episodes Section Header
+                // Episodes Section Header & Batch Toolbar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Row(
                     children: [
                       Text(
@@ -392,22 +550,73 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         ),
                       ),
                       const Spacer(),
-                      if (selectableCount > 1)
+                      if (selectableCount > 1) ...[
                         InkWell(
                           onTap: () => _toggleSelectAll(episodes),
                           borderRadius: BorderRadius.circular(4),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                             child: Text(
                               _selectedPageIndices.length >= selectableCount ? '取消全选' : '全选',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 color: primaryColor,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: () => _invertSelection(episodes),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            child: Text(
+                              '反选',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: primaryColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (episodes.length >= 10) ...[
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _selectRange(episodes, 10, true),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              child: Text(
+                                '前10集',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _selectRange(episodes, 10, false),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              child: Text(
+                                '后10集',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                 ),

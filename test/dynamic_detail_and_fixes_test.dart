@@ -305,6 +305,121 @@ void main() {
       expect(shouldExit(false, false), isFalse); // Portrait normal
     });
 
+    test('Physical landscape orientation detection from viewPadding cutouts', () {
+      DeviceOrientation detectOrientation(EdgeInsets padding, DeviceOrientation current) {
+        if (padding.left > padding.right && padding.left > 10) {
+          return DeviceOrientation.landscapeLeft;
+        } else if (padding.right > padding.left && padding.right > 10) {
+          return DeviceOrientation.landscapeRight;
+        }
+        return current;
+      }
+
+      // iPhone landscape left (notch on left: left inset ~47px)
+      expect(
+        detectOrientation(const EdgeInsets.only(left: 47, right: 0), DeviceOrientation.landscapeRight),
+        DeviceOrientation.landscapeLeft,
+      );
+
+      // iPhone landscape right (notch on right: right inset ~47px)
+      expect(
+        detectOrientation(const EdgeInsets.only(left: 0, right: 47), DeviceOrientation.landscapeLeft),
+        DeviceOrientation.landscapeRight,
+      );
+
+      // Symmetrical device (no cutout): preserves current without unwanted flip
+      expect(
+        detectOrientation(EdgeInsets.zero, DeviceOrientation.landscapeRight),
+        DeviceOrientation.landscapeRight,
+      );
+    });
+
+    test('Screen lock orientation locking and unlock restoration matrix', () {
+      List<DeviceOrientation> getLockedOrientations(DeviceOrientation currentLandscape) {
+        return [currentLandscape];
+      }
+
+      List<DeviceOrientation> getUnlockedOrientations({required bool autoRotate}) {
+        if (autoRotate) {
+          return [
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ];
+        } else {
+          return [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ];
+        }
+      }
+
+      // Lock keeps current physical landscape (never flips 180°)
+      expect(getLockedOrientations(DeviceOrientation.landscapeRight), [DeviceOrientation.landscapeRight]);
+      expect(getLockedOrientations(DeviceOrientation.landscapeLeft), [DeviceOrientation.landscapeLeft]);
+
+      // Unlock restores gravity sensing when autoRotate is enabled
+      expect(
+        getUnlockedOrientations(autoRotate: true),
+        containsAll([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]),
+      );
+
+      // Unlock restricts to landscape only when autoRotate is disabled
+      expect(
+        getUnlockedOrientations(autoRotate: false),
+        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+      );
+    });
+
+    test('Fullscreen state sync on device orientation change', () {
+      bool computeIsFullScreen({
+        required Orientation newOrientation,
+        required Orientation oldOrientation,
+        required bool currentFullScreen,
+        required bool isScreenLocked,
+      }) {
+        if (newOrientation == Orientation.landscape && !currentFullScreen) {
+          return true; // Enters fullscreen automatically on landscape rotation
+        } else if (newOrientation == Orientation.portrait && currentFullScreen && !isScreenLocked) {
+          return false; // Exits fullscreen automatically on portrait rotation if not locked
+        }
+        return currentFullScreen;
+      }
+
+      // Portrait -> Landscape: enters fullscreen
+      expect(
+        computeIsFullScreen(
+          newOrientation: Orientation.landscape,
+          oldOrientation: Orientation.portrait,
+          currentFullScreen: false,
+          isScreenLocked: false,
+        ),
+        isTrue,
+      );
+
+      // Landscape -> Portrait (not locked): exits fullscreen
+      expect(
+        computeIsFullScreen(
+          newOrientation: Orientation.portrait,
+          oldOrientation: Orientation.landscape,
+          currentFullScreen: true,
+          isScreenLocked: false,
+        ),
+        isFalse,
+      );
+
+      // Landscape -> Portrait (locked): stays in fullscreen
+      expect(
+        computeIsFullScreen(
+          newOrientation: Orientation.portrait,
+          oldOrientation: Orientation.landscape,
+          currentFullScreen: true,
+          isScreenLocked: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('PlayerSettingsService autoRotateFullScreen toggle and listenable test', () async {
       await PlayerSettingsService.setAutoRotateFullScreen(false);
       expect(PlayerSettingsService.autoRotateFullScreen, isFalse);

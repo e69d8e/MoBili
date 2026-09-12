@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../player_settings_service.dart';
 
 class HistoryStorageService {
   static final HistoryStorageService _instance = HistoryStorageService._internal();
@@ -16,20 +18,34 @@ class HistoryStorageService {
   Timer? _debounceTimer;
   SharedPreferences? _prefs;
 
+  @visibleForTesting
+  void resetForTesting() {
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _initialized = false;
+    _dirty = false;
+    _cache.clear();
+    _prefs = null;
+  }
+
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
   }
 
   /// Initialize local history cache
-  Future<void> init() async {
-    if (_initialized) return;
+  Future<void> init({bool force = false}) async {
+    if (_initialized && !force) return;
     try {
+      if (force) {
+        _cache.clear();
+      }
       final prefs = await _getPrefs();
       final raw = prefs.getString(_storageKey);
       if (raw != null && raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
         if (decoded is Map) {
+          _cache.clear();
           decoded.forEach((key, val) {
             if (val is Map) {
               _cache[key.toString()] = Map<String, dynamic>.from(val);
@@ -43,11 +59,27 @@ class HistoryStorageService {
     }
   }
 
-  /// Get recorded playback progress in seconds for a specific bvid
-  int getProgress(String bvid) {
+  /// Get recorded playback progress in seconds for a specific bvid and optional cid
+  int getProgress(String bvid, {int? cid}) {
     if (bvid.isEmpty) return 0;
     final record = _cache[bvid];
     if (record == null) return 0;
+
+    if (cid != null && cid > 0) {
+      final cidMap = record['cid_progress'];
+      if (cidMap is Map && cidMap[cid.toString()] != null) {
+        final cp = cidMap[cid.toString()];
+        if (cp is int) return cp;
+        if (cp is num) return cp.toInt();
+      }
+      if (record['cid'] == cid) {
+        final progress = record['progress'];
+        if (progress is int) return progress;
+        if (progress is num) return progress.toInt();
+      }
+      return 0;
+    }
+
     final progress = record['progress'];
     if (progress is int) return progress;
     if (progress is num) return progress.toInt();
@@ -74,9 +106,16 @@ class HistoryStorageService {
     String? cover,
     bool immediate = false,
   }) {
-    if (bvid.isEmpty) return;
+    if (PlayerSettingsService.incognitoMode || bvid.isEmpty) return;
 
     final existing = _cache[bvid] ?? {};
+    final Map<String, dynamic> cidMap = Map<String, dynamic>.from(
+      existing['cid_progress'] is Map ? existing['cid_progress'] : {},
+    );
+    if (cid > 0) {
+      cidMap[cid.toString()] = progress;
+    }
+
     final record = <String, dynamic>{
       'bvid': bvid,
       'progress': progress,
@@ -86,6 +125,7 @@ class HistoryStorageService {
       'title': title ?? existing['title'] ?? '',
       'cover': cover ?? existing['cover'] ?? '',
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'cid_progress': cidMap,
     };
 
     _cache[bvid] = record;

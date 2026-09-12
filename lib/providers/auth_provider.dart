@@ -20,27 +20,54 @@ class AuthProvider extends ChangeNotifier {
 
   UserInfo _userInfo = UserInfo(isLogin: false);
   bool _isLoading = false;
+  bool _isCookieExpired = false;
 
   UserInfo get userInfo => _userInfo;
   bool get isLogin => _userInfo.isLogin;
   bool get isLoading => _isLoading;
+  bool get isCookieExpired => _isCookieExpired;
 
-  Future<void> init() async {
+  /// Fast local initialization from persistent cache (no blocking network calls)
+  Future<void> initLocal() async {
+    await _biliHttpClient.initLocal();
+  }
+
+  /// Asynchronous network credentials check and user profile fetch in background
+  Future<void> initNetwork() async {
     _isLoading = true;
     notifyListeners();
 
-    await _biliHttpClient.init();
-    await refreshUserInfo();
+    try {
+      await _biliHttpClient.init();
+      await refreshUserInfo();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-    _isLoading = false;
-    notifyListeners();
+  /// Backwards-compatible init method
+  Future<void> init() async {
+    await initLocal();
+    await initNetwork();
   }
 
   Future<void> refreshUserInfo() async {
+    final hadLoginCookies = _biliHttpClient.isLoggedIn;
     try {
       _userInfo = await _userApiService.getUserNav();
+      if (hadLoginCookies && !_userInfo.isLogin) {
+        _isCookieExpired = true;
+      } else if (_userInfo.isLogin) {
+        _isCookieExpired = false;
+      }
       notifyListeners();
     } catch (_) {}
+  }
+
+  void dismissCookieExpiryNotice() {
+    _isCookieExpired = false;
+    notifyListeners();
   }
 
   /// Start polling QR Code status
@@ -66,6 +93,7 @@ class AuthProvider extends ChangeNotifier {
 
       if (result.isSuccess) {
         t.cancel();
+        _isCookieExpired = false;
         await refreshUserInfo();
         onSuccess();
       } else if (result.isExpired) {
@@ -82,6 +110,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _authApiService.logout();
     _userInfo = UserInfo(isLogin: false);
+    _isCookieExpired = false;
     notifyListeners();
   }
 }

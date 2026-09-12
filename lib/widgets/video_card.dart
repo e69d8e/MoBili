@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import '../models/video_model.dart';
 import '../screens/video/video_detail_screen.dart';
 import '../services/api/user_api_service.dart';
@@ -21,7 +23,11 @@ class VideoCard extends StatelessWidget {
   });
 
   void _addToWatchLater(BuildContext context) async {
-    final ok = await UserApiService().addToWatchLater(aid: video.aid, bvid: video.bvid);
+    HapticFeedback.lightImpact();
+    final ok = await UserApiService().addToWatchLater(
+      aid: video.aid,
+      bvid: video.bvid,
+    );
     if (context.mounted) {
       AppToast.show(
         context,
@@ -42,6 +48,12 @@ class VideoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.03),
+          width: 0.8,
+        ),
         boxShadow: isDark
             ? null
             : [
@@ -54,14 +66,13 @@ class VideoCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap ??
+        onTap:
+            onTap ??
             () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (ctx) => VideoDetailScreen(
-                    bvid: video.bvid,
-                    initialVideo: video,
-                  ),
+                  builder: (ctx) =>
+                      VideoDetailScreen(bvid: video.bvid, initialVideo: video),
                 ),
               );
             },
@@ -90,18 +101,16 @@ class VideoCard extends StatelessWidget {
                     child: Container(
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
-                           begin: Alignment.bottomCenter,
+                          begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
-                          colors: [
-                            Color(0x99000000),
-                            Colors.transparent,
-                          ],
+                          colors: [Color(0x99000000), Colors.transparent],
                         ),
                       ),
                     ),
                   ),
                   // Left stats (Plays & Danmaku)
-                  if ((showViewCount && video.stat.view > 0) || video.stat.danmaku > 0)
+                  if ((showViewCount && video.stat.view > 0) ||
+                      video.stat.danmaku > 0)
                     Positioned(
                       bottom: 5,
                       left: 6,
@@ -116,7 +125,9 @@ class VideoCard extends StatelessWidget {
                               fontSize: 10.0,
                               iconSize: 13,
                             ),
-                          if (showViewCount && video.stat.view > 0 && video.stat.danmaku > 0)
+                          if (showViewCount &&
+                              video.stat.view > 0 &&
+                              video.stat.danmaku > 0)
                             const SizedBox(width: 6),
                           if (video.stat.danmaku > 0)
                             StatBadge(
@@ -135,7 +146,10 @@ class VideoCard extends StatelessWidget {
                       bottom: 5,
                       right: 6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1.5,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.65),
                           borderRadius: BorderRadius.circular(4),
@@ -157,7 +171,10 @@ class VideoCard extends StatelessWidget {
                       top: 5,
                       left: 5,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.primary,
                           borderRadius: BorderRadius.circular(4),
@@ -191,7 +208,9 @@ class VideoCard extends StatelessWidget {
                       fontSize: 12.5,
                       fontWeight: FontWeight.w500,
                       height: 1.35,
-                      color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                      color: isDark
+                          ? AppTheme.textMainDark
+                          : AppTheme.textMainLight,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -201,17 +220,23 @@ class VideoCard extends StatelessWidget {
                       Icon(
                         Icons.person_outline_rounded,
                         size: 12,
-                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: isDark
+                            ? AppTheme.textHintDark
+                            : AppTheme.textHintLight,
                       ),
                       const SizedBox(width: 3),
                       Expanded(
                         child: Text(
-                          video.owner.name.isNotEmpty ? video.owner.name : 'UP主',
+                          video.owner.name.isNotEmpty
+                              ? video.owner.name
+                              : 'UP主',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10.5,
-                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                            color: isDark
+                                ? AppTheme.textSubDark
+                                : AppTheme.textSubLight,
                           ),
                         ),
                       ),
@@ -226,7 +251,9 @@ class VideoCard extends StatelessWidget {
                             child: Icon(
                               Icons.watch_later_outlined,
                               size: 14.5,
-                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                              color: isDark
+                                  ? AppTheme.textHintDark
+                                  : AppTheme.textHintLight,
                             ),
                           ),
                         ),

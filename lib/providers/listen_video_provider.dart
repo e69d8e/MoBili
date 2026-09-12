@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/api/video_api_service.dart';
+import '../services/player/bili_stream_proxy.dart';
 
 class ListenVideoProvider extends ChangeNotifier {
   VideoPlayerController? _controller;
@@ -74,7 +75,7 @@ class ListenVideoProvider extends ChangeNotifier {
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
-      await session.setActive(true);
+      // Do not activate audio session at startup; only activate when audio actually plays
 
       _noisySub = session.becomingNoisyEventStream.listen((_) {
         pause();
@@ -237,7 +238,11 @@ class ListenVideoProvider extends ChangeNotifier {
             _controller = null;
           }
 
-          final newCtrl = _createController(freshUrl);
+          String playFreshUrl = freshUrl;
+          if (!kIsWeb && (freshUrl.startsWith('http://') || freshUrl.startsWith('https://'))) {
+            playFreshUrl = await BiliStreamProxy().getProxyUrl(freshUrl, isAudio: true);
+          }
+          final newCtrl = _createController(playFreshUrl);
 
           await newCtrl.initialize();
           await newCtrl.setVolume(1.0);
@@ -396,7 +401,13 @@ class ListenVideoProvider extends ChangeNotifier {
 
       _audioUrl = streamUrl;
 
-      final ctrl = _createController(streamUrl);
+      String playStreamUrl = streamUrl;
+      if (!kIsWeb && (streamUrl.startsWith('http://') || streamUrl.startsWith('https://'))) {
+        playStreamUrl = await BiliStreamProxy().getProxyUrl(streamUrl, isAudio: true);
+      }
+      if (_isDisposed || _playToken != token) return;
+
+      final ctrl = _createController(playStreamUrl);
       _pendingController = ctrl;
 
       await ctrl.initialize();
@@ -580,6 +591,10 @@ class ListenVideoProvider extends ChangeNotifier {
     _duration = Duration.zero;
     _isPlaying = false;
     _isBuffering = false;
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+    } catch (_) {}
     if (!_isDisposed) notifyListeners();
   }
 
@@ -590,6 +605,9 @@ class ListenVideoProvider extends ChangeNotifier {
     cancelSleepTimer();
     _noisySub?.cancel();
     _interruptionSub?.cancel();
+    try {
+      AudioSession.instance.then((s) => s.setActive(false));
+    } catch (_) {}
     if (_controller != null) {
       _controller!.removeListener(_onControllerUpdate);
       try {

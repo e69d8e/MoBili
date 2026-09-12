@@ -22,7 +22,9 @@ class VideoCacheItem {
   final int quality;
   final String qualityDesc;
   final String videoUrl;
+  final String audioUrl;
   final String localVideoPath;
+  final String localAudioPath;
   final String localDanmakuPath;
   final String localCoverPath;
   final VideoCacheStatus status;
@@ -32,6 +34,7 @@ class VideoCacheItem {
   final int createdAt;
   final int completedAt;
   final String? errorMsg;
+  final bool isAudioOnly;
 
   VideoCacheItem({
     required this.taskId,
@@ -49,7 +52,9 @@ class VideoCacheItem {
     this.quality = 80,
     this.qualityDesc = '1080P 高清',
     this.videoUrl = '',
+    this.audioUrl = '',
     this.localVideoPath = '',
+    this.localAudioPath = '',
     this.localDanmakuPath = '',
     this.localCoverPath = '',
     this.status = VideoCacheStatus.pending,
@@ -59,6 +64,7 @@ class VideoCacheItem {
     required this.createdAt,
     this.completedAt = 0,
     this.errorMsg,
+    this.isAudioOnly = false,
   });
 
   double get progress {
@@ -90,7 +96,9 @@ class VideoCacheItem {
     int? quality,
     String? qualityDesc,
     String? videoUrl,
+    String? audioUrl,
     String? localVideoPath,
+    String? localAudioPath,
     String? localDanmakuPath,
     String? localCoverPath,
     VideoCacheStatus? status,
@@ -100,6 +108,7 @@ class VideoCacheItem {
     int? createdAt,
     int? completedAt,
     String? errorMsg,
+    bool? isAudioOnly,
   }) {
     return VideoCacheItem(
       taskId: taskId ?? this.taskId,
@@ -117,7 +126,9 @@ class VideoCacheItem {
       quality: quality ?? this.quality,
       qualityDesc: qualityDesc ?? this.qualityDesc,
       videoUrl: videoUrl ?? this.videoUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
       localVideoPath: localVideoPath ?? this.localVideoPath,
+      localAudioPath: localAudioPath ?? this.localAudioPath,
       localDanmakuPath: localDanmakuPath ?? this.localDanmakuPath,
       localCoverPath: localCoverPath ?? this.localCoverPath,
       status: status ?? this.status,
@@ -127,6 +138,7 @@ class VideoCacheItem {
       createdAt: createdAt ?? this.createdAt,
       completedAt: completedAt ?? this.completedAt,
       errorMsg: errorMsg ?? this.errorMsg,
+      isAudioOnly: isAudioOnly ?? this.isAudioOnly,
     );
   }
 
@@ -147,7 +159,9 @@ class VideoCacheItem {
       'quality': quality,
       'qualityDesc': qualityDesc,
       'videoUrl': videoUrl,
+      'audioUrl': audioUrl,
       'localVideoPath': localVideoPath,
+      'localAudioPath': localAudioPath,
       'localDanmakuPath': localDanmakuPath,
       'localCoverPath': localCoverPath,
       'status': status.name,
@@ -156,6 +170,7 @@ class VideoCacheItem {
       'createdAt': createdAt,
       'completedAt': completedAt,
       'errorMsg': errorMsg,
+      'isAudioOnly': isAudioOnly,
     };
   }
 
@@ -187,7 +202,9 @@ class VideoCacheItem {
       quality: json['quality'] is int ? json['quality'] : 80,
       qualityDesc: json['qualityDesc']?.toString() ?? '1080P 高清',
       videoUrl: json['videoUrl']?.toString() ?? '',
+      audioUrl: json['audioUrl']?.toString() ?? '',
       localVideoPath: json['localVideoPath']?.toString() ?? '',
+      localAudioPath: json['localAudioPath']?.toString() ?? '',
       localDanmakuPath: json['localDanmakuPath']?.toString() ?? '',
       localCoverPath: json['localCoverPath']?.toString() ?? '',
       status: status,
@@ -197,6 +214,7 @@ class VideoCacheItem {
       createdAt: json['createdAt'] is int ? json['createdAt'] : 0,
       completedAt: json['completedAt'] is int ? json['completedAt'] : 0,
       errorMsg: json['errorMsg']?.toString(),
+      isAudioOnly: json['isAudioOnly'] == true,
     );
   }
 }

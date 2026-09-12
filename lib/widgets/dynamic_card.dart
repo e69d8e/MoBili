@@ -1,7 +1,9 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
 import '../models/dynamic_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/dynamic/dynamic_detail_screen.dart';
@@ -62,10 +64,7 @@ class _DynamicCardState extends State<DynamicCard> {
   void _toggleLike() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isLogin || BiliHttpClient().biliJct == null) {
-      showDialog(
-        context: context,
-        builder: (ctx) => const LoginDialog(),
-      );
+      showDialog(context: context, builder: (ctx) => const LoginDialog());
       return;
     }
 
@@ -75,17 +74,16 @@ class _DynamicCardState extends State<DynamicCard> {
       _likeCount += targetLike ? 1 : -1;
     });
 
-    final ok = await DynamicApiService().likeDynamic(widget.item.id, like: targetLike);
+    final ok = await DynamicApiService().likeDynamic(
+      widget.item.id,
+      like: targetLike,
+    );
     if (!ok && mounted) {
       setState(() {
         _isLiked = !targetLike;
         _likeCount += targetLike ? -1 : 1;
       });
-      AppToast.show(
-        context,
-        '点赞操作失败，请重试',
-        icon: Icons.info_outline_rounded,
-      );
+      AppToast.show(context, '点赞操作失败，请重试', icon: Icons.info_outline_rounded);
     }
   }
 
@@ -99,6 +97,21 @@ class _DynamicCardState extends State<DynamicCard> {
       decoration: BoxDecoration(
         color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.03),
+          width: 0.8,
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -112,205 +125,230 @@ class _DynamicCardState extends State<DynamicCard> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
                 child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    if (item.author.mid > 0) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (item.author.mid > 0) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) =>
+                                  UpSpaceScreen(mid: item.author.mid),
+                            ),
+                          );
+                        }
+                      },
+                      child: UserAvatar(url: item.author.face, size: 38),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (item.author.mid > 0) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (ctx) =>
+                                    UpSpaceScreen(mid: item.author.mid),
+                              ),
+                            );
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.author.name,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  item.author.pubTime.isNotEmpty
+                                      ? item.author.pubTime
+                                      : (item.author.pubTs > 0
+                                            ? Formatters.formatTime(
+                                                item.author.pubTs,
+                                              )
+                                            : ''),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? AppTheme.textHintDark
+                                        : AppTheme.textHintLight,
+                                  ),
+                                ),
+                                if (item.author.pubAction.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '· ${item.author.pubAction}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark
+                                          ? AppTheme.textHintDark
+                                          : AppTheme.textHintLight,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
                         ),
-                      );
-                    }
-                  },
-                  child: UserAvatar(
-                    url: item.author.face,
-                    size: 38,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Text Content
+              if (item.text.isNotEmpty)
+                GestureDetector(
+                  onTap: _navigateToDetail,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      item.text,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.45,
+                        color: isDark
+                            ? AppTheme.textMainDark
+                            : AppTheme.textMainLight,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
+
+              // Video Card (if any)
+              if (item.video != null && item.video!.bvid.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                  child: _buildVideoCard(context, item.video!, isDark),
+                ),
+
+              // Images (if any)
+              if (item.pictures.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                  child: _buildImages(
+                    context,
+                    item.pictures,
+                    heroPrefix: 'dyn_${item.id}',
+                    isDark: isDark,
+                  ),
+                ),
+
+              // Forwarded Dynamic (if any)
+              if (item.orig != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
                   child: GestureDetector(
                     onTap: () {
-                      if (item.author.mid > 0) {
+                      if (item.orig!.id.isNotEmpty) {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
+                            builder: (ctx) => DynamicDetailScreen(
+                              dynamicId: item.orig!.id,
+                              initialItem: item.orig,
+                            ),
                           ),
                         );
                       }
                     },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.author.name,
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              item.author.pubTime.isNotEmpty
-                                  ? item.author.pubTime
-                                  : (item.author.pubTs > 0
-                                      ? Formatters.formatTime(item.author.pubTs)
-                                      : ''),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                              ),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF1B1B20)
+                            : const Color(0xFFF6F7F9),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '@${item.orig!.author.name}: ${item.orig!.text}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: isDark
+                                  ? AppTheme.textSubDark
+                                  : AppTheme.textSubLight,
+                              height: 1.4,
                             ),
-                            if (item.author.pubAction.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Text(
-                                '· ${item.author.pubAction}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                                ),
-                              ),
-                            ],
+                          ),
+                          if (item.orig!.video != null &&
+                              item.orig!.video!.bvid.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            _buildVideoCard(context, item.orig!.video!, isDark),
                           ],
-                        ),
-                      ],
+                          if (item.orig!.pictures.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            _buildImages(
+                              context,
+                              item.orig!.pictures,
+                              heroPrefix: 'orig_${item.orig!.id}',
+                              isDark: isDark,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
 
-          // Text Content
-          if (item.text.isNotEmpty)
-            GestureDetector(
-              onTap: _navigateToDetail,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                child: Text(
-                  item.text,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    height: 1.45,
-                    color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-                  ),
+              const SizedBox(height: 4),
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              ),
+
+              // Action Stats Bar (Comment, Like)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildActionButton(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: item.stat.commentCount > 0
+                          ? Formatters.formatCount(item.stat.commentCount)
+                          : '评论',
+                      active: false,
+                      isDark: isDark,
+                      onTap: _navigateToDetail,
+                    ),
+                    _buildActionButton(
+                      icon: _isLiked
+                          ? Icons.thumb_up_alt_rounded
+                          : Icons.thumb_up_alt_outlined,
+                      label: _likeCount > 0
+                          ? Formatters.formatCount(_likeCount)
+                          : '赞',
+                      active: _isLiked,
+                      isDark: isDark,
+                      onTap: _toggleLike,
+                    ),
+                  ],
                 ),
               ),
-            ),
-
-          // Video Card (if any)
-          if (item.video != null && item.video!.bvid.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
-              child: _buildVideoCard(context, item.video!, isDark),
-            ),
-
-          // Images (if any)
-          if (item.pictures.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
-              child: _buildImages(
-                context,
-                item.pictures,
-                heroPrefix: 'dyn_${item.id}',
-                isDark: isDark,
-              ),
-            ),
-
-          // Forwarded Dynamic (if any)
-          if (item.orig != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-              child: GestureDetector(
-                onTap: () {
-                  if (item.orig!.id.isNotEmpty) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (ctx) => DynamicDetailScreen(
-                          dynamicId: item.orig!.id,
-                          initialItem: item.orig,
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1B1B20) : const Color(0xFFF6F7F9),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '@${item.orig!.author.name}: ${item.orig!.text}',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                          height: 1.4,
-                        ),
-                      ),
-                      if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        _buildVideoCard(context, item.orig!.video!, isDark),
-                      ],
-                      if (item.orig!.pictures.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        _buildImages(
-                          context,
-                          item.orig!.pictures,
-                          heroPrefix: 'orig_${item.orig!.id}',
-                          isDark: isDark,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-          const SizedBox(height: 4),
-          Divider(
-            height: 1,
-            thickness: 0.5,
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            ],
           ),
-
-          // Action Stats Bar (Comment, Like)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildActionButton(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: item.stat.commentCount > 0 ? Formatters.formatCount(item.stat.commentCount) : '评论',
-                  active: false,
-                  isDark: isDark,
-                  onTap: _navigateToDetail,
-                ),
-                _buildActionButton(
-                  icon: _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
-                  label: _likeCount > 0 ? Formatters.formatCount(_likeCount) : '赞',
-                  active: _isLiked,
-                  isDark: isDark,
-                  onTap: _toggleLike,
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
-    ),
-  ),
-);
+    );
   }
 
-  Widget _buildVideoCard(BuildContext context, DynamicVideo video, bool isDark) {
+  Widget _buildVideoCard(
+    BuildContext context,
+    DynamicVideo video,
+    bool isDark,
+  ) {
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
@@ -325,7 +363,9 @@ class _DynamicCardState extends State<DynamicCard> {
           color: isDark ? const Color(0xFF1F1F26) : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+            color: isDark
+                ? Colors.white10
+                : Colors.black.withValues(alpha: 0.05),
             width: 0.6,
           ),
         ),
@@ -339,23 +379,33 @@ class _DynamicCardState extends State<DynamicCard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  NetworkImageView(url: video.cover, fit: BoxFit.cover),
-                  if (video.durationText.isNotEmpty)
-                    Positioned(
-                      bottom: 4,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          video.durationText,
-                          style: const TextStyle(color: Colors.white, fontSize: 9.5),
+                  NetworkImageView(
+                    url: video.cover,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 240,
+                    memCacheHeight: 150,
+                  ),
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        video.durationText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
                         ),
                       ),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -382,20 +432,42 @@ class _DynamicCardState extends State<DynamicCard> {
                     Row(
                       children: [
                         if (video.playCount.isNotEmpty) ...[
-                          Icon(Icons.play_arrow_rounded, size: 13, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 13,
+                            color: isDark
+                                ? AppTheme.textHintDark
+                                : AppTheme.textHintLight,
+                          ),
                           const SizedBox(width: 2),
                           Text(
                             video.playCount,
-                            style: TextStyle(fontSize: 10.5, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isDark
+                                  ? AppTheme.textHintDark
+                                  : AppTheme.textHintLight,
+                            ),
                           ),
                         ],
                         if (video.danmakuCount.isNotEmpty) ...[
                           const SizedBox(width: 10),
-                          Icon(Icons.subtitles_outlined, size: 11, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          Icon(
+                            Icons.subtitles_outlined,
+                            size: 11,
+                            color: isDark
+                                ? AppTheme.textHintDark
+                                : AppTheme.textHintLight,
+                          ),
                           const SizedBox(width: 3),
                           Text(
                             video.danmakuCount,
-                            style: TextStyle(fontSize: 10.5, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isDark
+                                  ? AppTheme.textHintDark
+                                  : AppTheme.textHintLight,
+                            ),
                           ),
                         ],
                       ],
@@ -461,7 +533,8 @@ class _DynamicCardState extends State<DynamicCard> {
             displayWidth = (maxWidth * 0.65).clamp(160.0, 230.0);
             if (isLong || ratio < 0.55) {
               displayHeight = 260.0;
-              alignment = Alignment.topCenter; // Crop from top to show head/start
+              alignment =
+                  Alignment.topCenter; // Crop from top to show head/start
             } else {
               displayHeight = (displayWidth / ratio).clamp(160.0, 260.0);
             }
@@ -498,20 +571,15 @@ class _DynamicCardState extends State<DynamicCard> {
                     fit: BoxFit.cover,
                     alignment: alignment,
                     memCacheWidth: (displayWidth * 2.2).round().clamp(200, 960),
-                    memCacheHeight: (displayHeight * 2.2).round().clamp(200, 960),
+                    memCacheHeight: (displayHeight * 2.2).round().clamp(
+                      200,
+                      960,
+                    ),
                   ),
                   if (isLong)
-                    Positioned(
-                      bottom: 6,
-                      right: 6,
-                      child: _buildBadge('长图'),
-                    )
+                    Positioned(bottom: 6, right: 6, child: _buildBadge('长图'))
                   else if (isGif)
-                    Positioned(
-                      bottom: 6,
-                      right: 6,
-                      child: _buildBadge('GIF'),
-                    ),
+                    Positioned(bottom: 6, right: 6, child: _buildBadge('GIF')),
                 ],
               ),
             ),
@@ -567,7 +635,9 @@ class _DynamicCardState extends State<DynamicCard> {
                     child: Container(
                       width: itemWidth,
                       height: itemHeight,
-                      color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+                      color: isDark
+                          ? const Color(0xFF1E1E24)
+                          : const Color(0xFFEEEEEE),
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -576,9 +646,17 @@ class _DynamicCardState extends State<DynamicCard> {
                             width: itemWidth,
                             height: itemHeight,
                             fit: BoxFit.cover,
-                            alignment: isLong ? Alignment.topCenter : Alignment.center,
-                            memCacheWidth: (itemWidth * 2.2).round().clamp(150, 480),
-                            memCacheHeight: (itemHeight * 2.2).round().clamp(150, 480),
+                            alignment: isLong
+                                ? Alignment.topCenter
+                                : Alignment.center,
+                            memCacheWidth: (itemWidth * 2.2).round().clamp(
+                              150,
+                              480,
+                            ),
+                            memCacheHeight: (itemHeight * 2.2).round().clamp(
+                              150,
+                              480,
+                            ),
                           ),
                           if (isLastOfNine)
                             Container(
@@ -618,12 +696,7 @@ class _DynamicCardState extends State<DynamicCard> {
               rowItems.add(const SizedBox(width: 6));
             }
           }
-          rows.add(
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: rowItems,
-            ),
-          );
+          rows.add(Row(mainAxisSize: MainAxisSize.min, children: rowItems));
           if (i + cols < displayCount) {
             rows.add(const SizedBox(height: 6));
           }
@@ -663,7 +736,9 @@ class _DynamicCardState extends State<DynamicCard> {
     required bool isDark,
     required VoidCallback onTap,
   }) {
-    final color = active ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight);
+    final color = active
+        ? Theme.of(context).colorScheme.primary
+        : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight);
 
     return InkWell(
       onTap: () {

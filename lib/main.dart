@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
@@ -16,9 +17,9 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configure high-capacity image cache to prevent image eviction on scroll
+  // Configure balanced image cache (120MB) to prevent OOM on mid-low tier devices
   PaintingBinding.instance.imageCache.maximumSize = 1000;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 250 << 20; // 250MB
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 120 << 20; // 120MB
 
   final authProvider = AuthProvider();
   final homeProvider = HomeProvider();
@@ -26,8 +27,9 @@ void main() async {
   final themeProvider = ThemeProvider();
   final listenVideoProvider = ListenVideoProvider();
 
+  // Load only local persistent caches & settings before initial UI frame
   await Future.wait([
-    authProvider.init(),
+    authProvider.initLocal(),
     themeProvider.init(),
     DanmakuSettingsService.init(),
     PlayerSettingsService.init(),
@@ -45,6 +47,9 @@ void main() async {
       listenVideoProvider: listenVideoProvider,
     ),
   );
+
+  // Defer remote credentials check and network sync to run in background
+  unawaited(authProvider.initNetwork());
 }
 
 class MoBiliRoot extends StatelessWidget {
