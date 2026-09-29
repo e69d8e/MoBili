@@ -130,6 +130,10 @@ class DynamicStat {
     this.isLiked = false,
   });
 
+  /// 是否没有任何统计数据（用于合并时判断该来源是否可用）
+  bool get isEmpty =>
+      commentCount == 0 && forwardCount == 0 && likeCount == 0 && !isLiked;
+
   factory DynamicStat.fromJson(dynamic rawJson) {
     if (rawJson == null || rawJson is! Map) return DynamicStat();
     final json = Map<String, dynamic>.from(rawJson);
@@ -246,7 +250,7 @@ class DynamicPicture {
 }
 
 class DynamicParagraph {
-  final int type; // 1: text, 2: picture, 3: divider, 4: title
+  final int type; // 1: 文本, 2: 图片, 3: 分割线, 4: 标题, 5: 引用, 6: 代码
   final String text;
   final DynamicPicture? picture;
 
@@ -256,9 +260,285 @@ class DynamicParagraph {
     this.picture,
   });
 
-  bool get isText => type == 1 || type == 4;
+  bool get isText => type == 1 || type == 4 || type == 5 || type == 6;
+  bool get isQuote => type == 5;
+  bool get isCode => type == 6;
   bool get isPicture => type == 2 && picture != null;
   bool get isDivider => type == 3;
+}
+
+/// 从 B 站各种富文本结构中抽取纯文本。
+///
+/// 兼容以下形态：
+///  - `'纯文本'`
+///  - `{'text': '纯文本'}` / `{'text': {'nodes': [...]}}`
+///  - `{'rich_text_nodes': [{'text': '文字'}]}`
+///  - `{'nodes': [{'word': {'words': '文字'}}, {'rich': {'text': '[表情]'}}]}`
+String _extractRichText(dynamic raw) {
+  if (raw == null) return '';
+  if (raw is String) return raw;
+  if (raw is num || raw is bool) return raw.toString();
+  if (raw is List) {
+    final buffer = StringBuffer();
+    for (final item in raw) {
+      buffer.write(_extractRichText(item));
+    }
+    return buffer.toString();
+  }
+  if (raw is! Map) return '';
+
+  final map = Map<String, dynamic>.from(raw);
+
+  // 普通文本节点：{word: {words: '...'}}
+  final word = map['word'];
+  if (word is Map) {
+    final words = word['words'];
+    if (words != null) return words.toString();
+  } else if (word is String && word.isNotEmpty) {
+    return word;
+  }
+
+  // 富文本节点（表情、@、话题等）：{rich: {text: '...'}}
+  final rich = map['rich'];
+  if (rich is Map) {
+    final richText = rich['text'] ?? rich['orig_text'];
+    if (richText != null) return richText.toString();
+  }
+
+  // @用户节点
+  final user = map['user'];
+  if (user is Map && user['name'] != null) return '@${user['name']}';
+
+  // 公式节点
+  final formula = map['formula'];
+  if (formula is Map) {
+    final latex = formula['latex_content'] ?? formula['latex'];
+    if (latex != null) return latex.toString();
+  }
+
+  if (map['text'] is String && (map['text'] as String).isNotEmpty) {
+    return map['text'] as String;
+  }
+  if (map['text'] is Map || map['text'] is List) return _extractRichText(map['text']);
+
+  for (final key in const ['nodes', 'rich_text_nodes', 'items']) {
+    if (map[key] is List) return _extractRichText(map[key]);
+  }
+
+  if (map['content'] is String) return map['content'] as String;
+  if (map['title'] is String) return map['title'] as String;
+  return '';
+}
+
+/// 归一化 dynamic 接口的 modules 字段。
+///
+/// 动态列表 / 动态详情返回的是以 `module_author`、`module_dynamic` 等为键的对象，
+/// 而 opus 详情接口返回的是 `module_type` + 具体模块组成的数组，
+/// 这里统一转换成一个 Map，便于后续解析共用同一套逻辑。
+Map<String, dynamic> _normalizeModules(dynamic rawModules) {
+  if (rawModules is Map) {
+    final modules = Map<String, dynamic>.from(rawModules);
+    if (modules['modules'] is List &&
+        modules['module_dynamic'] == null &&
+        modules['module_author'] == null) {
+      return _normalizeModules(modules['modules']);
+    }
+    return modules;
+  }
+  if (rawModules is List) {
+    final modules = <String, dynamic>{};
+    for (final raw in rawModules) {
+      if (raw is! Map) continue;
+      final module = Map<String, dynamic>.from(raw);
+      switch (module['module_type']?.toString() ?? '') {
+        case 'MODULE_TYPE_AUTHOR':
+          modules['module_author'] = module['module_author'];
+          break;
+        case 'MODULE_TYPE_STAT':
+          modules['module_stat'] = module['module_stat'];
+          break;
+        case 'MODULE_TYPE_TITLE':
+          modules['module_title'] = module['module_title'];
+          break;
+        case 'MODULE_TYPE_TOP':
+          modules['module_top'] = module['module_top'];
+          break;
+        case 'MODULE_TYPE_DYNAMIC':
+          modules['module_dynamic'] = module['module_dynamic'];
+          break;
+        case 'MODULE_TYPE_CONTENT':
+          modules['module_content'] = module['module_content'] ?? module;
+          break;
+        case 'MODULE_TYPE_BOTTOM':
+          modules['module_bottom'] = module['module_bottom'];
+          break;
+      }
+    }
+    return modules;
+  }
+  return <String, dynamic>{};
+}
+
+/// 读取模块里的标题（opus 详情使用 MODULE_TYPE_TITLE，列表接口可能放在 module_top）
+String _moduleTitleText(Map<String, dynamic> modules) {
+  final moduleTitle = modules['module_title'];
+  if (moduleTitle is Map) {
+    final inner = moduleTitle['module_title'];
+    if (inner is Map && inner['text'] != null) return inner['text'].toString();
+    if (moduleTitle['text'] != null) return moduleTitle['text'].toString();
+  }
+  final moduleTop = modules['module_top'];
+  if (moduleTop is Map) {
+    if (moduleTop['title'] != null) return moduleTop['title'].toString();
+    final display = moduleTop['display'];
+    if (display is Map && display['title'] != null) {
+      return display['title'].toString();
+    }
+  }
+  return '';
+}
+
+/// 解析 opus 正文段落，并把段落中出现的图片同步写入 [pictures]。
+///
+/// 段落类型参见 module_content.paragraphs：
+/// 1 文本 / 2 图片 / 3 分割线 / 4 块引用 / 5 列表 / 6 链接卡片 / 7 代码
+List<DynamicParagraph> _parseRichParagraphs(
+  dynamic rawParagraphs,
+  List<DynamicPicture> pictures,
+) {
+  final paragraphs = <DynamicParagraph>[];
+  if (rawParagraphs is! List) return paragraphs;
+
+  for (final raw in rawParagraphs) {
+    if (raw is! Map) continue;
+    final p = Map<String, dynamic>.from(raw);
+    final rawType = p['para_type'];
+    final paraType = rawType is int
+        ? rawType
+        : (int.tryParse(rawType?.toString() ?? '') ?? 0);
+
+    // 文本 / 块引用（引用同样使用 text.nodes）
+    final text = _extractRichText(p['text']).trim();
+    if (text.isNotEmpty) {
+      paragraphs.add(DynamicParagraph(
+        type: paraType == 4 ? 5 : (p['heading'] != null ? 4 : 1),
+        text: text,
+      ));
+      continue;
+    }
+
+    // 图片
+    final picData = p['pic'];
+    if (picData is Map && picData['pics'] is List) {
+      for (final sub in picData['pics'] as List) {
+        final pic = DynamicPicture.fromJson(sub);
+        if (pic.url.isEmpty) continue;
+        paragraphs.add(DynamicParagraph(type: 2, picture: pic));
+        if (!pictures.any((e) => e.url == pic.url)) pictures.add(pic);
+      }
+      continue;
+    }
+    if (picData != null) {
+      final pic = DynamicPicture.fromJson(picData);
+      if (pic.url.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 2, picture: pic));
+        if (!pictures.any((e) => e.url == pic.url)) pictures.add(pic);
+      }
+      continue;
+    }
+
+    // 列表
+    final listData = p['list'];
+    if (listData is Map && listData['items'] is List) {
+      final ordered = listData['style'] == 1;
+      final lines = <String>[];
+      var index = 0;
+      for (final item in listData['items'] as List) {
+        if (item is! Map) continue;
+        index++;
+        final itemText = _extractRichText(item['nodes'] ?? item).trim();
+        if (itemText.isEmpty) continue;
+        final order = item['order'];
+        final marker = ordered ? '${order is int ? order : index}. ' : '• ';
+        final level = item['level'];
+        final indent = (level is int && level > 1) ? '  ' * (level - 1) : '';
+        lines.add('$indent$marker$itemText');
+      }
+      if (lines.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 1, text: lines.join('\n')));
+        continue;
+      }
+    }
+
+    // 链接卡片（视频 / 图文 / 商品 / 投票 / 直播等）
+    final linkCard = p['link_card'];
+    if (linkCard is Map && linkCard['card'] is Map) {
+      final cardText = _extractLinkCardText(
+        Map<String, dynamic>.from(linkCard['card'] as Map),
+      );
+      if (cardText.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 1, text: cardText));
+        continue;
+      }
+    }
+
+    // 代码块
+    final codeData = p['code'];
+    if (codeData is Map) {
+      final code = (codeData['content'] ?? codeData['text'])?.toString().trim() ?? '';
+      if (code.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 6, text: code));
+        continue;
+      }
+    }
+
+    // 其它富文本块（标题 / 引用对象等）
+    final richBlock = p['heading'] ?? p['blockquote'];
+    if (richBlock != null) {
+      final richText = _extractRichText(richBlock).trim();
+      if (richText.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(
+          type: p['heading'] != null ? 4 : 5,
+          text: richText,
+        ));
+        continue;
+      }
+    }
+
+    // 分割线
+    if (p['line'] != null || paraType == 3) {
+      paragraphs.add(const DynamicParagraph(type: 3));
+    }
+  }
+
+  return paragraphs;
+}
+
+/// 从链接卡片中取出可展示的标题文本
+String _extractLinkCardText(Map<String, dynamic> card) {
+  const sections = ['common', 'ugc', 'opus', 'goods', 'vote', 'live', 'music', 'reserve'];
+  for (final key in sections) {
+    final section = card[key];
+    if (section is Map) {
+      for (final field in const ['title', 'name', 'sub_title', 'desc']) {
+        final value = section[field];
+        if (value is String && value.trim().isNotEmpty) return value.trim();
+      }
+      final matchInfo = section['match_info'];
+      if (matchInfo is Map && matchInfo['title'] is String) {
+        return (matchInfo['title'] as String).trim();
+      }
+    }
+  }
+
+  final nullHint = card['item_null'];
+  if (nullHint is Map) {
+    for (final field in const ['title', 'text', 'desc']) {
+      final value = nullHint[field];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+  }
+  return '';
 }
 
 class DynamicItem {
@@ -346,27 +626,39 @@ class DynamicItem {
     final idStr = json['id_str']?.toString() ?? json['id']?.toString() ?? '';
     final typeStr = json['type']?.toString() ?? '';
 
-    final basic = json['basic'] is Map ? json['basic'] as Map<String, dynamic> : {};
+    final basic = json['basic'] is Map
+        ? Map<String, dynamic>.from(json['basic'] as Map)
+        : <String, dynamic>{};
     int cId = int.tryParse(basic['comment_id_str']?.toString() ?? basic['comment_id']?.toString() ?? '') ?? 0;
     int cType = basic['comment_type'] is int
         ? basic['comment_type'] as int
         : (int.tryParse(basic['comment_type']?.toString() ?? '') ?? 0);
 
-    final modules = json['modules'] is Map ? json['modules'] as Map<String, dynamic> : {};
+    // modules 有两种形态：动态列表/详情是对象，opus 详情是模块数组
+    final modules = _normalizeModules(json['modules']);
     final authorObj = DynamicAuthor.fromJson(modules['module_author']);
     final statObj = DynamicStat.fromJson(modules['module_stat']);
 
     String descText = '';
     String titleStr = '';
     DynamicVideo? videoObj;
-    List<DynamicPicture> picturesList = [];
-    List<DynamicParagraph> parsedParagraphs = [];
+    final picturesList = <DynamicPicture>[];
+    final parsedParagraphs = <DynamicParagraph>[];
 
-    final dynamicModule = modules['module_dynamic'] is Map ? modules['module_dynamic'] as Map<String, dynamic> : {};
+    final dynamicModule = modules['module_dynamic'] is Map
+        ? Map<String, dynamic>.from(modules['module_dynamic'] as Map)
+        : <String, dynamic>{};
 
     // Parse Text
     if (dynamicModule['desc'] is Map) {
       descText = dynamicModule['desc']['text']?.toString() ?? '';
+    }
+
+    // Opus 对象：列表/详情接口位于 module_dynamic.major.opus，
+    // opus 详情接口则拆成 module_title / module_content 等模块
+    Map<String, dynamic>? opus;
+    if (json['opus'] is Map) {
+      opus = Map<String, dynamic>.from(json['opus'] as Map);
     }
 
     // Parse Major Content
@@ -393,114 +685,9 @@ class DynamicItem {
         }
       }
 
-      // Opus / Articles
-      Map<String, dynamic>? opus;
+      // Opus
       if (majorType == 'MAJOR_TYPE_OPUS' && major['opus'] is Map) {
-        opus = major['opus'] as Map<String, dynamic>;
-      } else if (json['opus'] is Map) {
-        opus = json['opus'] as Map<String, dynamic>;
-      }
-
-      if (opus != null) {
-        String summaryText = '';
-        if (opus['summary'] is Map) {
-          summaryText = opus['summary']['text']?.toString() ?? '';
-        }
-        titleStr = opus['title']?.toString() ??
-            json['title']?.toString() ??
-            (modules['module_top'] is Map ? modules['module_top']['title']?.toString() ?? '' : '');
-
-        if (titleStr.isNotEmpty) {
-          if (descText.isNotEmpty && !descText.contains(titleStr)) {
-            descText = '$titleStr\n\n$descText';
-          } else if (descText.isEmpty) {
-            descText = summaryText.isNotEmpty ? '$titleStr\n\n$summaryText' : titleStr;
-          }
-        } else if (descText.isEmpty && summaryText.isNotEmpty) {
-          descText = summaryText;
-        }
-
-        // 1. Check opus['pics']
-        if (opus['pics'] is List) {
-          for (final p in opus['pics']) {
-            final pic = DynamicPicture.fromJson(p);
-            if (pic.url.isNotEmpty && !picturesList.any((e) => e.url == pic.url)) {
-              picturesList.add(pic);
-            }
-          }
-        }
-
-        // 2. Check opus['summary']['pics'] if picturesList is still empty
-        if (opus['summary'] is Map && opus['summary']['pics'] is List) {
-          for (final p in opus['summary']['pics']) {
-            final pic = DynamicPicture.fromJson(p);
-            if (pic.url.isNotEmpty && !picturesList.any((e) => e.url == pic.url)) {
-              picturesList.add(pic);
-            }
-          }
-        }
-
-        // 3. Check opus['content']['paragraphs'] or opus['paragraphs'] for inline pictures & paragraphs
-        final rawParas = (opus['content'] is Map ? opus['content']['paragraphs'] : null) ??
-            opus['paragraphs'] ??
-            (opus['content'] is List ? opus['content'] : null) ??
-            json['paragraphs'] ??
-            (json['content'] is Map ? json['content']['paragraphs'] : null);
-        if (rawParas is List) {
-          for (final p in rawParas) {
-            if (p is Map) {
-              final pType = p['para_type'] is int ? p['para_type'] as int : 1;
-              if (pType == 1 || p['text'] != null) {
-                String t = '';
-                if (p['text'] is Map) {
-                  final textMap = p['text'] as Map;
-                  if (textMap['nodes'] is List) {
-                    final nodes = textMap['nodes'] as List;
-                    final sb = StringBuffer();
-                    for (final n in nodes) {
-                      if (n is Map) {
-                        sb.write(n['word']?.toString() ?? n['text']?.toString() ?? '');
-                      } else if (n is String) {
-                        sb.write(n);
-                      }
-                    }
-                    t = sb.toString();
-                  } else if (textMap['text'] != null) {
-                    t = textMap['text'].toString();
-                  }
-                } else if (p['text'] is String) {
-                  t = p['text'] as String;
-                }
-                if (t.trim().isNotEmpty) {
-                  parsedParagraphs.add(DynamicParagraph(type: 1, text: t.trim()));
-                }
-              } else if (pType == 2 || p['pic'] != null) {
-                final picData = p['pic'];
-                if (picData is Map && picData['pics'] is List) {
-                  for (final subP in picData['pics']) {
-                    final pic = DynamicPicture.fromJson(subP);
-                    if (pic.url.isNotEmpty) {
-                      parsedParagraphs.add(DynamicParagraph(type: 2, picture: pic));
-                      if (!picturesList.any((e) => e.url == pic.url)) {
-                        picturesList.add(pic);
-                      }
-                    }
-                  }
-                } else if (picData != null) {
-                  final pic = DynamicPicture.fromJson(picData);
-                  if (pic.url.isNotEmpty) {
-                    parsedParagraphs.add(DynamicParagraph(type: 2, picture: pic));
-                    if (!picturesList.any((e) => e.url == pic.url)) {
-                      picturesList.add(pic);
-                    }
-                  }
-                }
-              } else if (pType == 3) {
-                parsedParagraphs.add(const DynamicParagraph(type: 3));
-              }
-            }
-          }
-        }
+        opus = Map<String, dynamic>.from(major['opus'] as Map);
       }
 
       // Article Covers
@@ -522,6 +709,57 @@ class DynamicItem {
         }
       }
     }
+
+    if (opus != null) {
+      final summaryText = _extractRichText(opus['summary']);
+      titleStr = opus['title']?.toString() ?? '';
+      if (titleStr.isEmpty) titleStr = json['title']?.toString() ?? '';
+      if (titleStr.isEmpty) titleStr = _moduleTitleText(modules);
+
+      if (titleStr.isNotEmpty) {
+        if (descText.isNotEmpty && !descText.contains(titleStr)) {
+          descText = '$titleStr\n\n$descText';
+        } else if (descText.isEmpty) {
+          descText = summaryText.isNotEmpty ? '$titleStr\n\n$summaryText' : titleStr;
+        }
+      } else if (descText.isEmpty && summaryText.isNotEmpty) {
+        descText = summaryText;
+      }
+
+      // 1. Check opus['pics']
+      if (opus['pics'] is List) {
+        for (final p in opus['pics']) {
+          final pic = DynamicPicture.fromJson(p);
+          if (pic.url.isNotEmpty && !picturesList.any((e) => e.url == pic.url)) {
+            picturesList.add(pic);
+          }
+        }
+      }
+
+      // 2. Check opus['summary']['pics'] if picturesList is still empty
+      if (opus['summary'] is Map && opus['summary']['pics'] is List) {
+        for (final p in opus['summary']['pics']) {
+          final pic = DynamicPicture.fromJson(p);
+          if (pic.url.isNotEmpty && !picturesList.any((e) => e.url == pic.url)) {
+            picturesList.add(pic);
+          }
+        }
+      }
+    } else {
+      titleStr = json['title']?.toString() ?? '';
+      if (titleStr.isEmpty) titleStr = _moduleTitleText(modules);
+    }
+
+    // 完整正文段落：opus 详情接口放在 module_content，
+    // 列表/动态详情接口放在 opus.content / opus.paragraphs
+    final rawParagraphs =
+        (modules['module_content'] is Map ? (modules['module_content'] as Map)['paragraphs'] : null) ??
+            (opus?['content'] is Map ? (opus!['content'] as Map)['paragraphs'] : null) ??
+            opus?['paragraphs'] ??
+            (opus?['content'] is List ? opus!['content'] : null) ??
+            json['paragraphs'] ??
+            (json['content'] is Map ? (json['content'] as Map)['paragraphs'] : null);
+    parsedParagraphs.addAll(_parseRichParagraphs(rawParagraphs, picturesList));
 
     // Fallback pictures in module_dynamic or root json if major had no pictures
     if (picturesList.isEmpty) {
@@ -587,6 +825,15 @@ class DynamicItem {
       }
     }
 
+    // 摘要缺失时，用完整段落文本兜底，保证纯文本渲染路径也有内容
+    if (descText.trim().isEmpty) {
+      final paragraphText = parsedParagraphs
+          .where((p) => p.isText && p.text.isNotEmpty)
+          .map((p) => p.text)
+          .join('\n\n');
+      if (paragraphText.isNotEmpty) descText = paragraphText;
+    }
+
     return DynamicItem(
       id: idStr,
       type: typeStr,
@@ -600,6 +847,37 @@ class DynamicItem {
       commentId: cId,
       commentType: cType,
       paragraphs: parsedParagraphs,
+    );
+  }
+
+  /// 合并两个来源的动态数据：以 [detail]（通常是接口最新返回）为主，
+  /// 其缺失或为空的部分回退到 [fallback]（例如列表项），
+  /// 避免详情接口只返回摘要时把列表里的正文/图片覆盖成空。
+  static DynamicItem? merge(DynamicItem? detail, DynamicItem? fallback) {
+    if (detail == null) return fallback;
+    if (fallback == null) return detail;
+
+    final mergedPictures = <DynamicPicture>[];
+    for (final pic in [...detail.pictures, ...fallback.pictures]) {
+      if (pic.url.isEmpty) continue;
+      if (!mergedPictures.any((e) => e.url == pic.url)) mergedPictures.add(pic);
+    }
+
+    return DynamicItem(
+      id: detail.id.isNotEmpty ? detail.id : fallback.id,
+      type: detail.type.isNotEmpty ? detail.type : fallback.type,
+      title: detail.title.isNotEmpty ? detail.title : fallback.title,
+      author: (detail.author.mid > 0 || detail.author.name.isNotEmpty)
+          ? detail.author
+          : fallback.author,
+      text: detail.text.isNotEmpty ? detail.text : fallback.text,
+      video: detail.video ?? fallback.video,
+      pictures: mergedPictures,
+      stat: detail.stat.isEmpty && !fallback.stat.isEmpty ? fallback.stat : detail.stat,
+      orig: detail.orig ?? fallback.orig,
+      commentId: detail.commentId > 0 ? detail.commentId : fallback.commentId,
+      commentType: detail.commentType > 0 ? detail.commentType : fallback.commentType,
+      paragraphs: detail.paragraphs.isNotEmpty ? detail.paragraphs : fallback.paragraphs,
     );
   }
 }

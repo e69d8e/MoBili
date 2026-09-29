@@ -98,22 +98,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
       final detail = await DynamicApiService().getDynamicDetail(widget.dynamicId);
       if (mounted && detail != null) {
         setState(() {
-          final effectivePictures = detail.pictures.isNotEmpty
-              ? detail.pictures
-              : (_item?.pictures ?? const []);
-          final effectiveParagraphs = detail.paragraphs.isNotEmpty
-              ? detail.paragraphs
-              : (_item?.paragraphs ?? const []);
-          final effectiveTitle = detail.title.isNotEmpty
-              ? detail.title
-              : (_item?.title ?? '');
-          _item = detail.copyWith(
-            title: effectiveTitle,
-            pictures: effectivePictures,
-            paragraphs: effectiveParagraphs,
-          );
-          _isLiked = detail.stat.isLiked;
-          _likeCount = detail.stat.likeCount;
+          // 详情接口可能缺少列表里已有的数据（例如图文接口只回摘要），
+          // 合并后再展示，避免内容被覆盖成空或残缺。
+          final merged = DynamicItem.merge(detail, _item) ?? detail;
+          _item = merged;
+          _isLiked = merged.stat.isLiked;
+          _likeCount = merged.stat.likeCount;
           _isLoading = false;
         });
 
@@ -843,7 +833,61 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
     for (int i = 0; i < paragraphs.length; i++) {
       final p = paragraphs[i];
-      if (p.type == 4) {
+      if (p.isQuote) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFF5F6F8),
+                borderRadius: BorderRadius.circular(6),
+                border: Border(
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
+                    width: 3,
+                  ),
+                ),
+              ),
+              child: Text(
+                p.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.6,
+                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (p.isCode) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF16161C) : const Color(0xFFF2F3F5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Text(
+                  p.text,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    fontFamily: 'monospace',
+                    color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (p.type == 4) {
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -891,25 +935,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 child: Container(
                   width: double.infinity,
                   color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
-                  child: pic.aspectRatio != null
-                      ? AspectRatio(
-                          aspectRatio: pic.aspectRatio!.clamp(0.4, 2.5),
-                          child: NetworkImageView(
-                            url: pic.url,
-                            fit: BoxFit.cover,
-                            alignment: pic.isLongImage ? Alignment.topCenter : Alignment.center,
-                            memCacheWidth: 720,
-                          ),
-                        )
-                      : ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 380),
-                          child: NetworkImageView(
-                            url: pic.url,
-                            fit: BoxFit.contain,
-                            memCacheWidth: 720,
-                            memCacheHeight: 720,
-                          ),
-                        ),
+                  child: _buildPictureBlock(pic),
                 ),
               ),
             ),
@@ -945,56 +971,20 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
     if (count == 1) {
       final pic = pictures.first;
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final maxWidth = constraints.maxWidth;
-          double displayWidth;
-          double displayHeight;
-          Alignment alignment = Alignment.center;
-          final bool isLong = pic.isLongImage;
-
-          if (pic.aspectRatio != null) {
-            final ratio = pic.aspectRatio!;
-            if (ratio >= 1.0) {
-              displayWidth = maxWidth;
-              displayHeight = (displayWidth / ratio).clamp(140.0, 360.0);
-            } else {
-              displayWidth = (maxWidth * 0.75).clamp(180.0, 300.0);
-              if (isLong || ratio < 0.55) {
-                displayHeight = 320.0;
-                alignment = Alignment.topCenter;
-              } else {
-                displayHeight = (displayWidth / ratio).clamp(180.0, 360.0);
-              }
-            }
-          } else {
-            displayWidth = maxWidth;
-            displayHeight = 240.0;
-          }
-
-          return GestureDetector(
-            onTap: () => ImageViewer.show(
-              context,
-              pictures: pictures,
-              initialIndex: 0,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: displayWidth,
-                height: displayHeight,
-                color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
-                child: NetworkImageView(
-                  url: pic.url,
-                  width: displayWidth,
-                  height: displayHeight,
-                  fit: isLong ? BoxFit.cover : BoxFit.contain,
-                  alignment: alignment,
-                ),
-              ),
-            ),
-          );
-        },
+      return GestureDetector(
+        onTap: () => ImageViewer.show(
+          context,
+          pictures: pictures,
+          initialIndex: 0,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: double.infinity,
+            color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+            child: _buildPictureBlock(pic),
+          ),
+        ),
       );
     }
 
@@ -1039,6 +1029,36 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           }).toList(),
         );
       },
+    );
+  }
+
+  /// 详情页图片块：长图按原始比例完整展开（详情页以看全内容为准），
+  /// 普通图片限制极端比例，始终使用 contain 避免裁掉内容。
+  Widget _buildPictureBlock(DynamicPicture pic) {
+    final ratio = pic.aspectRatio;
+    if (ratio == null) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 380),
+        child: NetworkImageView(
+          url: pic.url,
+          fit: BoxFit.contain,
+          memCacheWidth: 720,
+          memCacheHeight: 720,
+        ),
+      );
+    }
+
+    final displayRatio = pic.isLongImage
+        ? ratio.clamp(0.02, 6.0)
+        : ratio.clamp(0.4, 2.5);
+    return AspectRatio(
+      aspectRatio: displayRatio,
+      child: NetworkImageView(
+        url: pic.url,
+        fit: BoxFit.contain,
+        alignment: pic.isLongImage ? Alignment.topCenter : Alignment.center,
+        memCacheWidth: 720,
+      ),
     );
   }
 
