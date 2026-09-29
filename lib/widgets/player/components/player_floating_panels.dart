@@ -5,7 +5,7 @@ import '../../../utils/formatters.dart';
 
 /// Floating popup panel for selecting playback quality.
 class PlayerQualityPanel extends StatelessWidget {
-  final List<({int quality, String description})> qualityItems;
+  final List<({int quality, String description, bool locked})> qualityItems;
   final int currentQuality;
   final Color accent;
   final bool isFull;
@@ -62,13 +62,34 @@ class PlayerQualityPanel extends StatelessWidget {
                     ),
                   ),
                   child: Center(
-                    child: Text(
-                      item.description,
-                      style: TextStyle(
-                        color: isSelected ? accent : Colors.white.withValues(alpha: 0.85),
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.description,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? accent
+                                  : Colors.white.withValues(
+                                      alpha: item.locked ? 0.55 : 0.85,
+                                    ),
+                              fontSize: 11,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                        // 未登录时 1080P 及以上标记锁定（点击仍会触发登录引导）
+                        if (item.locked) ...[
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 10,
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),

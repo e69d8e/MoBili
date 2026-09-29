@@ -16,7 +16,7 @@ class PlayerSettingsService {
   static const String _keyPreferredSubtitleLan = 'player_preferred_subtitle_lan';
 
   static bool _autoRotateFullScreen = true;
-  static int _defaultQuality = 80; // 80 = 1080P default (server auto-downgrades on fnval=0)
+  static int _defaultQuality = 80; // 80 = 1080P（需登录；登录后走 DASH 双流，未登录自动为 720P 单流）
   static double _defaultPlaybackSpeed = 1.0;
   static int _doubleTapSeekSeconds = 10;
   static bool _enableLongPressSpeed = true;

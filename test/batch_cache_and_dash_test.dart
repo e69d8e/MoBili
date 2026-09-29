@@ -17,9 +17,9 @@ void main() {
 
   group('AppConstants Tests', () {
     test('Version display reflects dynamic version constant', () {
-      expect(AppConstants.appVersion, equals('v1.0.5'));
-      expect(AppConstants.appBuildNumber, equals(6));
-      expect(AppConstants.versionDisplay, equals('v1.0.5 (Build 6)'));
+      expect(AppConstants.appVersion, equals('v1.0.6'));
+      expect(AppConstants.appBuildNumber, equals(7));
+      expect(AppConstants.versionDisplay, equals('v1.0.6 (Build 7)'));
     });
   });
 
@@ -175,6 +175,333 @@ void main() {
       expect(info.isDash, isFalse);
       expect(info.primaryVideoUrl, equals('https://upos.bilibili.com/video_720p.mp4'));
       expect(info.primaryAudioUrl, equals('https://upos.bilibili.com/video_720p.mp4'));
+    });
+
+    test('grantedQuality uses max DASH video track id, not the untrustworthy quality field', () {
+      // 实测：访客请求 qn=80 时响应体 quality=64，但 dash.video 只有 16/32
+      final guestDash = PlayUrlInfo(
+        currentQuality: 64,
+        format: 'dash',
+        timelength: 60000,
+        acceptQuality: [112, 80, 64, 32, 16],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 16,
+            baseUrl: 'https://upos.bilibili.com/v_360.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.64001E',
+            width: 640,
+            height: 360,
+            bandwidth: 300000,
+            backupUrls: const [],
+          ),
+          DashVideoItem(
+            id: 32,
+            baseUrl: 'https://upos.bilibili.com/v_480.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.64001F',
+            width: 854,
+            height: 480,
+            bandwidth: 700000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+      );
+      expect(guestDash.grantedQuality, equals(32));
+      expect(guestDash.maxSelectableQuality, equals(112));
+
+      // 渐进式单流以 currentQuality 为准
+      final progressive = PlayUrlInfo(
+        currentQuality: 64,
+        format: 'mp4',
+        timelength: 60000,
+        acceptQuality: [64, 16],
+        acceptDescription: const [],
+        durls: [
+          PlayUrlDurl(
+            order: 1,
+            length: 60000,
+            size: 100,
+            url: 'https://upos.bilibili.com/v.mp4',
+            backupUrls: const [],
+          ),
+        ],
+        supportFormats: const [],
+        videoCodecid: 7,
+      );
+      expect(progressive.grantedQuality, equals(64));
+      expect(progressive.maxSelectableQuality, equals(64));
+    });
+
+    test('requestedQuality clamps grantedQuality so 1080P is not mistaken for 1080P60/4K', () {
+      // 实测：DASH 的 dash.video 不受 qn 过滤，返回账号权限内的全部画质。
+      // 大会员请求 1080P(80) 时会同时拿到 112/116/120，必须按请求 qn 截断。
+      PlayUrlInfo vipInfo(int requestedQn) => PlayUrlInfo(
+        currentQuality: 116,
+        format: 'dash',
+        timelength: 60000,
+        acceptQuality: const [120, 116, 112, 80, 64, 32, 16],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          for (final id in [16, 32, 64, 80, 112, 116, 120])
+            DashVideoItem(
+              id: id,
+              baseUrl: 'https://upos.bilibili.com/v_$id.m4s',
+              mimeType: 'video/mp4',
+              codecs: 'avc1.640032',
+              width: 1920,
+              height: 1080,
+              bandwidth: id * 10000,
+              backupUrls: const [],
+            ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+        requestedQuality: requestedQn,
+      );
+
+      // 请求 1080P → 播放 1080P，而不是 1080P60 / 4K
+      final at1080 = vipInfo(80);
+      expect(at1080.grantedQuality, equals(80));
+      expect(at1080.primaryVideoUrl, equals('https://upos.bilibili.com/v_80.m4s'));
+
+      // 请求 1080P 60帧 → 播放 1080P 60帧
+      final at1080p60 = vipInfo(116);
+      expect(at1080p60.grantedQuality, equals(116));
+      expect(at1080p60.primaryVideoUrl, equals('https://upos.bilibili.com/v_116.m4s'));
+
+      // 请求 4K → 播放 4K
+      expect(vipInfo(120).grantedQuality, equals(120));
+
+      // 请求档位不存在（视频没有 60 帧）→ 退到不高于请求的最高档 1080P
+      final noSixty = PlayUrlInfo(
+        currentQuality: 80,
+        format: 'dash',
+        timelength: 60000,
+        acceptQuality: const [80, 64],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 80,
+            baseUrl: 'https://upos.bilibili.com/v_80.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640032',
+            width: 1920,
+            height: 1080,
+            bandwidth: 2000000,
+            backupUrls: const [],
+          ),
+          DashVideoItem(
+            id: 64,
+            baseUrl: 'https://upos.bilibili.com/v_64.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640028',
+            width: 1280,
+            height: 720,
+            bandwidth: 1200000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+        requestedQuality: 116,
+      );
+      expect(noSixty.grantedQuality, equals(80));
+      expect(noSixty.primaryVideoUrl, equals('https://upos.bilibili.com/v_80.m4s'));
+    });
+
+    test('requestedQuality 缺省时保持历史行为（取最高视频轨）', () {
+      final info = PlayUrlInfo(
+        currentQuality: 64,
+        format: 'dash',
+        timelength: 60000,
+        acceptQuality: const [116, 80],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 116,
+            baseUrl: 'https://upos.bilibili.com/v_116.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640033',
+            width: 1920,
+            height: 1080,
+            bandwidth: 5000000,
+            backupUrls: const [],
+          ),
+          DashVideoItem(
+            id: 80,
+            baseUrl: 'https://upos.bilibili.com/v_80.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640032',
+            width: 1920,
+            height: 1080,
+            bandwidth: 2000000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+      );
+      expect(info.grantedQuality, equals(116));
+    });
+
+    test('separateAudioUrl is null for progressive/durl and for DASH without audio tracks', () {
+      final progressive = PlayUrlInfo(
+        currentQuality: 80,
+        format: 'mp4',
+        timelength: 1000,
+        acceptQuality: const [80],
+        acceptDescription: const [],
+        durls: [
+          PlayUrlDurl(
+            order: 1,
+            length: 1000,
+            size: 1,
+            url: 'https://upos.bilibili.com/single.mp4',
+            backupUrls: const [],
+          ),
+        ],
+        supportFormats: const [],
+        videoTracks: const [],
+        audioTracks: [
+          DashAudioItem(
+            id: 30280,
+            baseUrl: 'https://upos.bilibili.com/a.m4s',
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.2',
+            bandwidth: 200000,
+            backupUrls: const [],
+          ),
+        ],
+        videoCodecid: 7,
+      );
+      expect(progressive.separateAudioUrl, isNull);
+
+      final dashNoAudio = PlayUrlInfo(
+        currentQuality: 80,
+        format: 'dash',
+        timelength: 1000,
+        acceptQuality: const [80],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 80,
+            baseUrl: 'https://upos.bilibili.com/v_1080.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640032',
+            width: 1920,
+            height: 1080,
+            bandwidth: 2000000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+      );
+      expect(dashNoAudio.separateAudioUrl, isNull);
+      // 无独立音轨时音频地址回退视频流本身（听视频模式的既有语义）
+      expect(dashNoAudio.primaryAudioUrl, equals('https://upos.bilibili.com/v_1080.m4s'));
+    });
+
+    test('bestAudioTrack prefers 30280 over server response order (30232 returned first)', () {
+      // 实测服务端顺序：30232 在 30280 之前
+      final info = PlayUrlInfo(
+        currentQuality: 80,
+        format: 'dash',
+        timelength: 1000,
+        acceptQuality: const [80],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: const [],
+        audioTracks: [
+          DashAudioItem(
+            id: 30232,
+            baseUrl: 'https://upos.bilibili.com/a_132k.m4s',
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.2',
+            bandwidth: 102931,
+            backupUrls: const [],
+          ),
+          DashAudioItem(
+            id: 30280,
+            baseUrl: 'https://upos.bilibili.com/a_192k.m4s',
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.2',
+            bandwidth: 203786,
+            backupUrls: const [],
+          ),
+          DashAudioItem(
+            id: 30216,
+            baseUrl: 'https://upos.bilibili.com/a_64k.m4s',
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.5',
+            bandwidth: 43962,
+            backupUrls: const [],
+          ),
+        ],
+        videoCodecid: 7,
+      );
+
+      expect(info.bestAudioTrack?.id, equals(30280));
+      expect(info.primaryAudioUrl, equals('https://upos.bilibili.com/a_192k.m4s'));
+      expect(info.separateAudioUrl, equals('https://upos.bilibili.com/a_192k.m4s'));
+    });
+
+    test('getVideoUrlForQuality falls back to nearest lower quality when target is not granted', () {
+      final info = PlayUrlInfo(
+        currentQuality: 64,
+        format: 'dash',
+        timelength: 1000,
+        acceptQuality: const [112, 80, 64, 32, 16],
+        acceptDescription: const [],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 64,
+            baseUrl: 'https://upos.bilibili.com/v_720.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640028',
+            width: 1280,
+            height: 720,
+            bandwidth: 900000,
+            backupUrls: const [],
+          ),
+          DashVideoItem(
+            id: 32,
+            baseUrl: 'https://upos.bilibili.com/v_480.m4s',
+            mimeType: 'video/mp4',
+            codecs: 'avc1.64001F',
+            width: 854,
+            height: 480,
+            bandwidth: 700000,
+            backupUrls: const [],
+          ),
+        ],
+        audioTracks: const [],
+        videoCodecid: 7,
+      );
+
+      // 请求 1080P 未授权 → 退到 720P（不高于目标的最高可用画质）
+      expect(info.getVideoUrlForQuality(80), equals('https://upos.bilibili.com/v_720.m4s'));
+      // grantedQuality=64 → primaryVideoUrl 也用 720P
+      expect(info.primaryVideoUrl, equals('https://upos.bilibili.com/v_720.m4s'));
+      // 请求 360P 未授权 → 退到 480P 之下的最低可用（480P 已是列表最低）
+      expect(info.getVideoUrlForQuality(16), equals('https://upos.bilibili.com/v_480.m4s'));
     });
   });
 

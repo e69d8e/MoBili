@@ -1,8 +1,33 @@
 import 'package:dio/dio.dart';
 import '../../models/video_model.dart';
 import '../../models/play_url_model.dart';
+import '../player/play_stream_planner.dart';
 import 'api_endpoints.dart';
 import 'bili_http_client.dart';
+
+/// 播放流请求结果：同时携带服务端错误码/文案，避免上层只能看到 null 而无法提示。
+class PlayStreamResult {
+  final PlayUrlInfo? info;
+  final int code;
+  final String message;
+  final PlayStreamKind kind;
+
+  const PlayStreamResult({
+    this.info,
+    required this.code,
+    this.message = '',
+    required this.kind,
+  });
+
+  bool get ok => info != null && code == 0;
+
+  /// 服务端实际授权的画质（DASH 以视频轨 id 为准）；失败为 0。
+  int get grantedQuality => info?.grantedQuality ?? 0;
+
+  @override
+  String toString() =>
+      'PlayStreamResult(${kind.name}, code=$code, granted=$grantedQuality, msg=$message)';
+}
 
 class VideoApiService {
   static final VideoApiService _instance = VideoApiService._internal();
@@ -121,13 +146,16 @@ class VideoApiService {
     }
   }
 
-  /// Get Video Stream Play URL (qn: 16=360P, 32=480P, 64=720P)
-  /// fnval=0 requests progressive stream with video+audio merged (zero delay, instant load, native playback)
-  Future<PlayUrlInfo?> getVideoPlayUrl({
+  /// 单次播放流请求（不含画质策略）。
+  ///
+  /// `fnval` 位掩码：0 = 渐进式音视频合一单流，16 = DASH，4048 = DASH 全开。
+  /// 返回体非 0 code（-10403 权限/付费、-352 风控等）也会带上文案，供 UI 提示。
+  Future<PlayStreamResult> requestPlayUrl({
     required String bvid,
     required int cid,
-    int qn = 64, // Default 720P (maximum progressive single-stream MP4)
-    int fnval = 0, // 0 = Progressive stream with video+audio
+    required int qn,
+    required int fnval,
+    PlayStreamKind kind = PlayStreamKind.progressive,
   }) async {
     try {
       final res = await BiliHttpClient().getWbi(
@@ -143,13 +171,95 @@ class VideoApiService {
         },
       );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        return PlayUrlInfo.fromJson(res.data['data']);
+      final data = res.data;
+      if (data is Map && data['code'] == 0 && data['data'] != null) {
+        final info = PlayUrlInfo.fromJson(
+          Map<String, dynamic>.from(data['data'] as Map),
+          // DASH 返回的是权限内全部画质，必须带上请求 qn 才能算出"实际播放的那一档"
+          requestedQuality: qn,
+        );
+        final videoUrl = info.primaryVideoUrl;
+        if (videoUrl == null || videoUrl.isEmpty) {
+          return PlayStreamResult(
+            code: -1,
+            message: '未获取到可播放的视频流',
+            kind: kind,
+          );
+        }
+        return PlayStreamResult(info: info, code: 0, kind: kind);
       }
-      return null;
+
+      final code = (data is Map && data['code'] is int) ? data['code'] as int : -1;
+      final msg = (data is Map) ? (data['message']?.toString() ?? '') : '';
+      return PlayStreamResult(
+        code: code,
+        message: msg.isNotEmpty ? msg : '播放地址获取失败',
+        kind: kind,
+      );
     } catch (_) {
-      return null;
+      return PlayStreamResult(code: -1, message: '网络异常，请稍后重试', kind: kind);
     }
+  }
+
+  /// 按画质策略获取播放流。
+  ///
+  /// - 访客 / 目标画质低于 1080P：渐进式单流（实测访客渐进式上限 720P，
+  ///   而访客 DASH 只有 480P，强行 DASH 反而下降）；
+  /// - 登录用户且目标 >= 1080P：先请求 DASH（fnval=4048），
+  ///   若实际授权不足 1080P（视频本身 ≤720P、或登录态失效被降级），
+  ///   自动二次请求渐进式单流，保证音视频合一与播放稳定。
+  Future<PlayStreamResult> fetchPlayStream({
+    required String bvid,
+    required int cid,
+    required int qn,
+  }) async {
+    final plan = planFirstRequest(isLoggedIn: BiliHttpClient().isLoggedIn, qn: qn);
+    final result = await requestPlayUrl(
+      bvid: bvid,
+      cid: cid,
+      qn: plan.qn,
+      fnval: plan.fnval,
+      kind: plan.kind,
+    );
+
+    if (!result.ok) return result;
+
+    final fallback = planProgressiveFallback(
+      currentKind: plan.kind,
+      grantedQuality: result.grantedQuality,
+      requestedQn: plan.qn,
+    );
+    if (fallback == null) return result;
+
+    final fallbackResult = await requestPlayUrl(
+      bvid: bvid,
+      cid: cid,
+      qn: fallback.qn,
+      fnval: fallback.fnval,
+      kind: fallback.kind,
+    );
+    // 渐进式回退失败时保留 DASH 结果：画质可能偏低，但至少可以播放
+    return fallbackResult.ok ? fallbackResult : result;
+  }
+
+  /// Get Video Stream Play URL (qn: 16=360P, 32=480P, 64=720P, 80=1080P)
+  /// fnval=0 requests progressive stream with video+audio merged (single-stream playback)
+  Future<PlayUrlInfo?> getVideoPlayUrl({
+    required String bvid,
+    required int cid,
+    int qn = 64, // Default 720P (maximum progressive single-stream MP4)
+    int fnval = 0, // 0 = Progressive stream with video+audio
+  }) async {
+    final result = await requestPlayUrl(
+      bvid: bvid,
+      cid: cid,
+      qn: qn,
+      fnval: fnval,
+      kind: fnval == kProgressiveFnval
+          ? PlayStreamKind.progressive
+          : PlayStreamKind.dash,
+    );
+    return result.ok ? result.info : null;
   }
 
   /// Get Dedicated Audio Stream Play URL (fnval=16 DASH audio stream)

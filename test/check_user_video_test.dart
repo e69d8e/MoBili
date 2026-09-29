@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobili/services/api/bili_http_client.dart';
 import 'package:mobili/services/api/video_api_service.dart';
 import 'package:mobili/services/player/bili_stream_proxy.dart';
+import 'package:mobili/services/player/play_stream_planner.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -80,5 +81,56 @@ void main() {
 
     expect(audioProxyUrl.startsWith('http://127.0.0.1:'), isTrue);
     expect(audioProxyUrl.contains('audio_'), isTrue);
+  });
+
+  test('Guest policy: progressive capped at 720P while DASH only grants up to 480P', () async {
+    const testBvid = 'BV1GJ411x7h7';
+    final detail = await VideoApiService().getVideoDetail(testBvid);
+    if (detail == null) {
+      print('Bilibili live API unreachable in current environment, skipping live network assertions.');
+      return;
+    }
+    final cid = detail.videoItem.cid;
+
+    // 首轮策略：访客请求 1080P 仍走渐进式单流（DASH 只会拿到 480P）
+    final plan = planFirstRequest(isLoggedIn: false, qn: 80);
+    expect(plan.kind, equals(PlayStreamKind.progressive));
+    expect(plan.fnval, equals(kProgressiveFnval));
+
+    final progressive = await VideoApiService().requestPlayUrl(
+      bvid: testBvid,
+      cid: cid,
+      qn: 80,
+      fnval: kProgressiveFnval,
+    );
+    if (!progressive.ok) {
+      print('Bilibili playurl API unreachable in current environment, skipping.');
+      return;
+    }
+    // 实测访客渐进式上限 720P(64)，音视频合一
+    expect(progressive.info!.durls.isNotEmpty, isTrue);
+    expect(progressive.grantedQuality, equals(64));
+
+    // 访客 DASH：accept_quality 声明 1080P，但 dash.video 实际只给到 480P
+    final dash = await VideoApiService().requestPlayUrl(
+      bvid: testBvid,
+      cid: cid,
+      qn: 80,
+      fnval: kDashFnvalAll,
+      kind: PlayStreamKind.dash,
+    );
+    if (!dash.ok) return;
+    expect(dash.grantedQuality, lessThanOrEqualTo(32));
+    expect(dash.info!.videoTracks.isNotEmpty, isTrue);
+    expect(dash.info!.separateAudioUrl, isNotNull);
+    // 授权不足 → 策略会触发渐进式回退
+    expect(
+      planProgressiveFallback(
+        currentKind: PlayStreamKind.dash,
+        grantedQuality: dash.grantedQuality,
+        requestedQn: 80,
+      ),
+      isNotNull,
+    );
   });
 }

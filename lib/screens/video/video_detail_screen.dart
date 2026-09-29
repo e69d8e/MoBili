@@ -20,6 +20,7 @@ import '../../services/api/danmaku_service.dart';
 import '../../services/api/subtitle_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/api/video_api_service.dart';
+import '../../services/player/play_stream_planner.dart';
 import '../../services/player_settings_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../services/storage/history_storage_service.dart';
@@ -74,6 +75,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   int _commentCountForLabel = 0;
   VideoDetail? _detail;
   PlayUrlInfo? _playUrlInfo;
+
+  /// 播放流获取失败时的提示（-10403 权限/付费、-352 风控、网络异常等）
+  String? _playUrlError;
   List<DanmakuItem> _danmakus = [];
   List<VideoItem> _relatedVideos = [];
 
@@ -303,6 +307,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     final localDanmaku = cacheService.getLocalDanmakuPath(cid);
 
     PlayUrlInfo? playUrl;
+    String? playUrlError;
     if (isCached && localVideo != null) {
       final cachedItem = cacheService.getCacheItem(_currentBvid, cid);
       final q = cachedItem?.quality ?? 80;
@@ -381,11 +386,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         );
       }
     } else {
-      playUrl = await VideoApiService().getVideoPlayUrl(
+      final result = await VideoApiService().fetchPlayStream(
         bvid: _currentBvid,
         cid: cid,
         qn: PlayerSettingsService.defaultQuality,
       );
+      playUrl = result.ok ? result.info : null;
+      playUrlError = result.ok
+          ? null
+          : (result.message.isNotEmpty ? result.message : '播放地址获取失败');
     }
 
     final danmakuListFuture = DanmakuService().getDanmakuList(
@@ -423,6 +432,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       if (!mounted || _videoLoadToken != token) return;
       setState(() {
         _playUrlInfo = playUrl;
+        _playUrlError = playUrlError;
         _danmakus = danmakuList;
         _localVideoPath = isCached ? localVideo : null;
         _subtitleTracks = subtitleTracks;
@@ -679,41 +689,94 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         ? _detail!.pages[_selectedPageIndex].cid
         : (_detail?.videoItem.cid ?? 0);
 
-    final playUrl = await VideoApiService().getVideoPlayUrl(
+    final result = await VideoApiService().fetchPlayStream(
       bvid: _currentBvid,
       cid: cid,
       qn: qn,
     );
-    if (playUrl != null && mounted && _videoLoadToken == token) {
-      // Save user's selected quality so it is remembered for future video playbacks
-      unawaited(PlayerSettingsService.setDefaultQuality(qn));
-      setState(() {
-        _playUrlInfo = playUrl;
-      });
-      if (playUrl.currentQuality == qn) {
-        AppToast.show(context, '已切换至 ${_getQualityName(qn)}');
-      } else if (playUrl.currentQuality < qn) {
-        if (!isLogin) {
-          AppToast.show(
-            context,
-            '${_getQualityName(qn)}需登录，已切换至 ${_getQualityName(playUrl.currentQuality)}',
-            icon: Icons.info_outline_rounded,
-          );
-        } else if (qn >= 112) {
-          AppToast.show(
-            context,
-            '${_getQualityName(qn)}需大会员，已切换至 ${_getQualityName(playUrl.currentQuality)}',
-            icon: Icons.info_outline_rounded,
-          );
-        } else {
-          AppToast.show(
-            context,
-            '已为当前流适配最高可用画质 ${_getQualityName(playUrl.currentQuality)}',
-            icon: Icons.info_outline_rounded,
-          );
-        }
+    if (!mounted || _videoLoadToken != token) return;
+
+    if (!result.ok || result.info == null) {
+      AppToast.show(
+        context,
+        result.message.isNotEmpty ? result.message : '画质切换失败，请稍后重试',
+        icon: Icons.error_outline_rounded,
+      );
+      return;
+    }
+
+    final playUrl = result.info!;
+    // DASH 下响应体的 quality 不可信，以实际授权的视频轨画质为准
+    final granted = playUrl.grantedQuality > 0 ? playUrl.grantedQuality : playUrl.currentQuality;
+    // 记住用户的画质选择；被降级时记住实际能用的画质，避免下次继续请求拿不到的画质
+    unawaited(PlayerSettingsService.setDefaultQuality(granted == qn ? qn : granted));
+    setState(() {
+      _playUrlInfo = playUrl;
+      _playUrlError = null;
+    });
+    if (granted == qn) {
+      AppToast.show(context, '已切换至 ${_getQualityName(qn)}');
+    } else if (granted < qn) {
+      if (!isLogin) {
+        AppToast.show(
+          context,
+          '${_getQualityName(qn)}需登录，已切换至 ${_getQualityName(granted)}',
+          icon: Icons.info_outline_rounded,
+        );
+      } else if (qn >= 112) {
+        AppToast.show(
+          context,
+          '${_getQualityName(qn)}需大会员，已切换至 ${_getQualityName(granted)}',
+          icon: Icons.info_outline_rounded,
+        );
+      } else {
+        AppToast.show(
+          context,
+          '已为当前流适配最高可用画质 ${_getQualityName(granted)}',
+          icon: Icons.info_outline_rounded,
+        );
       }
     }
+  }
+
+  /// DASH 伴音轨初始化失败：保持进度回退到渐进式单流，避免"有画面没声音"
+  Future<void> _fallbackToProgressiveStream() async {
+    final token = ++_videoLoadToken;
+    final cid = _detail != null && _detail!.pages.isNotEmpty
+        ? _detail!.pages[_selectedPageIndex].cid
+        : (_detail?.videoItem.cid ?? 0);
+    if (cid <= 0) return;
+
+    final position = _playerKey.currentState?.controller?.value.position;
+    final result = await VideoApiService().requestPlayUrl(
+      bvid: _currentBvid,
+      cid: cid,
+      qn: PlayerSettingsService.defaultQuality,
+      fnval: kProgressiveFnval,
+      kind: PlayStreamKind.progressive,
+    );
+
+    if (!mounted || _videoLoadToken != token) return;
+
+    if (!result.ok || result.info == null) {
+      AppToast.show(
+        context,
+        '伴音轨加载失败，且回退播放地址失败，请重试',
+        icon: Icons.error_outline_rounded,
+      );
+      return;
+    }
+
+    setState(() {
+      _playUrlInfo = result.info;
+      _overrideInitialPosition = position;
+      _playUrlError = null;
+    });
+    AppToast.show(
+      context,
+      '伴音轨加载失败，已切换至 ${_getQualityName(result.grantedQuality)} 单流播放',
+      icon: Icons.info_outline_rounded,
+    );
   }
 
   String _getQualityName(int q) {
@@ -1305,6 +1368,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         currentSubtitleTrack: _currentSubtitleTrack,
         onSubtitleTrackChanged: _onSubtitleTrackChanged,
         onSubtitleTap: _showSubtitleSelector,
+        onAudioTrackFailed: _fallbackToProgressiveStream,
       );
     }
 
@@ -1323,16 +1387,70 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 memCacheHeight: 360,
               ),
             Container(color: Colors.black45),
-            Center(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+            if (_playUrlError != null)
+              // 播放流获取失败（权限/付费/风控/网络）：给出可重试的明确提示
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Colors.white70,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _playUrlError!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final cid = _detail != null && _detail!.pages.isNotEmpty
+                              ? _detail!.pages[_selectedPageIndex].cid
+                              : (_detail?.videoItem.cid ?? 0);
+                          if (cid > 0) {
+                            setState(() {
+                              _playUrlInfo = null;
+                              _playUrlError = null;
+                            });
+                            _loadPlayUrlAndDanmaku(cid);
+                          }
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('重试', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white38),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Center(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                  ),
                 ),
               ),
-            ),
             Positioned(
               top: 8,
               left: 8,

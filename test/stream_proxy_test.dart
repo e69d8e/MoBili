@@ -128,5 +128,78 @@ void main() {
       client.close(force: true);
       await upstream.close(force: true);
     });
+
+    test('getLocalFileProxyUrl returns loopback url with audio_ local prefix', () async {
+      final dir = await Directory.systemTemp.createTemp('mobili_proxy_test');
+      final file = File('${dir.path}/audio_BV1_test_123.m4s');
+      await file.writeAsBytes(List<int>.filled(10, 7));
+
+      final proxy = BiliStreamProxy();
+      final proxyUrl = await proxy.getLocalFileProxyUrl(file.path, isAudio: true);
+
+      expect(proxyUrl.startsWith('http://127.0.0.1:'), isTrue);
+      expect(proxyUrl.endsWith('.mp4'), isTrue);
+      expect(proxyUrl.contains('locala_'), isTrue);
+
+      await dir.delete(recursive: true);
+    });
+
+    test('local file proxy honours Range and serves audio/mp4', () async {
+      final dir = await Directory.systemTemp.createTemp('mobili_proxy_test');
+      final bytes = List<int>.generate(100, (i) => i);
+      final file = File('${dir.path}/audio_BV1_range_1.m4s');
+      await file.writeAsBytes(bytes);
+
+      final proxy = BiliStreamProxy();
+      final proxyUrl = await proxy.getLocalFileProxyUrl(file.path, isAudio: true);
+
+      final client = HttpClient();
+
+      // 全量请求：200 + audio/mp4 + 完整字节
+      final fullReq = await client.getUrl(Uri.parse(proxyUrl));
+      final fullRes = await fullReq.close();
+      expect(fullRes.statusCode, equals(HttpStatus.ok));
+      expect(fullRes.headers.value(HttpHeaders.contentTypeHeader), equals('audio/mp4'));
+      expect(fullRes.headers.value(HttpHeaders.acceptRangesHeader), equals('bytes'));
+      expect(fullRes.headers.value(HttpHeaders.contentLengthHeader), equals('100'));
+      final fullBody = await fullRes.fold<List<int>>([], (p, e) => p..addAll(e));
+      expect(fullBody, equals(bytes));
+
+      // 区间请求：206 + Content-Range + 指定字节
+      final rangeReq = await client.getUrl(Uri.parse(proxyUrl));
+      rangeReq.headers.set(HttpHeaders.rangeHeader, 'bytes=0-3');
+      final rangeRes = await rangeReq.close();
+      expect(rangeRes.statusCode, equals(HttpStatus.partialContent));
+      expect(rangeRes.headers.value(HttpHeaders.contentRangeHeader), equals('bytes 0-3/100'));
+      expect(rangeRes.headers.value(HttpHeaders.contentLengthHeader), equals('4'));
+      final rangeBody = await rangeRes.fold<List<int>>([], (p, e) => p..addAll(e));
+      expect(rangeBody, equals([0, 1, 2, 3]));
+
+      // 越界区间：416
+      final badReq = await client.getUrl(Uri.parse(proxyUrl));
+      badReq.headers.set(HttpHeaders.rangeHeader, 'bytes=500-600');
+      final badRes = await badReq.close();
+      expect(badRes.statusCode, equals(HttpStatus.requestedRangeNotSatisfiable));
+      await badRes.drain<void>();
+
+      client.close(force: true);
+      await dir.delete(recursive: true);
+    });
+
+    test('local file proxy returns 404 for a missing file', () async {
+      final dir = await Directory.systemTemp.createTemp('mobili_proxy_test');
+      final missing = '${dir.path}/video_missing_1.m4s';
+
+      final proxy = BiliStreamProxy();
+      final proxyUrl = await proxy.getLocalFileProxyUrl(missing);
+
+      final client = HttpClient();
+      final req = await client.getUrl(Uri.parse(proxyUrl));
+      final res = await req.close();
+      expect(res.statusCode, equals(HttpStatus.notFound));
+
+      client.close(force: true);
+      await dir.delete(recursive: true);
+    });
   });
 }

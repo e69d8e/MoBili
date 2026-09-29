@@ -430,21 +430,25 @@ class VideoCacheService extends ChangeNotifier {  static final VideoCacheService
           throw Exception('无法获取音频流地址');
         }
       } else {
-        final playUrlInfo = await VideoApiService().getVideoPlayUrl(
+        // 与在线播放同一套画质策略：登录用户 >= 1080P 走 DASH，
+        // 否则渐进式单流（实测渐进式上限 720P，访客 DASH 只有 480P）
+        final result = await VideoApiService().fetchPlayStream(
           bvid: task.bvid,
           cid: task.cid,
           qn: task.quality,
         );
+        final playUrlInfo = result.ok ? result.info : null;
 
         if (playUrlInfo != null) {
-          currentQuality = playUrlInfo.currentQuality;
-          if (playUrlInfo.isDash &&
-              playUrlInfo.primaryVideoUrl != null &&
-              playUrlInfo.primaryAudioUrl != null) {
+          currentQuality = playUrlInfo.grantedQuality > 0
+              ? playUrlInfo.grantedQuality
+              : playUrlInfo.currentQuality;
+          final separateAudio = playUrlInfo.separateAudioUrl;
+          if (playUrlInfo.primaryVideoUrl != null) {
             videoUrl = playUrlInfo.primaryVideoUrl!;
-            audioUrl = playUrlInfo.primaryAudioUrl!;
-          } else if (playUrlInfo.primaryVideoUrl != null) {
-            videoUrl = playUrlInfo.primaryVideoUrl!;
+            if (separateAudio != null) {
+              audioUrl = separateAudio;
+            }
           }
 
           final sf = playUrlInfo.supportFormats.firstWhere(

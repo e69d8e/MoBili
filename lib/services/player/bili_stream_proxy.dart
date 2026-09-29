@@ -15,8 +15,12 @@ class BiliStreamProxy {
 
   HttpServer? _server;
   int _port = 0;
+
+  /// token -> 远程 URL，或 `local:<绝对路径>`（本地文件映射）
   final Map<String, String> _urlMap = {};
   HttpClient? _httpClient;
+
+  static const String _localPrefix = 'local:';
 
   HttpClient get _client {
     return _httpClient ??= HttpClient()
@@ -59,6 +63,15 @@ class BiliStreamProxy {
     if (method != 'GET' && method != 'HEAD') {
       request.response.statusCode = HttpStatus.methodNotAllowed;
       await request.response.close();
+      return;
+    }
+
+    if (targetUrl.startsWith(_localPrefix)) {
+      await _serveLocalFile(
+        request,
+        targetUrl.substring(_localPrefix.length),
+        token.startsWith('locala_'),
+      );
       return;
     }
 
@@ -147,6 +160,116 @@ class BiliStreamProxy {
     }
     _urlMap[key] = remoteUrl;
     return 'http://127.0.0.1:$_port/$key.mp4';
+  }
+
+  /// 把本地文件映射为本地 HTTP 播放地址（`.mp4` 扩展名 + 正确 MIME + Range 支持）。
+  ///
+  /// 缓存下来的 DASH 轨道是 `.m4s` 文件，iOS AVPlayer 会因未知扩展名拒绝加载，
+  /// 且纯音频轨需要 `audio/mp4` 声明，因此本地音轨也统一走本地服务。
+  Future<String> getLocalFileProxyUrl(String filePath, {bool isAudio = false}) async {
+    if (kIsWeb || filePath.isEmpty) return filePath;
+    final cleanPath = filePath.startsWith('file://')
+        ? (Uri.tryParse(filePath)?.toFilePath() ?? filePath)
+        : filePath;
+
+    if (_server == null) {
+      await start();
+    }
+    if (_server == null) {
+      return Uri.file(cleanPath).toString(); // fallback if bind failed
+    }
+
+    final prefix = isAudio ? 'locala' : 'localv';
+    final hash = md5.convert(utf8.encode(cleanPath)).toString();
+    final key = '${prefix}_$hash';
+
+    if (_urlMap.length > 200) {
+      _urlMap.remove(_urlMap.keys.first);
+    }
+    _urlMap[key] = '$_localPrefix$cleanPath';
+    return 'http://127.0.0.1:$_port/$key.mp4';
+  }
+
+  /// 服务本地文件，支持单区间 Range 请求（播放器 seek 依赖）。
+  Future<void> _serveLocalFile(
+    HttpRequest request,
+    String filePath,
+    bool isAudio,
+  ) async {
+    final response = request.response;
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) {
+        response.statusCode = HttpStatus.notFound;
+        await response.close();
+        return;
+      }
+
+      final length = await file.length();
+      response.headers.set(
+        HttpHeaders.contentTypeHeader,
+        isAudio ? 'audio/mp4' : 'video/mp4',
+      );
+      response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+      response.headers.set('Access-Control-Allow-Origin', '*');
+
+      int start = 0;
+      int end = length - 1;
+      final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
+      final hasRange = rangeHeader != null && rangeHeader.startsWith('bytes=');
+
+      if (hasRange && length > 0) {
+        final spec = rangeHeader.substring('bytes='.length).split(',').first.trim();
+        final parts = spec.split('-');
+        final rawStart = parts.isNotEmpty ? parts[0].trim() : '';
+        final rawEnd = parts.length > 1 ? parts[1].trim() : '';
+        if (rawStart.isEmpty && rawEnd.isNotEmpty) {
+          // 后缀区间：bytes=-N（取末尾 N 字节）
+          final suffix = int.tryParse(rawEnd) ?? 0;
+          start = suffix >= length ? 0 : length - suffix;
+          end = length - 1;
+        } else {
+          start = int.tryParse(rawStart) ?? 0;
+          end = rawEnd.isEmpty ? length - 1 : (int.tryParse(rawEnd) ?? length - 1);
+          if (end > length - 1) end = length - 1;
+        }
+      }
+
+      if (length == 0 || start > end || start >= length) {
+        response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+        response.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$length');
+        await response.close();
+        return;
+      }
+
+      final count = end - start + 1;
+      response.statusCode = hasRange ? HttpStatus.partialContent : HttpStatus.ok;
+      if (hasRange) {
+        response.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$length',
+        );
+      }
+      response.headers.set(HttpHeaders.contentLengthHeader, '$count');
+
+      if (request.method == 'HEAD') {
+        await response.close();
+        return;
+      }
+
+      try {
+        await response.addStream(file.openRead(start, end + 1));
+      } catch (_) {
+        // 播放器提前断开（seek/缓冲已满足）
+      }
+      await response.close();
+    } catch (e) {
+      debugPrint('BiliStreamProxy _serveLocalFile error: $e');
+      try {
+        response.statusCode = HttpStatus.internalServerError;
+        await response.close();
+      } catch (_) {}
+    }
   }
 
   void dispose() {
