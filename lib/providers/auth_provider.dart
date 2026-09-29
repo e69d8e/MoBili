@@ -40,6 +40,9 @@ class AuthProvider extends ChangeNotifier {
     try {
       await _biliHttpClient.init();
       await refreshUserInfo();
+    } catch (e) {
+      // 启动时网络不可用：保持本地缓存的登录态，后续请求会触发 init 重试
+      debugPrint('AuthProvider: network init failed: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -55,6 +58,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshUserInfo() async {
     final hadLoginCookies = _biliHttpClient.isLoggedIn;
     try {
+      // getUserNav 网络异常时抛出：这里保持现有登录态，不把断网误报为"登录已过期"
       _userInfo = await _userApiService.getUserNav();
       if (hadLoginCookies && !_userInfo.isLogin) {
         _isCookieExpired = true;
@@ -78,6 +82,9 @@ class AuthProvider extends ChangeNotifier {
     required VoidCallback onSuccess,
   }) {
     bool cancelled = false;
+    // 慢网时上一轮轮询未返回则跳过本轮，防止请求重叠导致 onSuccess 触发两次
+    bool inFlight = false;
+    bool succeeded = false;
     Timer? timer;
 
     timer = Timer.periodic(const Duration(seconds: 2), (t) async {
@@ -85,17 +92,22 @@ class AuthProvider extends ChangeNotifier {
         t.cancel();
         return;
       }
+      if (inFlight || succeeded) return;
+      inFlight = true;
 
       final result = await _authApiService.pollQrCode(qrcodeKey);
+      inFlight = false;
       if (cancelled) return;
 
       onStatus(result);
 
       if (result.isSuccess) {
+        if (succeeded) return;
+        succeeded = true;
         t.cancel();
         _isCookieExpired = false;
         await refreshUserInfo();
-        onSuccess();
+        if (!cancelled) onSuccess();
       } else if (result.isExpired) {
         t.cancel();
       }

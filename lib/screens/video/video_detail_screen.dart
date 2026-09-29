@@ -69,6 +69,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     with TickerProviderStateMixin, RouteAware {
   late TabController _tabController;
   late final AnimationController _tripleComboAnimController;
+  final GlobalKey<_VideoInfoTabState> _infoTabKey = GlobalKey<_VideoInfoTabState>();
+  // 评论数用于 Tab 标签展示，由评论子组件回报
+  int _commentCountForLabel = 0;
   VideoDetail? _detail;
   PlayUrlInfo? _playUrlInfo;
   List<DanmakuItem> _danmakus = [];
@@ -87,29 +90,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   Duration? _overrideInitialPosition;
   bool _hasSwitchedEpisodeOrPart = false;
 
-  // Comments
-  List<CommentItem> _comments = [];
-  int _commentNextCursor = 0;
-  String _commentNextOffset = '';
-  bool _commentIsEnd = false;
-  int _commentTotalCount = 0;
-  int _commentMode = 3; // 3: hot, 2: time
-  int _commentPage = 1;
-  bool _commentInMode2Stream = false;
-  bool _commentLoading = false;
-  bool _commentLoadingMore = false;
-
   late String _currentBvid;
   int _selectedPageIndex = 0;
   String? _localVideoPath;
-  bool _isLiked = false;
-  bool _isFav = false;
-  bool _isFollowing = false;
-  int _coinCount = 0;
-  int _upFans = 0;
-  bool _isInWatchLater = false;
-  bool _descExpanded = false;
   bool _isLoading = true;
+  bool _detailError = false;
   bool _isPlayerFullScreen = false;
 
   @override
@@ -128,7 +113,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           duration: const Duration(milliseconds: 1100),
         )..addStatusListener((status) {
           if (status == AnimationStatus.completed) {
-            _triggerTriple();
+            _infoTabKey.currentState?._triggerTriple();
             _tripleComboAnimController.reset();
           }
         });
@@ -190,6 +175,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   }
 
   Future<void> _loadAll() async {
+    // 作废在途的详情/流加载，防止快速切换视频时旧响应覆盖新状态
+    _videoLoadToken++;
+    _detailLoadToken++;
+    final detailToken = _detailLoadToken;
     setState(() => _isLoading = true);
 
     // 0. Instant offline cache detection & zero-latency local playback
@@ -260,13 +249,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     // 1. Fetch Online Video Detail
     try {
       final detail = await VideoApiService().getVideoDetail(_currentBvid);
-      if (detail != null && mounted) {
+      if (detail != null && mounted && _detailLoadToken == detailToken) {
         setState(() {
           _detail = detail;
         });
 
-        // 2. Fetch User-Video Relation (attention/follow, like, fav, coin) & UP fans
-        _loadRelation();
+        // 2. Relation / related / comments are self-managed by the tab child widgets
 
         // 3. If stream wasn't loaded from cache, load online stream
         if (_playUrlInfo == null) {
@@ -277,17 +265,24 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         }
 
         // 4. Fetch Related Videos
-        VideoApiService().getRelatedVideos(_currentBvid).then((list) {
-          if (mounted) setState(() => _relatedVideos = list);
+        final relatedBvid = _currentBvid;
+        VideoApiService().getRelatedVideos(relatedBvid).then((list) {
+          if (mounted && relatedBvid == _currentBvid) {
+            setState(() => _relatedVideos = list);
+          }
         });
 
-        // 5. Fetch Comments with the real video AID
-        _loadComments(detail.videoItem.aid, refresh: true);
+        _detailError = false;
       } else {
-        _loadRelation();
+        // 在线详情获取失败；若也没有本地/初始数据可展示，则标记错误态
+        if (_detail == null && widget.initialVideo == null && mounted) {
+          setState(() => _detailError = true);
+        }
       }
     } catch (_) {
-      _loadRelation();
+      if (_detail == null && widget.initialVideo == null && mounted) {
+        setState(() => _detailError = true);
+      }
     }
 
     if (mounted) {
@@ -295,40 +290,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
   }
 
-  Future<void> _loadRelation() async {
-    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid;
-    final relation = await VideoApiService().getVideoRelation(
-      bvid: _currentBvid,
-      aid: aid,
-    );
-    if (relation != null && mounted) {
-      setState(() {
-        _isFollowing = relation.attention;
-        _isLiked = relation.like;
-        _isFav = relation.favorite;
-        _coinCount = relation.coin;
-      });
-    }
-    if (aid != null && aid > 0) {
-      final inWL = await UserApiService().isInWatchLater(aid);
-      if (mounted) {
-        setState(() => _isInWatchLater = inWL);
-      }
-    }
-    final ownerMid =
-        _detail?.videoItem.owner.mid ?? widget.initialVideo?.owner.mid;
-    if (ownerMid != null && ownerMid > 0) {
-      UserApiService().getUserRelationStat(ownerMid).then((stat) {
-        if (stat != null && mounted) {
-          setState(() {
-            _upFans = stat.follower;
-          });
-        }
-      });
-    }
-  }
-
   int _videoLoadToken = 0;
+
+  /// 详情/相关视频加载代数：与 [_videoLoadToken] 分开，避免流加载与详情加载互相作废
+  int _detailLoadToken = 0;
 
   Future<void> _loadPlayUrlAndDanmaku(int cid) async {
     final token = ++_videoLoadToken;
@@ -454,6 +419,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       if (listenProvider.isPlaying || listenProvider.controller != null) {
         await listenProvider.stopAndClear();
       }
+      // stopAndClear 期间可能已切集/退出页面，落地前必须复查
+      if (!mounted || _videoLoadToken != token) return;
       setState(() {
         _playUrlInfo = playUrl;
         _danmakus = danmakuList;
@@ -812,15 +779,19 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       _currentSubtitleTrack = null;
       _currentSubtitleData = null;
       _isSubtitleEnabled = false;
-      _comments = [];
       _relatedVideos = [];
       _overrideInitialPosition = null;
       _lastReportedPosition = Duration.zero;
       _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
     });
 
+    // 作废在途请求并记录本次切换的代数，防止快速连点时旧详情/旧流覆盖新状态
+    _videoLoadToken++;
+    _detailLoadToken++;
+    final detailToken = _detailLoadToken;
+
     final detail = await VideoApiService().getVideoDetail(_currentBvid);
-    if (detail != null && mounted) {
+    if (detail != null && mounted && _detailLoadToken == detailToken) {
       setState(() {
         _detail = detail;
       });
@@ -830,12 +801,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           : (ep.cid != 0 ? ep.cid : detail.videoItem.cid);
       await _loadPlayUrlAndDanmaku(cid);
 
-      VideoApiService().getRelatedVideos(_currentBvid).then((list) {
-        if (mounted) setState(() => _relatedVideos = list);
+      final relatedBvid = _currentBvid;
+      VideoApiService().getRelatedVideos(relatedBvid).then((list) {
+        if (mounted && relatedBvid == _currentBvid) {
+          setState(() => _relatedVideos = list);
+        }
       });
 
-      _loadComments(detail.videoItem.aid, refresh: true);
-      _loadRelation();
     }
 
     if (mounted) {
@@ -858,7 +830,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       _isLoading = true;
       _playUrlInfo = null;
       _danmakus = [];
-      _comments = [];
       _relatedVideos = [];
       _overrideInitialPosition = effectiveProgress > 0
           ? Duration(seconds: effectiveProgress)
@@ -875,123 +846,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       currentBvid: _currentBvid,
       onSelectEpisode: (ep) => _switchEpisode(ep),
     );
-  }
-
-  Future<void> _loadComments(int aid, {bool refresh = false}) async {
-    if (_commentLoading) return;
-    setState(() {
-      _commentLoading = true;
-      if (refresh) {
-        _commentPage = 1;
-        _commentInMode2Stream = false;
-        _commentNextCursor = 0;
-        _commentNextOffset = '';
-        _commentIsEnd = false;
-      }
-    });
-
-    final res = await CommentApiService().getComments(
-      oid: aid,
-      mode: _commentMode,
-      next: _commentNextCursor,
-      nextOffset: _commentNextOffset,
-      pn: _commentPage,
-    );
-
-    if (mounted) {
-      setState(() {
-        if (refresh || _comments.isEmpty) {
-          _comments = res.replies;
-        } else {
-          final existingIds = _comments.map((c) => c.rpid).toSet();
-          for (final r in res.replies) {
-            if (!existingIds.contains(r.rpid)) {
-              _comments.add(r);
-            }
-          }
-        }
-        _commentNextCursor = res.nextCursor;
-        _commentNextOffset = res.nextOffset;
-        _commentIsEnd =
-            res.isEnd &&
-            (_comments.length >= res.totalCount || res.replies.isEmpty);
-        if (res.totalCount > 0) {
-          _commentTotalCount = res.totalCount;
-        }
-        _commentLoading = false;
-      });
-    }
-  }
-
-  void _loadMoreComments() async {
-    if (_commentLoadingMore ||
-        _commentLoading ||
-        _commentIsEnd ||
-        _detail == null) {
-      return;
-    }
-    setState(() => _commentLoadingMore = true);
-
-    _commentPage++;
-
-    int effectiveMode = _commentMode;
-    int effectiveNext = _commentNextCursor;
-    String effectiveOffset = _commentNextOffset;
-
-    // If we started with hot preview (mode=3) and there is no cursor offset, transition to all comments stream
-    if (_commentMode == 3 &&
-        !_commentInMode2Stream &&
-        effectiveOffset.isEmpty &&
-        effectiveNext == 0) {
-      effectiveMode = 2;
-      effectiveNext = 0;
-      _commentInMode2Stream = true;
-    }
-
-    final res = await CommentApiService().getComments(
-      oid: _detail!.videoItem.aid,
-      mode: effectiveMode,
-      next: effectiveNext,
-      nextOffset: effectiveOffset,
-      pn: _commentPage,
-    );
-
-    if (mounted) {
-      setState(() {
-        final existingIds = _comments.map((c) => c.rpid).toSet();
-        int addedCount = 0;
-        for (final r in res.replies) {
-          if (!existingIds.contains(r.rpid)) {
-            _comments.add(r);
-            addedCount++;
-          }
-        }
-        _commentNextCursor = res.nextCursor;
-        _commentNextOffset = res.nextOffset;
-        _commentIsEnd =
-            res.isEnd ||
-            (res.replies.isEmpty || addedCount == 0) ||
-            (_commentTotalCount > 0 && _comments.length >= _commentTotalCount);
-        if (res.totalCount > 0) {
-          _commentTotalCount = res.totalCount;
-        }
-        _commentLoadingMore = false;
-      });
-    }
-  }
-
-  void _switchCommentMode(int mode) {
-    if (_commentMode == mode || _detail == null) return;
-    setState(() {
-      _commentMode = mode;
-      _comments = [];
-      _commentPage = 1;
-      _commentInMode2Stream = false;
-      _commentNextCursor = 0;
-      _commentNextOffset = '';
-      _commentIsEnd = false;
-    });
-    _loadComments(_detail!.videoItem.aid, refresh: true);
   }
 
   void _navigateToUpSpace(int mid) async {
@@ -1031,7 +885,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         .push(MaterialPageRoute(builder: (ctx) => UpSpaceScreen(mid: mid)));
 
     if (mounted) {
-      _loadRelation();
+      _infoTabKey.currentState?._loadRelation();
 
       // On return from UP space: check if ListenVideoProvider was playing this video
       final listenProvider = context.read<ListenVideoProvider>();
@@ -1049,60 +903,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
   }
 
-  void _toggleLike() async {
-    HapticFeedback.lightImpact();
-    setState(() => _isLiked = !_isLiked);
-    final ok = await VideoApiService().likeVideo(_currentBvid, like: _isLiked);
-    if (!ok && mounted) {
-      AppToast.show(context, '请先登录', icon: Icons.info_outline_rounded);
-      setState(() => _isLiked = !_isLiked);
-    }
-  }
-
-  void _triggerTriple() async {
-    HapticFeedback.heavyImpact();
-    final ok = await VideoApiService().tripleCombo(_currentBvid);
-    if (mounted) {
-      if (ok) {
-        setState(() {
-          _isLiked = true;
-          _isFav = true;
-          _coinCount = (_coinCount + 1).clamp(1, 2);
-        });
-        AppToast.show(context, '三连成功！', icon: Icons.auto_awesome_rounded);
-      } else {
-        AppToast.show(context, '三连失败，请先登录', icon: Icons.info_outline_rounded);
-      }
-    }
-  }
-
-  void _showFavoriteBottomSheet() {
-    final auth = context.read<AuthProvider>();
-    if (!auth.isLogin || auth.userInfo.mid <= 0) {
-      showDialog(context: context, builder: (ctx) => const LoginDialog());
-      return;
-    }
-
-    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid ?? 0;
-    if (aid <= 0) return;
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-
-    VideoFavoriteFolderSheet.show(
-      context,
-      aid: aid,
-      mid: auth.userInfo.mid,
-      isDark: isDark,
-      primaryColor: primaryColor,
-      onFavStatusChanged: (isFav) {
-        setState(() {
-          _isFav = isFav;
-        });
-      },
-    );
-  }
-
   void _showCacheBottomSheet() {
     if (_detail == null) {
       AppToast.show(context, '视频数据加载中，请稍候');
@@ -1116,243 +916,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     );
   }
 
-  Future<void> _executeAddCoin(int selectedCoins, bool selectLike) async {
-    final res = await VideoApiService().addCoin(
-      bvid: _currentBvid,
-      multiply: selectedCoins,
-      selectLike: selectLike,
-    );
-    if (!mounted) return;
-    if (res.success) {
-      setState(() {
-        _coinCount += selectedCoins;
-        if (selectLike || res.liked) {
-          _isLiked = true;
-        }
-      });
-      AppToast.show(context, '投币成功！', icon: Icons.monetization_on_rounded);
-    } else {
-      AppToast.show(context, res.message, icon: Icons.info_outline_rounded);
-    }
-  }
-
-  void _showCoinDialog() {
-    VideoCoinDialog.show(
-      context,
-      coinCount: _coinCount,
-      onConfirm: (selectedCoins, selectLike) =>
-          _executeAddCoin(selectedCoins, selectLike),
-    );
-  }
-
-  void _toggleFollow(int mid) async {
-    setState(() => _isFollowing = !_isFollowing);
-    final ok = await UserApiService().modifyRelation(
-      mid,
-      act: _isFollowing ? 1 : 2,
-    );
-    if (!ok && mounted) {
-      setState(() => _isFollowing = !_isFollowing);
-      AppToast.show(context, '操作失败，请先登录', icon: Icons.info_outline_rounded);
-    } else if (mounted) {
-      AppToast.show(context, _isFollowing ? '已关注' : '已取消关注');
-    }
-  }
-
-  void _toggleWatchLater() async {
-    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid ?? 0;
-    if (aid == 0) return;
-
-    if (_isInWatchLater) {
-      final ok = await UserApiService().deleteFromWatchLater(aid: aid);
-      if (mounted) {
-        if (ok) {
-          setState(() => _isInWatchLater = false);
-          AppToast.show(context, '已从稍后看移除', icon: Icons.check_circle_rounded);
-        } else {
-          AppToast.show(context, '移除失败，请先登录', icon: Icons.info_outline_rounded);
-        }
-      }
-    } else {
-      final ok = await UserApiService().addToWatchLater(
-        aid: aid,
-        bvid: _currentBvid,
-      );
-      if (mounted) {
-        if (ok) {
-          setState(() => _isInWatchLater = true);
-          AppToast.show(context, '已添加稍后看', icon: Icons.check_circle_rounded);
-        } else {
-          AppToast.show(context, '添加失败，请先登录', icon: Icons.info_outline_rounded);
-        }
-      }
-    }
-  }
-
-  void _showSubRepliesBottomSheet(CommentItem rootComment) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid ?? 0;
-
-    VideoSubRepliesSheet.show(
-      context,
-      oid: aid,
-      rootComment: rootComment,
-      isDark: isDark,
-      primaryColor: primaryColor,
-    );
-  }
-
-  Future<void> _executeSendComment(
-    int aid,
-    String msg,
-    int root,
-    int parent,
-  ) async {
-    final res = await CommentApiService().sendComment(
-      oid: aid,
-      message: msg,
-      root: root,
-      parent: parent,
-    );
-    if (!mounted) return;
-    if (res.success) {
-      AppToast.show(context, '评论发表成功！', icon: Icons.check_circle_rounded);
-      if (res.reply != null && root == 0) {
-        setState(() {
-          _comments.insert(0, res.reply!);
-          _commentTotalCount++;
-        });
-      } else {
-        _loadComments(aid, refresh: true);
-      }
-    } else {
-      AppToast.show(context, res.message, icon: Icons.info_outline_rounded);
-    }
-  }
-
-  void _showCommentInputDialog({
-    int root = 0,
-    int parent = 0,
-    String? replyToUname,
-  }) async {
-    final aid = _detail?.videoItem.aid ?? widget.initialVideo?.aid ?? 0;
-    if (aid == 0) return;
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final textController = TextEditingController();
-
-    try {
-      await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: isDark ? const Color(0xFF1E1E24) : Colors.white,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (ctx) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              left: 16,
-              right: 16,
-              top: 14,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      replyToUname != null ? '回复 @$replyToUname' : '发表评论',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: textController,
-                  autofocus: true,
-                  maxLines: 4,
-                  minLines: 2,
-                  maxLength: 500,
-                  decoration: InputDecoration(
-                    hintText: replyToUname != null
-                        ? '回复 @$replyToUname...'
-                        : '发一条友善的评论...',
-                    hintStyle: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? AppTheme.textHintDark
-                          : AppTheme.textHintLight,
-                    ),
-                    filled: true,
-                    fillColor: isDark
-                        ? AppTheme.surfaceDark
-                        : AppTheme.surfaceLight,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      final msg = textController.text.trim();
-                      if (msg.isEmpty) {
-                        AppToast.show(
-                          context,
-                          '评论内容不能为空',
-                          icon: Icons.info_outline_rounded,
-                        );
-                        return;
-                      }
-                      Navigator.of(ctx).pop();
-                      _executeSendComment(aid, msg, root, parent);
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    icon: const Icon(Icons.send_rounded, size: 16),
-                    label: const Text('发送'),
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-            ),
-          );
-        },
-      );
-    } finally {
-      textController.dispose();
-    }
-  }
-
   Duration _lastReportedPosition = Duration.zero;
   DateTime _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
+  // 本地进度按「秒数变化」节流：回调每秒触发多次，避免每次都重建记录并触发持久化
+  String _lastLocalSaveKey = '';
 
   final GlobalKey<BiliVideoPlayerState> _playerKey =
       GlobalKey<BiliVideoPlayerState>();
@@ -1378,17 +945,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       }
     }
 
-    // 1. Always save to local persistent storage for immediate resume
+    // 1. Save to local persistent storage once per second of playback (immediate on video/P switch)
     if (currentSec > 0) {
-      HistoryStorageService().saveProgress(
-        bvid: _currentBvid,
-        progress: currentSec,
-        duration: durSec,
-        aid: aid,
-        cid: cid,
-        title: video?.title,
-        cover: video?.pic,
-      );
+      final saveKey = '$_currentBvid:$cid:$currentSec';
+      if (saveKey != _lastLocalSaveKey) {
+        _lastLocalSaveKey = saveKey;
+        HistoryStorageService().saveProgress(
+          bvid: _currentBvid,
+          progress: currentSec,
+          duration: durSec,
+          aid: aid,
+          cid: cid,
+          title: video?.title,
+          cover: video?.pic,
+        );
+      }
     }
 
     // 2. Periodic cloud report (every 5 seconds or 10s jump)
@@ -1841,7 +1412,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       const Tab(text: '简介'),
                       Tab(
                         text:
-                            '评论 ${_commentTotalCount > 0 ? Formatters.formatCount(_commentTotalCount) : (_detail?.videoItem.stat.reply != null ? Formatters.formatCount(_detail!.videoItem.stat.reply) : "")}',
+                            '评论 ${_commentCountForLabel > 0 ? Formatters.formatCount(_commentCountForLabel) : (_detail?.videoItem.stat.reply != null ? Formatters.formatCount(_detail!.videoItem.stat.reply) : "")}',
                       ),
                     ],
                   ),
@@ -1854,8 +1425,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       : TabBarView(
                           controller: _tabController,
                           children: [
-                            _buildInfoTab(isDark),
-                            _buildCommentsTab(isDark),
+                            _VideoInfoTab(key: _infoTabKey, state: this),
+                            _VideoCommentsTab(
+                              state: this,
+                              onTotalCountChanged: (count) {
+                                if (_commentCountForLabel != count) {
+                                  setState(() => _commentCountForLabel = count);
+                                }
+                              },
+                            ),
                           ],
                         ),
                 ),
@@ -1867,11 +1445,246 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     );
   }
 
+  void _showWatchLaterBottomSheet() {
+    if (_watchLaterList == null || _watchLaterList!.isEmpty) return;
+    VideoWatchLaterSheet.show(
+      context,
+      items: _watchLaterList!,
+      currentIndex: _currentWatchLaterIndex,
+      currentBvid: _currentBvid,
+      onSelectItem: (item, idx) => _switchWatchLaterItem(item, idx),
+    );
+  }
+
+}
+
+
+// ==========================================================
+// 信息 Tab（简介）：自持关系状态（点赞/收藏/投币/关注/稍后再看），
+// 交互 setState 仅重建本 Tab，不再波及整页与播放器
+// ==========================================================
+class _VideoInfoTab extends StatefulWidget {
+  final _VideoDetailScreenState state;
+  const _VideoInfoTab({super.key, required this.state});
+
+  @override
+  State<_VideoInfoTab> createState() => _VideoInfoTabState();
+}
+
+class _VideoInfoTabState extends State<_VideoInfoTab>
+    with AutomaticKeepAliveClientMixin {
+  _VideoDetailScreenState get state => widget.state;
+
+  bool _isLiked = false;
+  bool _isFav = false;
+  bool _isFollowing = false;
+  int _coinCount = 0;
+  int _upFans = 0;
+  bool _isInWatchLater = false;
+  bool _descExpanded = false;
+  int _loadedAid = 0;
+
+  int get _effectiveAid =>
+      state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_effectiveAid > 0) {
+      _loadedAid = _effectiveAid;
+      _loadRelation();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoInfoTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final aid = _effectiveAid;
+    if (aid != _loadedAid) {
+      _loadedAid = aid;
+      if (aid > 0) {
+        _loadRelation();
+      }
+    }
+  }
+
+  Future<void> _loadRelation() async {
+    final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid;
+    // 关系状态与稍后再看状态无依赖，并行请求省一次往返
+    final relationFuture = VideoApiService().getVideoRelation(
+      bvid: state._currentBvid,
+      aid: aid,
+    );
+    final watchLaterFuture = (aid != null && aid > 0)
+        ? UserApiService().isInWatchLater(aid)
+        : null;
+
+    final relation = await relationFuture;
+    if (relation != null && mounted) {
+      setState(() {
+        _isFollowing = relation.attention;
+        _isLiked = relation.like;
+        _isFav = relation.favorite;
+        _coinCount = relation.coin;
+      });
+    }
+    if (watchLaterFuture != null) {
+      final inWL = await watchLaterFuture;
+      if (mounted) {
+        setState(() => _isInWatchLater = inWL);
+      }
+    }
+    final ownerMid =
+        state._detail?.videoItem.owner.mid ?? state.widget.initialVideo?.owner.mid;
+    if (ownerMid != null && ownerMid > 0) {
+      UserApiService().getUserRelationStat(ownerMid).then((stat) {
+        if (stat != null && mounted) {
+          setState(() {
+            _upFans = stat.follower;
+          });
+        }
+      });
+    }
+  }
+
+  void _toggleLike() async {
+    HapticFeedback.lightImpact();
+    setState(() => _isLiked = !_isLiked);
+    final ok = await VideoApiService().likeVideo(state._currentBvid, like: _isLiked);
+    if (!ok && mounted) {
+      AppToast.show(context, '请先登录', icon: Icons.info_outline_rounded);
+      setState(() => _isLiked = !_isLiked);
+    }
+  }
+
+  void _triggerTriple() async {
+    HapticFeedback.heavyImpact();
+    final ok = await VideoApiService().tripleCombo(state._currentBvid);
+    if (mounted) {
+      if (ok) {
+        setState(() {
+          _isLiked = true;
+          _isFav = true;
+          _coinCount = (_coinCount + 1).clamp(1, 2);
+        });
+        AppToast.show(context, '三连成功！', icon: Icons.auto_awesome_rounded);
+      } else {
+        AppToast.show(context, '三连失败，请先登录', icon: Icons.info_outline_rounded);
+      }
+    }
+  }
+
+  void _showFavoriteBottomSheet() {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLogin || auth.userInfo.mid <= 0) {
+      showDialog(context: context, builder: (ctx) => const LoginDialog());
+      return;
+    }
+
+    final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid <= 0) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    VideoFavoriteFolderSheet.show(
+      context,
+      aid: aid,
+      mid: auth.userInfo.mid,
+      isDark: isDark,
+      primaryColor: primaryColor,
+      onFavStatusChanged: (isFav) {
+        setState(() {
+          _isFav = isFav;
+        });
+      },
+    );
+  }
+
+  Future<void> _executeAddCoin(int selectedCoins, bool selectLike) async {
+    final res = await VideoApiService().addCoin(
+      bvid: state._currentBvid,
+      multiply: selectedCoins,
+      selectLike: selectLike,
+    );
+    if (!mounted) return;
+    if (res.success) {
+      setState(() {
+        _coinCount += selectedCoins;
+        if (selectLike || res.liked) {
+          _isLiked = true;
+        }
+      });
+      AppToast.show(context, '投币成功！', icon: Icons.monetization_on_rounded);
+    } else {
+      AppToast.show(context, res.message, icon: Icons.info_outline_rounded);
+    }
+  }
+
+  void _showCoinDialog() {
+    VideoCoinDialog.show(
+      context,
+      coinCount: _coinCount,
+      onConfirm: (selectedCoins, selectLike) =>
+          _executeAddCoin(selectedCoins, selectLike),
+    );
+  }
+
+  void _toggleFollow(int mid) async {
+    setState(() => _isFollowing = !_isFollowing);
+    final ok = await UserApiService().modifyRelation(
+      mid,
+      act: _isFollowing ? 1 : 2,
+    );
+    if (!ok && mounted) {
+      setState(() => _isFollowing = !_isFollowing);
+      AppToast.show(context, '操作失败，请先登录', icon: Icons.info_outline_rounded);
+    } else if (mounted) {
+      AppToast.show(context, _isFollowing ? '已关注' : '已取消关注');
+    }
+  }
+
+  void _toggleWatchLater() async {
+    final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid == 0) return;
+
+    if (_isInWatchLater) {
+      final ok = await UserApiService().deleteFromWatchLater(aid: aid);
+      if (mounted) {
+        if (ok) {
+          setState(() => _isInWatchLater = false);
+          AppToast.show(context, '已从稍后看移除', icon: Icons.check_circle_rounded);
+        } else {
+          AppToast.show(context, '移除失败，请先登录', icon: Icons.info_outline_rounded);
+        }
+      }
+    } else {
+      final ok = await UserApiService().addToWatchLater(
+        aid: aid,
+        bvid: state._currentBvid,
+      );
+      if (mounted) {
+        if (ok) {
+          setState(() => _isInWatchLater = true);
+          AppToast.show(context, '已添加稍后看', icon: Icons.check_circle_rounded);
+        } else {
+          AppToast.show(context, '添加失败，请先登录', icon: Icons.info_outline_rounded);
+        }
+      }
+    }
+  }
+
   Widget _buildInfoTab(bool isDark) {
-    if (_detail == null && widget.initialVideo == null) {
+    if (state._detail == null && state.widget.initialVideo == null) {
+      if (state._detailError) {
+        return ErrorView(
+          message: '视频详情加载失败，请检查网络',
+          onRetry: state._loadAll,
+        );
+      }
       return const EmptyView(message: '暂无视频信息');
     }
-    final item = _detail?.videoItem ?? widget.initialVideo!;
+    final item = state._detail?.videoItem ?? state.widget.initialVideo!;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return CustomScrollView(
@@ -1886,13 +1699,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _navigateToUpSpace(item.owner.mid),
+                      onTap: () => state._navigateToUpSpace(item.owner.mid),
                       child: UserAvatar(url: item.owner.face, size: 38),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => _navigateToUpSpace(item.owner.mid),
+                        onTap: () => state._navigateToUpSpace(item.owner.mid),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -2065,22 +1878,22 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 AnimatedBuilder(
                   animation: VideoCacheService(),
                   builder: (context, _) {
-                    final cid = _detail != null && _detail!.pages.isNotEmpty
-                        ? _detail!.pages[_selectedPageIndex].cid
-                        : (_detail?.videoItem.cid ??
-                              widget.initialVideo?.cid ??
+                    final cid = state._detail != null && state._detail!.pages.isNotEmpty
+                        ? state._detail!.pages[state._selectedPageIndex].cid
+                        : (state._detail?.videoItem.cid ??
+                              state.widget.initialVideo?.cid ??
                               0);
                     final isCached = VideoCacheService().isCached(
-                      _currentBvid,
+                      state._currentBvid,
                       cid,
                     );
                     final isDownloading = VideoCacheService()
-                        .isDownloadingOrPending(_currentBvid, cid);
+                        .isDownloadingOrPending(state._currentBvid, cid);
 
                     return VideoActionBar(
                       likeCount: item.stat.like + (_isLiked ? 1 : 0),
                       isLiked: _isLiked,
-                      tripleComboAnimation: _tripleComboAnimController,
+                      tripleComboAnimation: state._tripleComboAnimController,
                       onLikeTap: _toggleLike,
                       onLikeLongPressStart: (_) {
                         final auth = context.read<AuthProvider>();
@@ -2092,16 +1905,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                           return;
                         }
                         HapticFeedback.selectionClick();
-                        _tripleComboAnimController.forward(from: 0.0);
+                        state._tripleComboAnimController.forward(from: 0.0);
                       },
                       onLikeLongPressEnd: (_) {
-                        if (_tripleComboAnimController.isAnimating) {
-                          _tripleComboAnimController.reverse();
+                        if (state._tripleComboAnimController.isAnimating) {
+                          state._tripleComboAnimController.reverse();
                         }
                       },
                       onLikeLongPressCancel: () {
-                        if (_tripleComboAnimController.isAnimating) {
-                          _tripleComboAnimController.reverse();
+                        if (state._tripleComboAnimController.isAnimating) {
+                          state._tripleComboAnimController.reverse();
                         }
                       },
                       coinCount: _coinCount,
@@ -2112,8 +1925,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       onFavTap: _showFavoriteBottomSheet,
                       isCached: isCached,
                       isDownloading: isDownloading,
-                      onCacheTap: _showCacheBottomSheet,
-                      onListenTap: _startListenMode,
+                      onCacheTap: state._showCacheBottomSheet,
+                      onListenTap: state._startListenMode,
                       isInWatchLater: _isInWatchLater,
                       onWatchLaterTap: _toggleWatchLater,
                     );
@@ -2123,24 +1936,24 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 const SizedBox(height: 16),
 
                 // Watch Later Playlist (稍后看播放列表)
-                if (_watchLaterList != null && _watchLaterList!.isNotEmpty)
+                if (state._watchLaterList != null && state._watchLaterList!.isNotEmpty)
                   VideoWatchLaterSection(
-                    items: _watchLaterList!,
-                    currentIndex: _currentWatchLaterIndex,
-                    currentBvid: _currentBvid,
+                    items: state._watchLaterList!,
+                    currentIndex: state._currentWatchLaterIndex,
+                    currentBvid: state._currentBvid,
                     isDark: isDark,
                     primaryColor: primaryColor,
                     onSelectItem: (item, idx) =>
-                        _switchWatchLaterItem(item, idx),
-                    onTapMore: _showWatchLaterBottomSheet,
+                        state._switchWatchLaterItem(item, idx),
+                    onTapMore: state._showWatchLaterBottomSheet,
                   ),
 
                 // UGC Season (合集)
-                if (_detail?.ugcSeason != null &&
-                    _detail!.ugcSeason!.sections.isNotEmpty) ...[
+                if (state._detail?.ugcSeason != null &&
+                    state._detail!.ugcSeason!.sections.isNotEmpty) ...[
                   Builder(
                     builder: (ctx) {
-                      final season = _detail!.ugcSeason!;
+                      final season = state._detail!.ugcSeason!;
                       final episodes = season.sections
                           .expand((s) => s.episodes)
                           .toList();
@@ -2186,7 +1999,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                                 ),
                                 InkWell(
                                   onTap: () =>
-                                      _showUgcSeasonBottomSheet(season),
+                                      state._showUgcSeasonBottomSheet(season),
                                   borderRadius: BorderRadius.circular(4),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
@@ -2228,9 +2041,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                                     const SizedBox(width: 8),
                                 itemBuilder: (c, idx) {
                                   final ep = episodes[idx];
-                                  final isPlaying = ep.bvid == _currentBvid;
+                                  final isPlaying = ep.bvid == state._currentBvid;
                                   return InkWell(
-                                    onTap: () => _switchEpisode(ep),
+                                    onTap: () => state._switchEpisode(ep),
                                     borderRadius: BorderRadius.circular(8),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
@@ -2294,7 +2107,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 ],
 
                 // Video Chapters (视频章节)
-                if (_detail != null && _detail!.chapters.isNotEmpty) ...[
+                if (state._detail != null && state._detail!.chapters.isNotEmpty) ...[
                   Row(
                     children: [
                       Icon(
@@ -2312,7 +2125,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '共 ${_detail!.chapters.length} 节',
+                        '共 ${state._detail!.chapters.length} 节',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: isDark
@@ -2327,17 +2140,17 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                     height: 38,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _detail!.chapters.length,
+                      itemCount: state._detail!.chapters.length,
                       separatorBuilder: (ctx, _) => const SizedBox(width: 8),
                       itemBuilder: (ctx, idx) {
-                        final ch = _detail!.chapters[idx];
+                        final ch = state._detail!.chapters[idx];
                         final timeStr = Formatters.formatDuration(ch.from);
                         return InkWell(
                           onTap: () {
-                            _playerKey.currentState?.controller?.seekTo(
+                            state._playerKey.currentState?.controller?.seekTo(
                               Duration(seconds: ch.from),
                             );
-                            _playerKey.currentState?.play();
+                            state._playerKey.currentState?.play();
                             AppToast.show(context, '已跳转至 $timeStr ${ch.title}');
                           },
                           borderRadius: BorderRadius.circular(8),
@@ -2396,7 +2209,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 ],
 
                 // Multi-part Selector (分P选集)
-                if (_detail != null && _detail!.pages.length > 1) ...[
+                if (state._detail != null && state._detail!.pages.length > 1) ...[
                   Row(
                     children: [
                       const Text(
@@ -2408,7 +2221,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '共 ${_detail!.pages.length} 集',
+                        '共 ${state._detail!.pages.length} 集',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: isDark
@@ -2423,13 +2236,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                     height: 38,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _detail!.pages.length,
+                      itemCount: state._detail!.pages.length,
                       separatorBuilder: (ctx, _) => const SizedBox(width: 8),
                       itemBuilder: (ctx, idx) {
-                        final page = _detail!.pages[idx];
-                        final isSelected = _selectedPageIndex == idx;
+                        final page = state._detail!.pages[idx];
+                        final isSelected = state._selectedPageIndex == idx;
                         return InkWell(
-                          onTap: () => _switchPart(idx),
+                          onTap: () => state._switchPart(idx),
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2473,7 +2286,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
             ),
           ),
         ),
-        if (_relatedVideos.isNotEmpty) ...[
+        if (state._relatedVideos.isNotEmpty) ...[
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(14, 16, 14, 8),
@@ -2495,19 +2308,19 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
-              itemCount: _relatedVideos.length,
+              itemCount: state._relatedVideos.length,
               itemBuilder: (ctx, idx) {
                 return RepaintBoundary(
                   child: VideoCard(
-                    video: _relatedVideos[idx],
+                    video: state._relatedVideos[idx],
                     onTap: () async {
-                      await _playerKey.currentState?.pause();
+                      await state._playerKey.currentState?.pause();
                       if (!ctx.mounted) return;
                       Navigator.of(ctx).push(
                         MaterialPageRoute(
                           builder: (c) => VideoDetailScreen(
-                            bvid: _relatedVideos[idx].bvid,
-                            initialVideo: _relatedVideos[idx],
+                            bvid: state._relatedVideos[idx].bvid,
+                            initialVideo: state._relatedVideos[idx],
                           ),
                         ),
                       );
@@ -2522,22 +2335,374 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     );
   }
 
-  void _showWatchLaterBottomSheet() {
-    if (_watchLaterList == null || _watchLaterList!.isEmpty) return;
-    VideoWatchLaterSheet.show(
-      context,
-      items: _watchLaterList!,
-      currentIndex: _currentWatchLaterIndex,
-      currentBvid: _currentBvid,
-      onSelectItem: (item, idx) => _switchWatchLaterItem(item, idx),
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return _buildInfoTab(isDark);
+  }
+}
+
+// ==========================================================
+// 评论 Tab：自持评论数据与分页状态；aid/bvid 变化时自动刷新，
+// 从未打开过评论 Tab 时不发起评论请求（懒加载）
+// ==========================================================
+class _VideoCommentsTab extends StatefulWidget {
+  final _VideoDetailScreenState state;
+  final ValueChanged<int>? onTotalCountChanged;
+  const _VideoCommentsTab({required this.state, this.onTotalCountChanged});
+
+  @override
+  State<_VideoCommentsTab> createState() => _VideoCommentsTabState();
+}
+
+class _VideoCommentsTabState extends State<_VideoCommentsTab>
+    with AutomaticKeepAliveClientMixin {
+  _VideoDetailScreenState get state => widget.state;
+
+  List<CommentItem> _comments = [];
+  int _commentNextCursor = 0;
+  String _commentNextOffset = '';
+  bool _commentIsEnd = false;
+  int _commentTotalCount = 0;
+  int _commentMode = 3; // 3: hot, 2: time
+  int _commentPage = 1;
+  bool _commentInMode2Stream = false;
+  bool _commentLoading = false;
+  bool _commentLoadingMore = false;
+
+  String _loadedBvid = '';
+  int _loadedAid = 0;
+
+  void _reportCount() {
+    widget.onTotalCountChanged?.call(_commentTotalCount);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final aid =
+        state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid > 0) {
+      _loadedAid = aid;
+      _loadedBvid = state._currentBvid;
+      _loadComments(aid, refresh: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoCommentsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切换视频（bvid 变化）时立即清空旧评论
+    if (state._currentBvid != _loadedBvid) {
+      _loadedBvid = state._currentBvid;
+      _loadedAid = 0;
+      _commentTotalCount = 0;
+      _reportCount();
+      setState(() {
+        _comments = [];
+        _commentPage = 1;
+        _commentInMode2Stream = false;
+        _commentNextCursor = 0;
+        _commentNextOffset = '';
+        _commentIsEnd = false;
+      });
+    }
+    final aid =
+        state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid > 0 && aid != _loadedAid) {
+      _loadedAid = aid;
+      _loadComments(aid, refresh: true);
+    }
+  }
+
+  Future<void> _loadComments(int aid, {bool refresh = false}) async {
+    if (_commentLoading) return;
+    setState(() {
+      _commentLoading = true;
+      if (refresh) {
+        _commentPage = 1;
+        _commentInMode2Stream = false;
+        _commentNextCursor = 0;
+        _commentNextOffset = '';
+        _commentIsEnd = false;
+      }
+    });
+
+    final res = await CommentApiService().getComments(
+      oid: aid,
+      mode: _commentMode,
+      next: _commentNextCursor,
+      nextOffset: _commentNextOffset,
+      pn: _commentPage,
     );
+
+    if (mounted) {
+      setState(() {
+        if (refresh || _comments.isEmpty) {
+          _comments = res.replies;
+        } else {
+          final existingIds = _comments.map((c) => c.rpid).toSet();
+          for (final r in res.replies) {
+            if (!existingIds.contains(r.rpid)) {
+              _comments.add(r);
+            }
+          }
+        }
+        _commentNextCursor = res.nextCursor;
+        _commentNextOffset = res.nextOffset;
+        _commentIsEnd =
+            res.isEnd &&
+            (_comments.length >= res.totalCount || res.replies.isEmpty);
+        if (res.totalCount > 0) {
+          _commentTotalCount = res.totalCount;
+        }
+        _commentLoading = false;
+      });
+    }
+  }
+
+  void _loadMoreComments() async {
+    if (_commentLoadingMore ||
+        _commentLoading ||
+        _commentIsEnd ||
+        state._detail == null) {
+      return;
+    }
+    setState(() => _commentLoadingMore = true);
+
+    _commentPage++;
+
+    int effectiveMode = _commentMode;
+    int effectiveNext = _commentNextCursor;
+    String effectiveOffset = _commentNextOffset;
+
+    // If we started with hot preview (mode=3) and there is no cursor offset, transition to all comments stream
+    if (_commentMode == 3 &&
+        !_commentInMode2Stream &&
+        effectiveOffset.isEmpty &&
+        effectiveNext == 0) {
+      effectiveMode = 2;
+      effectiveNext = 0;
+      _commentInMode2Stream = true;
+    }
+
+    final res = await CommentApiService().getComments(
+      oid: state._detail!.videoItem.aid,
+      mode: effectiveMode,
+      next: effectiveNext,
+      nextOffset: effectiveOffset,
+      pn: _commentPage,
+    );
+
+    if (mounted) {
+      setState(() {
+        final existingIds = _comments.map((c) => c.rpid).toSet();
+        int addedCount = 0;
+        for (final r in res.replies) {
+          if (!existingIds.contains(r.rpid)) {
+            _comments.add(r);
+            addedCount++;
+          }
+        }
+        _commentNextCursor = res.nextCursor;
+        _commentNextOffset = res.nextOffset;
+        _commentIsEnd =
+            res.isEnd ||
+            (res.replies.isEmpty || addedCount == 0) ||
+            (_commentTotalCount > 0 && _comments.length >= _commentTotalCount);
+        if (res.totalCount > 0) {
+          _commentTotalCount = res.totalCount;
+        }
+        _commentLoadingMore = false;
+      });
+    }
+  }
+
+  void _switchCommentMode(int mode) {
+    if (_commentMode == mode || state._detail == null) return;
+    setState(() {
+      _commentMode = mode;
+      _comments = [];
+      _commentPage = 1;
+      _commentInMode2Stream = false;
+      _commentNextCursor = 0;
+      _commentNextOffset = '';
+      _commentIsEnd = false;
+    });
+    _loadComments(state._detail!.videoItem.aid, refresh: true);
+  }
+
+  void _showSubRepliesBottomSheet(CommentItem rootComment) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+
+    VideoSubRepliesSheet.show(
+      context,
+      oid: aid,
+      rootComment: rootComment,
+      isDark: isDark,
+      primaryColor: primaryColor,
+    );
+  }
+
+  Future<void> _executeSendComment(
+    int aid,
+    String msg,
+    int root,
+    int parent,
+  ) async {
+    final res = await CommentApiService().sendComment(
+      oid: aid,
+      message: msg,
+      root: root,
+      parent: parent,
+    );
+    if (!mounted) return;
+    if (res.success) {
+      AppToast.show(context, '评论发表成功！', icon: Icons.check_circle_rounded);
+      if (res.reply != null && root == 0) {
+        setState(() {
+          _comments.insert(0, res.reply!);
+          _commentTotalCount++;
+        });
+      } else {
+        _loadComments(aid, refresh: true);
+      }
+    } else {
+      AppToast.show(context, res.message, icon: Icons.info_outline_rounded);
+    }
+  }
+
+  void _showCommentInputDialog({
+    int root = 0,
+    int parent = 0,
+    String? replyToUname,
+  }) async {
+    final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid == 0) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final textController = TextEditingController();
+
+    try {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: isDark ? const Color(0xFF1E1E24) : Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      replyToUname != null ? '回复 @$replyToUname' : '发表评论',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  maxLines: 4,
+                  minLines: 2,
+                  maxLength: 500,
+                  decoration: InputDecoration(
+                    hintText: replyToUname != null
+                        ? '回复 @$replyToUname...'
+                        : '发一条友善的评论...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? AppTheme.textHintDark
+                          : AppTheme.textHintLight,
+                    ),
+                    filled: true,
+                    fillColor: isDark
+                        ? AppTheme.surfaceDark
+                        : AppTheme.surfaceLight,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      final msg = textController.text.trim();
+                      if (msg.isEmpty) {
+                        AppToast.show(
+                          context,
+                          '评论内容不能为空',
+                          icon: Icons.info_outline_rounded,
+                        );
+                        return;
+                      }
+                      Navigator.of(ctx).pop();
+                      _executeSendComment(aid, msg, root, parent);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 16),
+                    label: const Text('发送'),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      textController.dispose();
+    }
   }
 
   Widget _buildCommentsTab(bool isDark) {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     if (_commentLoading && _comments.isEmpty) {
-      return const LoadingView(message: '加载评论中...');
+      return const CommentSkeleton(itemCount: 6);
     }
 
     if (_comments.isEmpty) {
@@ -2547,8 +2712,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
             child: EmptyView(
               message: '暂无评论，快来抢沙发吧~',
               icon: Icons.chat_bubble_outline_rounded,
-              onRetry: () => _detail != null
-                  ? _loadComments(_detail!.videoItem.aid, refresh: true)
+              onRetry: () => state._detail != null
+                  ? _loadComments(state._detail!.videoItem.aid, refresh: true)
                   : null,
             ),
           ),
@@ -2571,8 +2736,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
             child: RefreshIndicator(
               color: primaryColor,
               onRefresh: () async {
-                if (_detail != null) {
-                  await _loadComments(_detail!.videoItem.aid, refresh: true);
+                if (state._detail != null) {
+                  await _loadComments(state._detail!.videoItem.aid, refresh: true);
                 }
               },
               child: CustomScrollView(
@@ -2769,5 +2934,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         ),
       ),
     );
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return _buildCommentsTab(isDark);
   }
 }

@@ -4,6 +4,24 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../player_settings_service.dart';
 
+/// 在后台 isolate 解析历史记录 JSON（compute 顶层函数，避免启动阻塞 UI 线程）
+Map<String, Map<String, dynamic>> _decodeHistory(String raw) {
+  final result = <String, Map<String, dynamic>>{};
+  final decoded = jsonDecode(raw);
+  if (decoded is Map) {
+    decoded.forEach((key, val) {
+      if (val is Map) {
+        result[key.toString()] = Map<String, dynamic>.from(val);
+      }
+    });
+  }
+  return result;
+}
+
+/// 在后台 isolate 序列化历史记录（compute 顶层函数）
+String _encodeHistory(Map<String, Map<String, dynamic>> cache) =>
+    jsonEncode(cache);
+
 class HistoryStorageService {
   static final HistoryStorageService _instance = HistoryStorageService._internal();
   factory HistoryStorageService() => _instance;
@@ -33,30 +51,27 @@ class HistoryStorageService {
     return _prefs!;
   }
 
-  /// Initialize local history cache
+  /// Initialize local history cache.
+  /// prefs 读取失败时向上抛出（由启动层记录）；历史数据损坏则按空记录自愈。
   Future<void> init({bool force = false}) async {
     if (_initialized && !force) return;
-    try {
-      if (force) {
+    if (force) {
+      _cache.clear();
+    }
+    final prefs = await _getPrefs();
+    final raw = prefs.getString(_storageKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = await compute(_decodeHistory, raw);
+        _cache
+          ..clear()
+          ..addAll(decoded);
+      } catch (_) {
+        // 历史数据损坏可自愈：按空记录继续
         _cache.clear();
       }
-      final prefs = await _getPrefs();
-      final raw = prefs.getString(_storageKey);
-      if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          _cache.clear();
-          decoded.forEach((key, val) {
-            if (val is Map) {
-              _cache[key.toString()] = Map<String, dynamic>.from(val);
-            }
-          });
-        }
-      }
-      _initialized = true;
-    } catch (_) {
-      _initialized = true;
     }
+    _initialized = true;
   }
 
   /// Get recorded playback progress in seconds for a specific bvid and optional cid
@@ -190,7 +205,8 @@ class HistoryStorageService {
           _cache[e.key] = e.value;
         }
       }
-      await prefs.setString(_storageKey, jsonEncode(_cache));
+      final encoded = await compute(_encodeHistory, _cache);
+      await prefs.setString(_storageKey, encoded);
     } catch (_) {}
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,7 +51,7 @@ class BiliHttpClient {
           // Extract set-cookie headers
           final setCookieHeaders = response.headers['set-cookie'];
           if (setCookieHeaders != null && setCookieHeaders.isNotEmpty) {
-            _saveSetCookies(setCookieHeaders);
+            unawaited(_saveSetCookies(setCookieHeaders));
           }
           return handler.next(response);
         },
@@ -143,18 +145,22 @@ class BiliHttpClient {
     await prefs.setString('bili_cookies', _cachedCookieHeader);
   }
 
-  void _saveSetCookies(List<String> rawSetCookies) async {
-    final Map<String, String> updated = {};
-    for (final raw in rawSetCookies) {
-      final parts = raw.split(';').first.split('=');
-      if (parts.length >= 2) {
-        final key = parts[0].trim();
-        final value = parts.sublist(1).join('=').trim();
-        updated[key] = value;
+  Future<void> _saveSetCookies(List<String> rawSetCookies) async {
+    try {
+      final Map<String, String> updated = {};
+      for (final raw in rawSetCookies) {
+        final parts = raw.split(';').first.split('=');
+        if (parts.length >= 2) {
+          final key = parts[0].trim();
+          final value = parts.sublist(1).join('=').trim();
+          updated[key] = value;
+        }
       }
-    }
-    if (updated.isNotEmpty) {
-      await saveCookies(updated);
+      if (updated.isNotEmpty) {
+        await saveCookies(updated);
+      }
+    } catch (_) {
+      // set-cookie 持久化失败可容忍，不打断响应链路
     }
   }
 
@@ -176,36 +182,36 @@ class BiliHttpClient {
   String? get dedeUserId => _cookies['DedeUserID'];
   bool get isLoggedIn => _cookies.containsKey('SESSDATA') && _cookies['SESSDATA']!.isNotEmpty;
 
-  /// Fetch SPI fingerprint for buvid3 and buvid4
+  /// Fetch SPI fingerprint for buvid3 and buvid4.
+  /// 失败时抛出，让 [_doInit] 走重试路径——buvid 缺失时多数 API 会返回 -352，
+  /// 静默降级只会把故障推迟到每个请求上。
   Future<void> refreshSpiFingerprint() async {
-    try {
-      final res = await dio.get(ApiEndpoints.spiFinger);
-      if (res.data != null && res.data['code'] == 0) {
-        final b3 = res.data['data']['b_3'] as String?;
-        final b4 = res.data['data']['b_4'] as String?;
-        if (b3 != null && b4 != null) {
-          BiliSecurityService().updateBuvid(b3, b4);
-          await saveCookies({'buvid3': b3, 'buvid4': b4});
-        }
-      }
-    } catch (_) {}
+    final res = await dio.get(ApiEndpoints.spiFinger);
+    final data = res.data;
+    if (data == null || data['code'] != 0) {
+      throw Exception('SPI fingerprint request failed: code=${data?['code']}');
+    }
+    final b3 = data['data']['b_3'] as String?;
+    final b4 = data['data']['b_4'] as String?;
+    if (b3 == null || b3.isEmpty || b4 == null || b4.isEmpty) {
+      throw Exception('SPI fingerprint response missing b_3/b_4');
+    }
+    await BiliSecurityService().updateBuvid(b3, b4);
+    await saveCookies({'buvid3': b3, 'buvid4': b4});
   }
 
-  /// Refresh WBI keys from Nav API
+  /// Refresh WBI keys from Nav API.
+  /// 失败时抛出，让 [_doInit] 走重试路径；WBI 密钥缺失会导致所有签名请求 -403。
   Future<void> refreshWbiKeys() async {
-    try {
-      final res = await dio.get(ApiEndpoints.nav);
-      if (res.data != null && res.data['data'] != null) {
-        final wbiImg = res.data['data']['wbi_img'];
-        if (wbiImg != null) {
-          final imgUrl = wbiImg['img_url'] as String?;
-          final subUrl = wbiImg['sub_url'] as String?;
-          if (imgUrl != null && subUrl != null) {
-            BiliSecurityService().updateWbiKeys(imgUrl, subUrl);
-          }
-        }
-      }
-    } catch (_) {}
+    final res = await dio.get(ApiEndpoints.nav);
+    final data = res.data;
+    final wbiImg = data?['data']?['wbi_img'];
+    final imgUrl = wbiImg?['img_url'] as String?;
+    final subUrl = wbiImg?['sub_url'] as String?;
+    if (imgUrl == null || imgUrl.isEmpty || subUrl == null || subUrl.isEmpty) {
+      throw Exception('Nav API did not return wbi_img keys');
+    }
+    await BiliSecurityService().updateWbiKeys(imgUrl, subUrl);
   }
 
   /// Perform standard GET request

@@ -8,6 +8,8 @@ class FakeVideoApiService implements VideoApiService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   bool shouldThrow = false;
+  bool emptyRecommendPage = false;
+  bool emptyPopularPage = false;
   int recommendCallCount = 0;
   int popularCallCount = 0;
   int rankingCallCount = 0;
@@ -34,6 +36,9 @@ class FakeVideoApiService implements VideoApiService {
     if (shouldThrow) {
       throw Exception('Network error');
     }
+    if (emptyRecommendPage) {
+      return [];
+    }
     return [
       _createItem('BVrcmd_$freshIdx', '推荐视频 $freshIdx'),
     ];
@@ -44,6 +49,9 @@ class FakeVideoApiService implements VideoApiService {
     popularCallCount++;
     if (shouldThrow) {
       throw Exception('Network error');
+    }
+    if (emptyPopularPage) {
+      return [];
     }
     return [
       _createItem('BVpopular_$pn', '热门视频 $pn'),
@@ -152,38 +160,66 @@ void main() {
       expect(provider.currentTab, equals(2));
     });
 
-    test('try-finally safety: loading flags always reset to false on API exceptions', () async {
+    test('errors set error state and return false without throwing', () async {
       fakeService.shouldThrow = true;
 
       // 1. Recommend loading error
-      try {
-        await provider.loadRecommendFeed();
-      } catch (_) {}
+      final okRcmd = await provider.loadRecommendFeed();
+      expect(okRcmd, isFalse);
+      expect(provider.rcmdError, isNotNull);
       expect(provider.rcmdLoading, isFalse);
 
       // 2. Recommend load more error
-      try {
-        await provider.loadMoreRecommend();
-      } catch (_) {}
+      expect(await provider.loadMoreRecommend(), isFalse);
       expect(provider.rcmdLoadingMore, isFalse);
 
       // 3. Popular loading error
-      try {
-        await provider.loadPopularVideos();
-      } catch (_) {}
+      final okPopular = await provider.loadPopularVideos();
+      expect(okPopular, isFalse);
+      expect(provider.popularError, isNotNull);
       expect(provider.popularLoading, isFalse);
 
       // 4. Popular load more error
-      try {
-        await provider.loadMorePopular();
-      } catch (_) {}
+      expect(await provider.loadMorePopular(), isFalse);
       expect(provider.popularLoadingMore, isFalse);
 
       // 5. Ranking loading error
-      try {
-        await provider.loadRankingVideos();
-      } catch (_) {}
+      final okRanking = await provider.loadRankingVideos();
+      expect(okRanking, isFalse);
+      expect(provider.rankingError, isNotNull);
       expect(provider.rankingLoading, isFalse);
+
+      // 6. 重试成功后错误被清除
+      fakeService.shouldThrow = false;
+      final okRetry = await provider.loadRecommendFeed();
+      expect(okRetry, isTrue);
+      expect(provider.rcmdError, isNull);
+      expect(provider.recommendVideos, isNotEmpty);
+    });
+
+    test('hasMore flips false when a page returns empty', () async {
+      await provider.loadRecommendFeed();
+      expect(provider.rcmdHasMore, isTrue);
+      expect(provider.recommendVideos.length, equals(1));
+
+      // 模拟推荐流到底（空页）
+      fakeService.emptyRecommendPage = true;
+      await provider.loadMoreRecommend();
+      expect(provider.rcmdHasMore, isFalse);
+
+      // 到底后 loadMore 不再发起请求
+      final calls = fakeService.recommendCallCount;
+      await provider.loadMoreRecommend();
+      expect(fakeService.recommendCallCount, equals(calls));
+    });
+
+    test('popular hasMore follows the same empty-page rule', () async {
+      await provider.loadPopularVideos();
+      expect(provider.popularHasMore, isTrue);
+
+      fakeService.emptyPopularPage = true;
+      await provider.loadMorePopular();
+      expect(provider.popularHasMore, isFalse);
     });
   });
 }

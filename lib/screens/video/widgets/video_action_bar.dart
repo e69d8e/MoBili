@@ -34,58 +34,62 @@ class VideoActionButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        onLongPressStart: onLongPressStart,
-        onLongPressEnd: onLongPressEnd,
-        onLongPressCancel: onLongPressCancel,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (progress != null && progress! > 0)
-                      SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          value: progress,
-                          strokeWidth: 2.2,
-                          valueColor: AlwaysStoppedAnimation<Color>(activeColor),
-                          backgroundColor: isDark ? Colors.white12 : Colors.black12,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onTap();
+          },
+          onLongPressStart: onLongPressStart,
+          onLongPressEnd: onLongPressEnd,
+          onLongPressCancel: onLongPressCancel,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (progress != null && progress! > 0)
+                        SizedBox(
+                          width: 30,
+                          height: 30,
+                          child: CircularProgressIndicator(
+                            value: progress,
+                            strokeWidth: 2.2,
+                            valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                            backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                          ),
                         ),
+                      Icon(
+                        icon,
+                        size: 21,
+                        color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
                       ),
-                    Icon(
-                      icon,
-                      size: 21,
-                      color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../models/user_model.dart';
 import '../../models/video_model.dart';
@@ -27,6 +28,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
   int _page = 1;
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _hasMore = true;
   bool _isFollowing = false;
 
   @override
@@ -35,8 +37,10 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool isRefresh = false}) async {
+    if (!isRefresh) {
+      setState(() => _isLoading = true);
+    }
     final results = await Future.wait([
       UserApiService().getUpSpaceInfo(widget.mid),
       UserApiService().getUpSpaceVideos(widget.mid, pn: 1),
@@ -50,21 +54,28 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
         _isFollowing = info?.isFollowing ?? false;
         _videos = videos;
         _page = 1;
+        // 空页视为到底
+        _hasMore = videos.isNotEmpty;
         _isLoading = false;
       });
     }
   }
 
   Future<void> _loadMore() async {
-    if (_isLoadingMore || _isLoading) return;
+    if (_isLoadingMore || _isLoading || !_hasMore) return;
     setState(() => _isLoadingMore = true);
 
-    _page++;
-    final more = await UserApiService().getUpSpaceVideos(widget.mid, pn: _page);
+    final more =
+        await UserApiService().getUpSpaceVideos(widget.mid, pn: _page + 1);
 
     if (mounted) {
       setState(() {
-        _videos.addAll(more);
+        // 空页视为到底，页码不再前进
+        if (more.isNotEmpty) {
+          _videos.addAll(more);
+          _page++;
+        }
+        _hasMore = more.isNotEmpty;
         _isLoadingMore = false;
       });
     }
@@ -90,7 +101,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
     return Scaffold(
       bottomNavigationBar: const MiniAudioPlayer(),
       body: _isLoading
-          ? const LoadingView(message: '加载UP主空间...')
+          ? const VideoGridSkeleton()
           : _spaceInfo == null
           ? ErrorView(onRetry: _loadData)
           : NotificationListener<ScrollNotification>(
@@ -101,8 +112,11 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                 }
                 return false;
               },
-              child: CustomScrollView(
-                cacheExtent: 600.0,
+              child: RefreshIndicator(
+                color: primaryColor,
+                onRefresh: () => _loadData(isRefresh: true),
+                child: CustomScrollView(
+                scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
                 slivers: [
                   // App Bar without banner image
                   SliverAppBar(
@@ -293,6 +307,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                       ),
                     ),
                 ],
+              ),
               ),
             ),
     );

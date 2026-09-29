@@ -123,7 +123,8 @@ class VideoSeasonSheet {
                         // Episode List
                         Flexible(
                           child: ListView.separated(
-                            shrinkWrap: true,
+                            // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
+                            shrinkWrap: allEpisodes.length <= 12,
                             padding: EdgeInsets.zero,
                             itemCount: allEpisodes.length,
                             separatorBuilder: (c, _) => const SizedBox(height: 6),

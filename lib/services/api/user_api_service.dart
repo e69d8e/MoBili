@@ -10,29 +10,27 @@ class UserApiService {
   factory UserApiService() => _instance;
   UserApiService._internal();
 
-  /// Get currently logged-in user info and statistics
+  /// Get currently logged-in user info and statistics.
+  /// 网络异常时抛出（与"未登录"可区分），调用方据此避免把断网误判为登录过期。
   Future<UserInfo> getUserNav() async {
-    try {
-      final navRes = await BiliHttpClient().get(ApiEndpoints.nav);
-      if (navRes.data != null && navRes.data['data'] != null) {
-        final navData = navRes.data['data'];
-        if (navData['isLogin'] == true) {
-          // Fetch stat
-          Map<String, dynamic>? statData;
-          try {
-            final statRes = await BiliHttpClient().get(ApiEndpoints.navStat);
-            if (statRes.data != null && statRes.data['data'] != null) {
-              statData = statRes.data['data'];
-            }
-          } catch (_) {}
-
-          return UserInfo.fromJson(navData, statJson: statData);
+    // nav 与 stat 并行请求；stat 失败不影响登录态解析
+    final navFuture = BiliHttpClient().get(ApiEndpoints.nav);
+    final statFuture = BiliHttpClient()
+        .get(ApiEndpoints.navStat)
+        .then<Response<dynamic>?>((res) => res, onError: (Object _) => null);
+    final navRes = await navFuture;
+    if (navRes.data != null && navRes.data['data'] != null) {
+      final navData = navRes.data['data'];
+      if (navData['isLogin'] == true) {
+        final statRes = await statFuture;
+        Map<String, dynamic>? statData;
+        if (statRes?.data != null && statRes!.data['data'] != null) {
+          statData = statRes.data['data'];
         }
+        return UserInfo.fromJson(navData, statJson: statData);
       }
-      return UserInfo(isLogin: false);
-    } catch (_) {
-      return UserInfo(isLogin: false);
     }
+    return UserInfo(isLogin: false);
   }
 
   /// Get user watch history
@@ -102,12 +100,14 @@ class UserApiService {
           'dt': 2,
           'csrf': csrf,
         };
-        await BiliHttpClient().post(
+        final hbRes = await BiliHttpClient().post(
           ApiEndpoints.heartbeat,
           data: FormData.fromMap(hbBody),
         );
+        // 兜底心跳也要返回真实结果，不再恒报成功
+        return hbRes.data != null && hbRes.data['code'] == 0;
       }
-      return true;
+      return false;
     } catch (_) {
       return false;
     }
@@ -260,27 +260,25 @@ class UserApiService {
 
   /// Get user favorite folder list
   Future<List<FavFolder>> getUserFavFolders(int upMid, {int? rid}) async {
-    try {
-      final query = <String, dynamic>{'up_mid': upMid};
-      if (rid != null && rid > 0) {
-        query['type'] = 2; // video
-        query['rid'] = rid;
-      }
-      final res = await BiliHttpClient().get(
-        ApiEndpoints.userFavFolders,
-        queryParameters: query,
-      );
+    final query = <String, dynamic>{'up_mid': upMid};
+    if (rid != null && rid > 0) {
+      query['type'] = 2; // video
+      query['rid'] = rid;
+    }
+    final res = await BiliHttpClient().get(
+      ApiEndpoints.userFavFolders,
+      queryParameters: query,
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final list = res.data['data']['list'] as List?;
-        if (list != null) {
-          return list.map((item) => FavFolder.fromJson(item)).toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final list = res.data['data']['list'] as List?;
+      if (list != null) {
+        return list.map((item) => FavFolder.fromJson(item)).toList();
       }
-      return [];
-    } catch (_) {
       return [];
     }
+    // 异常向上抛出，由调用方呈现错误态（未登录时 code 为 -101）
+    throw Exception(res.data?['message'] ?? '收藏夹加载失败');
   }
 
   /// Add or remove video to/from favorite folders
@@ -310,28 +308,25 @@ class UserApiService {
     }
   }
 
-  /// Get video list inside a favorite folder
+  /// Get video list inside a favorite folder（失败时抛出异常，由调用方呈现错误态）
   Future<List<VideoItem>> getFavFolderVideos(int mediaId, {int pn = 1, int ps = 20}) async {
-    try {
-      final res = await BiliHttpClient().get(
-        ApiEndpoints.userFavList,
-        queryParameters: {
-          'media_id': mediaId,
-          'pn': pn,
-          'ps': ps,
-        },
-      );
+    final res = await BiliHttpClient().get(
+      ApiEndpoints.userFavList,
+      queryParameters: {
+        'media_id': mediaId,
+        'pn': pn,
+        'ps': ps,
+      },
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final medias = res.data['data']['medias'] as List?;
-        if (medias != null) {
-          return medias.map((item) => VideoItem.fromJson(item)).toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final medias = res.data['data']['medias'] as List?;
+      if (medias != null) {
+        return medias.map((item) => VideoItem.fromJson(item)).toList();
       }
       return [];
-    } catch (_) {
-      return [];
     }
+    throw Exception(res.data?['message'] ?? '收藏夹视频加载失败');
   }
 
   /// Get relation statistics (粉丝数、关注数)

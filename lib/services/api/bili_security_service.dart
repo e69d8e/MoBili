@@ -51,27 +51,34 @@ class BiliSecurityService {
     }
   }
 
-  void updateBuvid(String b3, String b4) async {
+  /// 更新 buvid 指纹。内存立即生效；持久化失败不影响调用方（下次启动会重新获取）
+  Future<void> updateBuvid(String b3, String b4) async {
     _buvid3 = b3;
     _buvid4 = b4;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('buvid3', b3);
-    await prefs.setString('buvid4', b4);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('buvid3', b3);
+      await prefs.setString('buvid4', b4);
+    } catch (_) {
+      // 持久化失败可容忍：内存中已生效
+    }
   }
 
-  void updateWbiKeys(String imgUrl, String subUrl) async {
-    try {
-      final img = imgUrl.split('/').last.split('.').first;
-      final sub = subUrl.split('/').last.split('.').first;
-      _imgKey = img;
-      _subKey = sub;
-      _keyUpdateTime = DateTime.now();
+  Future<void> updateWbiKeys(String imgUrl, String subUrl) async {
+    final img = imgUrl.split('/').last.split('.').first;
+    final sub = subUrl.split('/').last.split('.').first;
+    _imgKey = img;
+    _subKey = sub;
+    _keyUpdateTime = DateTime.now();
 
+    try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('wbi_img_key', img);
       await prefs.setString('wbi_sub_key', sub);
       await prefs.setInt('wbi_key_time', _keyUpdateTime!.millisecondsSinceEpoch);
-    } catch (_) {}
+    } catch (_) {
+      // 持久化失败可容忍：内存中已生效
+    }
   }
 
   bool areWbiKeysValid() {
@@ -80,6 +87,15 @@ class BiliSecurityService {
     }
     // Wbi keys are updated daily; invalidate after 12 hours
     return DateTime.now().difference(_keyUpdateTime!).inHours < 12;
+  }
+
+  /// 仅测试用：单例清空密钥状态，模拟"密钥尚未获取"
+  void resetForTesting() {
+    _buvid3 = null;
+    _buvid4 = null;
+    _imgKey = null;
+    _subKey = null;
+    _keyUpdateTime = null;
   }
 
   static String getMixinKey(String imgKey, String subKey) {
@@ -95,11 +111,15 @@ class BiliSecurityService {
 
   static final RegExp _sanitizeRegExp = RegExp(r"[!'()*]");
 
-  /// Encodes parameters with WBI signature
+  /// Encodes parameters with WBI signature.
+  /// WBI 密钥未获取时直接抛错：用公共示例 key 签名会让服务端返回 -403，
+  /// 调用方（getWbi）应让 init 的重试机制先拿到有效密钥。
   Map<String, dynamic> signWbi(Map<String, dynamic> params) {
-    final imgKey = _imgKey ?? '7cd084941338484aae1ad9425b84077c';
-    final subKey = _subKey ?? '4932caff0ff746eab6f01bf08b70ac45';
-
+    final imgKey = _imgKey;
+    final subKey = _subKey;
+    if (imgKey == null || subKey == null) {
+      throw StateError('WBI keys unavailable: network init has not fetched valid keys yet');
+    }
     final mixinKey = getMixinKey(imgKey, subKey);
     final currTime = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
 

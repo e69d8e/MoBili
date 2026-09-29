@@ -199,6 +199,8 @@ class ListenVideoProvider extends ChangeNotifier {
   Future<void> _handlePlaybackError() async {
     if (_isDisposed || _bvid == null || _cid == null || _isRecovering) return;
     _isRecovering = true;
+    // 恢复期间用户手动切歌/切集会推进 _playToken，过期的恢复流程必须立即中止
+    final token = _playToken;
 
     if (_retryCount < _maxRetries) {
       _retryCount++;
@@ -209,7 +211,10 @@ class ListenVideoProvider extends ChangeNotifier {
 
       try {
         await Future.delayed(Duration(milliseconds: 600 * _retryCount));
-        if (_isDisposed || _bvid == null || _cid == null) {
+        if (_isDisposed ||
+            _playToken != token ||
+            _bvid == null ||
+            _cid == null) {
           _isRecovering = false;
           return;
         }
@@ -225,7 +230,10 @@ class ListenVideoProvider extends ChangeNotifier {
           freshUrl = info?.primaryAudioUrl ?? info?.primaryVideoUrl;
         }
 
-        if (freshUrl != null && freshUrl.isNotEmpty && !_isDisposed) {
+        if (freshUrl != null &&
+            freshUrl.isNotEmpty &&
+            !_isDisposed &&
+            _playToken == token) {
           _audioUrl = freshUrl;
           final savedPos = _position;
 
@@ -242,6 +250,10 @@ class ListenVideoProvider extends ChangeNotifier {
           if (!kIsWeb && (freshUrl.startsWith('http://') || freshUrl.startsWith('https://'))) {
             playFreshUrl = await BiliStreamProxy().getProxyUrl(freshUrl, isAudio: true);
           }
+          if (_isDisposed || _playToken != token) {
+            _isRecovering = false;
+            return;
+          }
           final newCtrl = _createController(playFreshUrl);
 
           await newCtrl.initialize();
@@ -252,7 +264,7 @@ class ListenVideoProvider extends ChangeNotifier {
           await newCtrl.setPlaybackSpeed(_speed);
           await newCtrl.play();
 
-          if (_isDisposed) {
+          if (_isDisposed || _playToken != token) {
             try {
               await newCtrl.dispose();
             } catch (_) {}
@@ -279,9 +291,12 @@ class ListenVideoProvider extends ChangeNotifier {
     }
 
     _isRecovering = false;
-    _isBuffering = false;
-    _isPlaying = false;
-    notifyListeners();
+    // 令牌已过期说明有新的 playAudio 在途，播放状态归它管，不能在这里清掉
+    if (_playToken == token && !_isDisposed) {
+      _isBuffering = false;
+      _isPlaying = false;
+      notifyListeners();
+    }
   }
 
   /// Start playing a video stream in audio background mode
@@ -438,6 +453,14 @@ class ListenVideoProvider extends ChangeNotifier {
       }
 
       _pendingController = null;
+      // 兜底：清理在途期间被其他流程写入的控制器，避免双路音频同时出声
+      if (_controller != null) {
+        _controller!.removeListener(_onControllerUpdate);
+        try {
+          await _controller!.pause();
+          await _controller!.dispose();
+        } catch (_) {}
+      }
       _controller = ctrl;
       _isPlaying = ctrl.value.isPlaying;
       _isBuffering = ctrl.value.isBuffering;

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobili/services/api/bili_security_service.dart';
 import 'package:mobili/utils/formatters.dart';
 import 'package:mobili/models/danmaku_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('Security & WBI Tests', () {
@@ -13,8 +14,24 @@ void main() {
       expect(mixinKey.length, 32);
     });
 
-    test('WBI signing generates w_rid and wts', () {
+    test('WBI signing throws when keys are not initialized', () {
       final service = BiliSecurityService();
+      service.resetForTesting();
+
+      expect(
+        () => service.signWbi({'keyword': 'Flutter', 'page': 1}),
+        throwsStateError,
+      );
+    });
+
+    test('WBI signing generates w_rid and wts after keys are set', () async {
+      SharedPreferences.setMockInitialValues({});
+      final service = BiliSecurityService();
+      await service.updateWbiKeys(
+        'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',
+        'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png',
+      );
+
       final signed = service.signWbi({
         'keyword': 'Flutter',
         'page': 1,

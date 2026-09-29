@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/video_model.dart';
@@ -240,16 +241,23 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
     } else {
       if (!mounted) return;
       final hp = context.read<HomeProvider>();
-      await hp.loadRecommendFeed(isRefresh: true);
-      if (mounted) AppToast.show(context, '已刷新');
+      final ok = await hp.loadRecommendFeed(isRefresh: true);
+      if (!mounted) return;
+      AppToast.show(context, ok ? '已刷新' : '刷新失败，请检查网络');
     }
   }
 
   Future<void> _handleRefresh() async {
     final homeProvider = context.read<HomeProvider>();
-    await homeProvider.loadRecommendFeed(isRefresh: true);
-    if (mounted) {
-      AppToast.show(context, '已刷新');
+    final ok = await homeProvider.loadRecommendFeed(isRefresh: true);
+    if (!mounted) return;
+    AppToast.show(context, ok ? '已刷新' : '刷新失败，请检查网络');
+  }
+
+  Future<void> _loadMore() async {
+    final ok = await context.read<HomeProvider>().loadMoreRecommend();
+    if (!ok && mounted) {
+      AppToast.show(context, '加载失败，请重试');
     }
   }
 
@@ -260,6 +268,7 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
     final isLoadingMore = context.select<HomeProvider, bool>(
       (p) => p.rcmdLoadingMore,
     );
+    final hasMore = context.select<HomeProvider, bool>((p) => p.rcmdHasMore);
     final videos = context.select<HomeProvider, List<VideoItem>>(
       (p) => p.recommendVideos,
     );
@@ -280,8 +289,9 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
       scrollController: _scrollController,
       videos: videos,
       isLoadingMore: isLoadingMore,
+      hasMore: hasMore,
       onRefresh: _handleRefresh,
-      onLoadMore: () => context.read<HomeProvider>().loadMoreRecommend(),
+      onLoadMore: _loadMore,
     );
   }
 }
@@ -339,9 +349,15 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
 
   Future<void> _handleRefresh() async {
     final homeProvider = context.read<HomeProvider>();
-    await homeProvider.loadPopularVideos(isRefresh: true);
-    if (mounted) {
-      AppToast.show(context, '已刷新');
+    final ok = await homeProvider.loadPopularVideos(isRefresh: true);
+    if (!mounted) return;
+    AppToast.show(context, ok ? '已刷新' : '刷新失败，请检查网络');
+  }
+
+  Future<void> _loadMore() async {
+    final ok = await context.read<HomeProvider>().loadMorePopular();
+    if (!ok && mounted) {
+      AppToast.show(context, '加载失败，请重试');
     }
   }
 
@@ -354,6 +370,7 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
     final isLoadingMore = context.select<HomeProvider, bool>(
       (p) => p.popularLoadingMore,
     );
+    final hasMore = context.select<HomeProvider, bool>((p) => p.popularHasMore);
     final videos = context.select<HomeProvider, List<VideoItem>>(
       (p) => p.popularVideos,
     );
@@ -374,8 +391,9 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
       scrollController: _scrollController,
       videos: videos,
       isLoadingMore: isLoadingMore,
+      hasMore: hasMore,
       onRefresh: _handleRefresh,
-      onLoadMore: () => context.read<HomeProvider>().loadMorePopular(),
+      onLoadMore: _loadMore,
     );
   }
 }
@@ -433,10 +451,9 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
 
   Future<void> _handleRefresh() async {
     final homeProvider = context.read<HomeProvider>();
-    await homeProvider.loadRankingVideos();
-    if (mounted) {
-      AppToast.show(context, '已刷新');
-    }
+    final ok = await homeProvider.loadRankingVideos();
+    if (!mounted) return;
+    AppToast.show(context, ok ? '已刷新' : '刷新失败，请检查网络');
   }
 
   @override
@@ -478,6 +495,7 @@ class _CommonVideoGrid extends StatelessWidget {
   final ScrollController scrollController;
   final List<VideoItem> videos;
   final bool isLoadingMore;
+  final bool hasMore;
   final Future<void> Function() onRefresh;
   final VoidCallback? onLoadMore;
 
@@ -486,6 +504,7 @@ class _CommonVideoGrid extends StatelessWidget {
     required this.scrollController,
     required this.videos,
     required this.isLoadingMore,
+    this.hasMore = true,
     required this.onRefresh,
     this.onLoadMore,
   });
@@ -498,6 +517,7 @@ class _CommonVideoGrid extends StatelessWidget {
     final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
       context,
     );
+    final showFooter = isLoadingMore || !hasMore;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollInfo) {
@@ -514,7 +534,7 @@ class _CommonVideoGrid extends StatelessWidget {
         onRefresh: onRefresh,
         child: GridView.builder(
           controller: scrollController,
-          cacheExtent: 600.0,
+          scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
@@ -522,16 +542,29 @@ class _CommonVideoGrid extends StatelessWidget {
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
           ),
-          itemCount: videos.length + (isLoadingMore ? 1 : 0),
+          itemCount: videos.length + (showFooter ? 1 : 0),
           itemBuilder: (ctx, idx) {
             if (idx == videos.length) {
+              if (isLoadingMore) {
+                return Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                );
+              }
               return Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  '没有更多了',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? AppTheme.textHintDark
+                        : AppTheme.textHintLight,
                   ),
                 ),
               );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,7 @@ import '../../providers/search_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../utils/responsive_util.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
@@ -105,6 +107,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   if (value.text.isEmpty) return const SizedBox.shrink();
                   return IconButton(
                     padding: EdgeInsets.zero,
+                    tooltip: '清空搜索词',
                     icon: const Icon(Icons.clear_rounded, size: 16),
                     onPressed: () {
                       _textController.clear();
@@ -388,12 +391,8 @@ class _SearchScreenState extends State<SearchScreen> {
           color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
         ),
 
-        // Main Content Area
-        Expanded(
-          child: sp.isLoading
-              ? const LoadingView(message: '正在搜索中...')
-              : _buildCategoryContent(sp, isDark),
-        ),
+        // Main Content Area（加载/错误态由各分类内容自行处理）
+        Expanded(child: _buildCategoryContent(sp, isDark)),
       ],
     );
   }
@@ -473,6 +472,12 @@ class _SearchScreenState extends State<SearchScreen> {
         );
       }
       if (sp.searchResults.isEmpty) {
+        if (sp.errorMessage != null) {
+          return ErrorView(
+            message: sp.errorMessage!,
+            onRetry: () => sp.search(sp.currentKeyword),
+          );
+        }
         return const EmptyView(message: '未找到相关视频');
       }
       final crossAxisCount = ResponsiveGridConfig.calculateCrossAxisCount(
@@ -481,121 +486,217 @@ class _SearchScreenState extends State<SearchScreen> {
       final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
         context,
       );
+      final showFooter = sp.isLoadingMore || !sp.hasMore;
 
-      return NotificationListener<ScrollNotification>(
-        onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >=
-              scrollInfo.metrics.maxScrollExtent - 200) {
-            sp.loadMore();
-          }
-          return false;
-        },
-        child: GridView.builder(
-          cacheExtent: 600.0,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            childAspectRatio: childAspectRatio,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-          ),
-          itemCount: sp.searchResults.length + (sp.isLoadingMore ? 1 : 0),
-          itemBuilder: (ctx, idx) {
-            if (idx == sp.searchResults.length) {
-              return Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              );
+      return RefreshIndicator(
+        color: Theme.of(context).colorScheme.primary,
+        onRefresh: () => _refreshSearch(sp),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (scrollInfo) {
+            if (scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
+              _loadMoreSearch(sp);
             }
-            return RepaintBoundary(
-              child: VideoCard(video: sp.searchResults[idx]),
-            );
+            return false;
           },
+          child: GridView.builder(
+            scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: childAspectRatio,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: sp.searchResults.length + (showFooter ? 1 : 0),
+            itemBuilder: (ctx, idx) {
+              if (idx == sp.searchResults.length) {
+                if (sp.isLoadingMore) {
+                  return Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  );
+                }
+                return Center(
+                  child: Text(
+                    '没有更多了',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    ),
+                  ),
+                );
+              }
+              return RepaintBoundary(
+                child: VideoCard(video: sp.searchResults[idx]),
+              );
+            },
+          ),
         ),
       );
     } else if (sp.currentCategory == 'user' ||
         sp.currentCategory == 'bili_user') {
+      if (sp.isLoading && sp.searchUsers.isEmpty) {
+        return const LoadingView(message: '正在搜索UP主...');
+      }
       if (sp.searchUsers.isEmpty) {
+        if (sp.errorMessage != null) {
+          return ErrorView(
+            message: sp.errorMessage!,
+            onRetry: () => sp.search(sp.currentKeyword, category: 'user'),
+          );
+        }
         return const EmptyView(message: '未找到相关UP主');
       }
-      return NotificationListener<ScrollNotification>(
-        onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >=
-              scrollInfo.metrics.maxScrollExtent - 200) {
-            sp.loadMore();
-          }
-          return false;
-        },
-        child: ListView.separated(
-          cacheExtent: 600.0,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          itemCount: sp.searchUsers.length + (sp.isLoadingMore ? 1 : 0),
-          separatorBuilder: (ctx, _) => Divider(
-            height: 1,
-            thickness: 0.5,
-            indent: 62,
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
-          ),
-          itemBuilder: (ctx, idx) {
-            if (idx == sp.searchUsers.length) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              );
+      return RefreshIndicator(
+        color: Theme.of(context).colorScheme.primary,
+        onRefresh: () => _refreshSearch(sp),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (scrollInfo) {
+            if (scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
+              _loadMoreSearch(sp);
             }
-            return RepaintBoundary(
-              child: _buildUserTile(sp.searchUsers[idx], isDark),
-            );
+            return false;
           },
+          child: ListView.separated(
+            scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            itemCount: sp.searchUsers.length +
+                ((sp.isLoadingMore || !sp.hasMore) ? 1 : 0),
+            separatorBuilder: (ctx, _) => Divider(
+              height: 1,
+              thickness: 0.5,
+              indent: 62,
+              color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            ),
+            itemBuilder: (ctx, idx) {
+              if (idx == sp.searchUsers.length) {
+                if (sp.isLoadingMore) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  );
+                }
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '没有更多了',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppTheme.textHintDark
+                            : AppTheme.textHintLight,
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return RepaintBoundary(
+                child: _buildUserTile(sp.searchUsers[idx], isDark),
+              );
+            },
+          ),
         ),
       );
     } else {
       // Article
+      if (sp.isLoading && sp.searchArticles.isEmpty) {
+        return const LoadingView(message: '正在搜索图文...');
+      }
       if (sp.searchArticles.isEmpty) {
+        if (sp.errorMessage != null) {
+          return ErrorView(
+            message: sp.errorMessage!,
+            onRetry: () => sp.search(sp.currentKeyword, category: 'article'),
+          );
+        }
         return const EmptyView(message: '未找到相关图文');
       }
-      return NotificationListener<ScrollNotification>(
-        onNotification: (scrollInfo) {
-          if (scrollInfo.metrics.pixels >=
-              scrollInfo.metrics.maxScrollExtent - 200) {
-            sp.loadMore();
-          }
-          return false;
-        },
-        child: ListView.separated(
-          cacheExtent: 600.0,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          itemCount: sp.searchArticles.length + (sp.isLoadingMore ? 1 : 0),
-          separatorBuilder: (ctx, _) => const SizedBox(height: 10),
-          itemBuilder: (ctx, idx) {
-            if (idx == sp.searchArticles.length) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              );
+      return RefreshIndicator(
+        color: Theme.of(context).colorScheme.primary,
+        onRefresh: () => _refreshSearch(sp),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (scrollInfo) {
+            if (scrollInfo.metrics.pixels >=
+                scrollInfo.metrics.maxScrollExtent - 200) {
+              _loadMoreSearch(sp);
             }
-            return RepaintBoundary(
-              child: _buildArticleTile(sp.searchArticles[idx], isDark),
-            );
+            return false;
           },
+          child: ListView.separated(
+            scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            itemCount: sp.searchArticles.length +
+                ((sp.isLoadingMore || !sp.hasMore) ? 1 : 0),
+            separatorBuilder: (ctx, _) => const SizedBox(height: 10),
+            itemBuilder: (ctx, idx) {
+              if (idx == sp.searchArticles.length) {
+                if (sp.isLoadingMore) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  );
+                }
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '没有更多了',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppTheme.textHintDark
+                            : AppTheme.textHintLight,
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return RepaintBoundary(
+                child: _buildArticleTile(sp.searchArticles[idx], isDark),
+              );
+            },
+          ),
         ),
       );
+    }
+  }
+
+  /// 重新搜索当前关键词（下拉刷新）。失败时提示，不打断列表
+  Future<void> _refreshSearch(SearchProvider sp) async {
+    final ok = await sp.search(sp.currentKeyword);
+    if (!mounted) return;
+    if (!ok) {
+      AppToast.show(context, sp.errorMessage ?? '刷新失败，请检查网络');
+    }
+  }
+
+  /// 滚动加载更多，失败时提示
+  Future<void> _loadMoreSearch(SearchProvider sp) async {
+    final ok = await sp.loadMore();
+    if (!ok && mounted) {
+      AppToast.show(context, '加载失败，请重试');
     }
   }
 

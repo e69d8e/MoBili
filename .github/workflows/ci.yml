@@ -6,10 +6,19 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
+# 同分支连续 push 时取消旧的运行
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

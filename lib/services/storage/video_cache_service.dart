@@ -10,8 +10,37 @@ import '../api/api_endpoints.dart';
 import '../api/bili_http_client.dart';
 import '../api/video_api_service.dart';
 
-class VideoCacheService extends ChangeNotifier {
-  static final VideoCacheService _instance = VideoCacheService._internal();
+/// 在后台 isolate 中解析缓存索引并校验本地文件是否存在（compute 顶层函数）
+List<VideoCacheItem> _parseCacheIndex(String content) {
+  final result = <VideoCacheItem>[];
+  final decoded = jsonDecode(content);
+  if (decoded is List) {
+    for (final itemJson in decoded) {
+      if (itemJson is Map<String, dynamic>) {
+        final item = VideoCacheItem.fromJson(itemJson);
+        if (item.status == VideoCacheStatus.completed) {
+          // Verify completed file on disk
+          final hasVideo = item.localVideoPath.isNotEmpty &&
+              File(item.localVideoPath).existsSync();
+          final hasAudio = item.localAudioPath.isEmpty ||
+              File(item.localAudioPath).existsSync();
+          if (hasVideo && hasAudio) {
+            result.add(item);
+          }
+        } else {
+          // Revert pending/downloading to paused on startup
+          result.add(item.copyWith(
+            status: VideoCacheStatus.paused,
+            downloadSpeed: 0,
+          ));
+        }
+      }
+    }
+  }
+  return result;
+}
+
+class VideoCacheService extends ChangeNotifier {  static final VideoCacheService _instance = VideoCacheService._internal();
   factory VideoCacheService() => _instance;
   VideoCacheService._internal();
 
@@ -46,54 +75,36 @@ class VideoCacheService extends ChangeNotifier {
   int get activeDownloadingCount =>
       _tasks.values.where((t) => t.status == VideoCacheStatus.downloading).length;
 
-  /// Initialize video cache storage & recover tasks
+  /// Initialize video cache storage & recover tasks.
+  /// 目录创建失败时向上抛出（下载功能不可用，由启动层记录）；索引损坏则按空列表自愈。
   Future<void> init() async {
     if (_initialized) return;
-    try {
-      final appDocDir = await getApplicationDocumentsDirectory();
-      final dir = Directory('${appDocDir.path}/video_cache');
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
-      _cacheDir = dir;
+    final appDocDir = await getApplicationDocumentsDirectory();
+    final dir = Directory('${appDocDir.path}/video_cache');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    _cacheDir = dir;
 
-      // Load index
+    try {
+      // Load index（在后台 isolate 解析并校验，避免阻塞 UI 线程）
       final indexFile = File('${dir.path}/$_indexFileName');
       if (indexFile.existsSync()) {
         final content = await indexFile.readAsString();
         if (content.isNotEmpty) {
-          final decoded = jsonDecode(content);
-          if (decoded is List) {
-            for (final itemJson in decoded) {
-              if (itemJson is Map<String, dynamic>) {
-                final item = VideoCacheItem.fromJson(itemJson);
-                // Verify completed file on disk
-                if (item.status == VideoCacheStatus.completed) {
-                  final hasVideo = item.localVideoPath.isNotEmpty &&
-                      File(item.localVideoPath).existsSync();
-                  final hasAudio = item.localAudioPath.isEmpty ||
-                      File(item.localAudioPath).existsSync();
-                  if (hasVideo && hasAudio) {
-                    _tasks[item.taskId] = item;
-                  }
-                } else {
-                  // Revert pending/downloading to paused on startup
-                  _tasks[item.taskId] = item.copyWith(
-                    status: VideoCacheStatus.paused,
-                    downloadSpeed: 0,
-                  );
-                }
-              }
-            }
+          final items = await compute(_parseCacheIndex, content);
+          for (final item in items) {
+            _tasks[item.taskId] = item;
           }
         }
       }
-
-      _initialized = true;
-      notifyListeners();
     } catch (_) {
-      _initialized = true;
+      // 索引损坏可自愈：按空任务列表继续，下次保存会重建索引
+      _tasks.clear();
     }
+
+    _initialized = true;
+    notifyListeners();
   }
 
   /// Check if a video CID is completely cached locally

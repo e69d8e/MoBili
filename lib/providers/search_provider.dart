@@ -30,6 +30,12 @@ class SearchProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasSearched = false;
+  bool _hasMore = true;
+  String? _errorMessage;
+
+  /// 搜索代际令牌：每次新搜索/重置自增，旧请求落地前校验，慢响应不覆盖新结果
+  int _searchToken = 0;
+  bool _isDisposed = false;
 
   List<SearchHotItem> get hotSearches => _hotSearches;
   List<SearchSuggestItem> get suggestions => _suggestions;
@@ -45,6 +51,12 @@ class SearchProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoadingMore => _isLoadingMore;
   bool get hasSearched => _hasSearched;
+
+  /// 是否还有更多结果（空页即视为到底）
+  bool get hasMore => _hasMore;
+
+  /// 最近一次搜索/加载失败的错误信息；null 表示无错误
+  String? get errorMessage => _errorMessage;
 
   Future<void> init() async {
     await _loadHistory();
@@ -83,7 +95,7 @@ class SearchProvider extends ChangeNotifier {
       _hotSearches = list;
     } catch (_) {
     } finally {
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -104,7 +116,7 @@ class SearchProvider extends ChangeNotifier {
     _suggestDebounceTimer = Timer(const Duration(milliseconds: 250), () async {
       try {
         final list = await _searchApiService.getSearchSuggest(cleanQuery);
-        if (_suggestToken == token) {
+        if (!_isDisposed && _suggestToken == token) {
           _suggestions = list;
           notifyListeners();
         }
@@ -121,19 +133,35 @@ class SearchProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _suggestDebounceTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> search(String keyword, {String? order, String? category}) async {
-    if (keyword.trim().isEmpty) return;
-    _currentKeyword = keyword.trim();
+  /// 执行搜索。返回是否成功；失败时设置 [errorMessage] 供 UI 呈现错误态
+  Future<bool> search(String keyword, {String? order, String? category}) async {
+    if (keyword.trim().isEmpty) return false;
+    final newKeyword = keyword.trim();
+    final keywordChanged = newKeyword != _currentKeyword;
+    _currentKeyword = newKeyword;
     if (order != null) _currentOrder = order;
     if (category != null) _currentCategory = category;
 
+    final token = ++_searchToken;
+
     _isLoading = true;
     _hasSearched = true;
+    _errorMessage = null;
+    _hasMore = true;
     _suggestions = [];
+    // 新搜索开启后，在途的 loadMore 已无归属，解除其加载标记
+    _isLoadingMore = false;
+    // 换了关键词时清空旧结果，避免展示错位数据
+    if (keywordChanged) {
+      _searchResults = [];
+      _searchUsers = [];
+      _searchArticles = [];
+    }
     notifyListeners();
 
     await addHistory(_currentKeyword);
@@ -141,27 +169,45 @@ class SearchProvider extends ChangeNotifier {
     try {
       if (_currentCategory == 'video') {
         _videoPage = 1;
-        _searchResults = await _searchApiService.searchVideos(
+        final results = await _searchApiService.searchVideos(
           keyword: _currentKeyword,
           page: _videoPage,
           order: _currentOrder,
         );
+        // 已被更新的搜索取代：静默丢弃本次响应，不覆盖新结果
+        if (_searchToken != token) return true;
+        _searchResults = results;
+        if (results.isEmpty) _hasMore = false;
       } else if (_currentCategory == 'user') {
         _userPage = 1;
-        _searchUsers = await _searchApiService.searchUsers(
+        final results = await _searchApiService.searchUsers(
           keyword: _currentKeyword,
           page: _userPage,
         );
+        if (_searchToken != token) return true;
+        _searchUsers = results;
+        if (results.isEmpty) _hasMore = false;
       } else if (_currentCategory == 'article') {
         _articlePage = 1;
-        _searchArticles = await _searchApiService.searchArticles(
+        final results = await _searchApiService.searchArticles(
           keyword: _currentKeyword,
           page: _articlePage,
         );
+        if (_searchToken != token) return true;
+        _searchArticles = results;
+        if (results.isEmpty) _hasMore = false;
       }
+      return true;
+    } catch (_) {
+      if (_searchToken == token) {
+        _errorMessage = '搜索失败，请检查网络后重试';
+      }
+      return false;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (_searchToken == token) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -187,48 +233,71 @@ class SearchProvider extends ChangeNotifier {
     await search(_currentKeyword, order: order);
   }
 
-  Future<void> loadMore() async {
-    if (_isLoadingMore || _isLoading || _currentKeyword.isEmpty) return;
+  /// 加载下一页。返回是否成功；失败时页码保持不变（可重试不跳页）。
+  /// 守卫跳过（已在加载/到底）返回 true，避免调用方误报错误。
+  Future<bool> loadMore() async {
+    if (_isLoadingMore || _isLoading || !_hasMore || _currentKeyword.isEmpty) {
+      return true;
+    }
     _isLoadingMore = true;
     notifyListeners();
+    final token = _searchToken;
 
     try {
       if (_currentCategory == 'video') {
-        _videoPage++;
+        final nextPage = _videoPage + 1;
         final results = await _searchApiService.searchVideos(
           keyword: _currentKeyword,
-          page: _videoPage,
+          page: nextPage,
           order: _currentOrder,
         );
+        // 翻页在途时发起了新搜索：本次追加作废
+        if (_searchToken != token) return false;
+        _videoPage = nextPage;
+        if (results.isEmpty) _hasMore = false;
         _searchResults.addAll(results);
       } else if (_currentCategory == 'user') {
-        _userPage++;
+        final nextPage = _userPage + 1;
         final results = await _searchApiService.searchUsers(
           keyword: _currentKeyword,
-          page: _userPage,
+          page: nextPage,
         );
+        if (_searchToken != token) return false;
+        _userPage = nextPage;
+        if (results.isEmpty) _hasMore = false;
         _searchUsers.addAll(results);
       } else if (_currentCategory == 'article') {
-        _articlePage++;
+        final nextPage = _articlePage + 1;
         final results = await _searchApiService.searchArticles(
           keyword: _currentKeyword,
-          page: _articlePage,
+          page: nextPage,
         );
+        if (_searchToken != token) return false;
+        _articlePage = nextPage;
+        if (results.isEmpty) _hasMore = false;
         _searchArticles.addAll(results);
       }
+      return true;
+    } catch (_) {
+      return false;
     } finally {
-      _isLoadingMore = false;
-      notifyListeners();
+      if (_searchToken == token) {
+        _isLoadingMore = false;
+        notifyListeners();
+      }
     }
   }
 
   void resetSearch() {
+    _searchToken++;
     _currentKeyword = '';
     _searchResults = [];
     _searchUsers = [];
     _searchArticles = [];
     _suggestions = [];
     _hasSearched = false;
+    _hasMore = true;
+    _errorMessage = null;
     _currentCategory = 'video';
     notifyListeners();
   }

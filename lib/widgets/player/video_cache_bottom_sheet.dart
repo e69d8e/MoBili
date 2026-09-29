@@ -638,7 +638,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         maxHeight: MediaQuery.of(context).size.height * 0.42,
                       ),
                       child: ListView.separated(
-                        shrinkWrap: true,
+                        // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
+                        shrinkWrap: episodes.length <= 12,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         itemCount: episodes.length,
                         separatorBuilder: (ctx, i) => const SizedBox(height: 6),

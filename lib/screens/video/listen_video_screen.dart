@@ -691,7 +691,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               ),
               Flexible(
                 child: ListView.separated(
-                  shrinkWrap: true,
+                  // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
+                  shrinkWrap: _playlist!.length <= 12,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   itemCount: _playlist!.length,
                   separatorBuilder: (c, _) => const SizedBox(height: 6),

@@ -1,8 +1,23 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release signing: prefer android/key.properties (local keystore) or the KEYSTORE_PATH /
+// KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD environment variables (CI).
+// Falls back to the debug key so local dev builds keep working.
+val keystoreProperties = Properties().apply {
+    val keyProps = rootProject.file("key.properties")
+    if (keyProps.exists()) FileInputStream(keyProps).use { load(it) }
+}
+val releaseStoreFilePath =
+    keystoreProperties.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
+val releaseStoreFile =
+    releaseStoreFilePath?.takeIf { it.isNotBlank() }?.let { file(it) }
 
 android {
     namespace = "com.mobili.app.mobili"
@@ -29,11 +44,32 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = releaseStoreFile
+                storePassword =
+                    keystoreProperties.getProperty("storePassword")
+                        ?: System.getenv("KEYSTORE_PASSWORD")
+                keyAlias =
+                    keystoreProperties.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
+                keyPassword =
+                    keystoreProperties.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseStoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "MoBili: release keystore not configured (android/key.properties or KEYSTORE_PATH env). " +
+                        "Falling back to debug signing; this artifact cannot be installed over a previous release."
+                )
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

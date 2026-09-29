@@ -438,9 +438,13 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
 
               if (!isFullScreen)
                 Expanded(
-                  child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  children: [
+                  child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                        child: Column(
+                          children: [
                     // Video Title
                     Text(
                       _currentItem.title,
@@ -559,37 +563,44 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                     ),
 
                     const SizedBox(height: 18),
-
-                    // Episodes Section (if multi-part or season)
-                    if (_cachedEpisodes.isNotEmpty) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '已缓存剧集 (共 ${_cachedEpisodes.length} 集)',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-                            ),
-                          ),
-                          Text(
-                            '点击直接切集',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                            ),
-                          ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _cachedEpisodes.length,
-                        separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                        itemBuilder: (ctx, i) {
+                    ),
+                    ),
+                    // Episodes Section (if multi-part or season) — Sliver 懒加载，避免一次性构建全部剧集
+                    if (_cachedEpisodes.isNotEmpty) ...[
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        sliver: SliverToBoxAdapter(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '已缓存剧集 (共 ${_cachedEpisodes.length} 集)',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                ),
+                              ),
+                              Text(
+                                '点击直接切集',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                        sliver: SliverList.separated(
+                          itemCount: _cachedEpisodes.length,
+                          separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                          itemBuilder: (ctx, i) {
                           final ep = _cachedEpisodes[i];
                           final isPlaying = ep.taskId == _currentItem.taskId;
 
@@ -685,7 +696,8 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                               ),
                             ),
                           );
-                        },
+                          },
+                        ),
                       ),
                     ],
                   ],

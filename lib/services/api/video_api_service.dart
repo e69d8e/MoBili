@@ -11,25 +11,22 @@ class VideoApiService {
 
   /// Get Popular (热门) videos
   Future<List<VideoItem>> getPopularVideos({int pn = 1, int ps = 20}) async {
-    try {
-      final res = await BiliHttpClient().get(
-        ApiEndpoints.popular,
-        queryParameters: {'pn': pn, 'ps': ps},
-      );
+    final res = await BiliHttpClient().get(
+      ApiEndpoints.popular,
+      queryParameters: {'pn': pn, 'ps': ps},
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final list = res.data['data']['list'] as List?;
-        if (list != null) {
-          return list
-              .map((item) => VideoItem.fromJson(item))
-              .where((v) => v.bvid.isNotEmpty && v.title.isNotEmpty && v.pic.isNotEmpty)
-              .toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final list = res.data['data']['list'] as List?;
+      if (list != null) {
+        return list
+            .map((item) => VideoItem.fromJson(item))
+            .where((v) => v.bvid.isNotEmpty && v.title.isNotEmpty && v.pic.isNotEmpty)
+            .toList();
       }
-      return [];
-    } catch (_) {
-      return [];
     }
+    // 异常向上抛出，由 Provider 呈现错误态（而非误导性的空列表）
+    throw Exception('热门视频加载失败');
   }
 
   /// Get Recommend (推荐) feed with WBI signature
@@ -64,7 +61,7 @@ class VideoApiService {
               .toList();
         }
       }
-      // Fallback to popular videos if feed rcmd fails
+      // Fallback to popular videos if feed rcmd fails（热门也失败时异常向上传播）
       return await getPopularVideos(pn: freshIdx, ps: ps);
     } catch (_) {
       return await getPopularVideos(pn: freshIdx, ps: ps);
@@ -73,25 +70,21 @@ class VideoApiService {
 
   /// Get Ranking (排行榜) videos
   Future<List<VideoItem>> getRankingVideos({int rid = 0, String type = 'all'}) async {
-    try {
-      final res = await BiliHttpClient().get(
-        ApiEndpoints.ranking,
-        queryParameters: {'rid': rid, 'type': type},
-      );
+    final res = await BiliHttpClient().get(
+      ApiEndpoints.ranking,
+      queryParameters: {'rid': rid, 'type': type},
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final list = res.data['data']['list'] as List?;
-        if (list != null) {
-          return list
-              .map((item) => VideoItem.fromJson(item))
-              .where((v) => v.bvid.isNotEmpty && v.title.isNotEmpty && v.pic.isNotEmpty)
-              .toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final list = res.data['data']['list'] as List?;
+      if (list != null) {
+        return list
+            .map((item) => VideoItem.fromJson(item))
+            .where((v) => v.bvid.isNotEmpty && v.title.isNotEmpty && v.pic.isNotEmpty)
+            .toList();
       }
-      return [];
-    } catch (_) {
-      return [];
     }
+    throw Exception('排行榜加载失败');
   }
 
   /// Get Video Detail & metadata
@@ -104,6 +97,23 @@ class VideoApiService {
 
       if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
         return VideoDetail.fromJson(res.data['data']);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 通过 aid 换取 bvid（深度链接 av 号解析用）
+  Future<String?> getBvidByAid(int aid) async {
+    try {
+      final res = await BiliHttpClient().get(
+        ApiEndpoints.videoView,
+        queryParameters: {'aid': aid},
+      );
+      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+        final bvid = res.data['data']['bvid']?.toString();
+        return (bvid != null && bvid.isNotEmpty) ? bvid : null;
       }
       return null;
     } catch (_) {

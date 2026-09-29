@@ -10,6 +10,8 @@ class FakeSearchApiService implements SearchApiService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   bool shouldThrow = false;
+  bool returnEmptyVideos = false;
+  final List<int> requestedVideoPages = [];
 
   @override
   Future<List<SearchHotItem>> getHotSearch({int limit = 10}) async {
@@ -37,7 +39,9 @@ class FakeSearchApiService implements SearchApiService {
     int duration = 0,
     int tid = 0,
   }) async {
+    requestedVideoPages.add(page);
     if (shouldThrow) throw Exception('API Error');
+    if (returnEmptyVideos) return [];
     return [
       VideoItem(
         aid: page * 100,
@@ -207,24 +211,55 @@ void main() {
       expect(provider.currentCategory, equals('video'));
     });
 
-    test('try-finally safety: loading flags always reset on API errors', () async {
+    test('search failure sets errorMessage and returns false without throwing', () async {
       fakeService.shouldThrow = true;
 
-      // 1. Hot search error
-      await provider.loadHotSearches();
-      expect(provider.hotSearches, isEmpty);
-
-      // 2. Search error
-      try {
-        await provider.search('ErrorKeyword');
-      } catch (_) {}
+      final ok = await provider.search('ErrorKeyword');
+      expect(ok, isFalse);
+      expect(provider.errorMessage, isNotNull);
       expect(provider.isLoading, isFalse);
+      expect(provider.hasSearched, isTrue);
 
-      // 3. Load more error
-      try {
-        await provider.loadMore();
-      } catch (_) {}
-      expect(provider.isLoadingMore, isFalse);
+      // 重试成功后错误被清除
+      fakeService.shouldThrow = false;
+      final okRetry = await provider.search('ErrorKeyword');
+      expect(okRetry, isTrue);
+      expect(provider.errorMessage, isNull);
+      expect(provider.searchResults, isNotEmpty);
+    });
+
+    test('loadMore failure does not skip pages (page-skip regression)', () async {
+      await provider.search('Flutter');
+      expect(provider.searchResults.length, equals(1));
+      expect(fakeService.requestedVideoPages, equals([1]));
+
+      fakeService.shouldThrow = true;
+      final ok = await provider.loadMore();
+      expect(ok, isFalse);
+      expect(provider.searchResults.length, equals(1));
+
+      // 重试必须仍请求第 2 页，而不是跳到第 3 页
+      fakeService.shouldThrow = false;
+      final okRetry = await provider.loadMore();
+      expect(okRetry, isTrue);
+      expect(fakeService.requestedVideoPages, equals([1, 2, 2]));
+      expect(provider.searchResults.length, equals(2));
+      expect(provider.searchResults.last.bvid, equals('BVsearch_Flutter_2'));
+    });
+
+    test('hasMore flips false when a page returns empty', () async {
+      await provider.search('Flutter');
+      expect(provider.hasMore, isTrue);
+
+      fakeService.returnEmptyVideos = true;
+      await provider.loadMore();
+      expect(provider.hasMore, isFalse);
+      expect(provider.searchResults.length, equals(1));
+
+      // 到底后 loadMore 直接跳过，不再发请求
+      final pages = List<int>.from(fakeService.requestedVideoPages);
+      await provider.loadMore();
+      expect(fakeService.requestedVideoPages, equals(pages));
     });
   });
 }

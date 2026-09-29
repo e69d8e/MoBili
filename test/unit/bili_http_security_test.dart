@@ -20,9 +20,12 @@ void main() {
       expect(identical(future1, future2), isTrue);
       expect(identical(future2, future3), isTrue);
 
-      await Future.wait([future1, future2, future3]);
-      // After initialization, subsequent init() immediately returns
-      await client.init();
+      // 测试环境可能无网络：init 失败后 _initFuture 会置空，允许下次重试
+      try {
+        await Future.wait([future1, future2, future3]);
+      } catch (_) {
+        await client.init().catchError((Object _) {});
+      }
     });
 
     test('BiliHttpClient cookie management and user login state', () async {
@@ -56,8 +59,14 @@ void main() {
       expect(client.cookies['buvid3'], equals('buvid_test_123'));
     });
 
-    test('BiliSecurityService WBI special characters sanitization', () {
+    test('BiliSecurityService WBI special characters sanitization', () async {
       final security = BiliSecurityService();
+      security.resetForTesting();
+      SharedPreferences.setMockInitialValues({});
+      await security.updateWbiKeys(
+        'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',
+        'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png',
+      );
 
       // Parameters with ! ' ( ) *
       final dirtyParams = {
@@ -75,6 +84,7 @@ void main() {
 
     test('BiliSecurityService WBI key expiration check', () {
       final security = BiliSecurityService();
+      security.resetForTesting();
 
       // Before updating keys: invalid
       expect(security.areWbiKeysValid(), isFalse);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/storage/history_storage_service.dart';
@@ -20,6 +21,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int _page = 1;
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _hasMore = true;
 
   @override
   void initState() {
@@ -41,6 +43,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         } else {
           _history.addAll(list);
         }
+        // 空页视为到底
+        _hasMore = list.isNotEmpty;
         _page++;
         _isLoading = false;
       });
@@ -48,13 +52,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_isLoadingMore || _isLoading) return;
+    if (_isLoadingMore || _isLoading || !_hasMore) return;
     setState(() => _isLoadingMore = true);
 
     final list = await UserApiService().getUserHistory(pn: _page);
     if (mounted) {
       setState(() {
         _history.addAll(list);
+        _hasMore = list.isNotEmpty;
         _page++;
         _isLoadingMore = false;
       });
@@ -70,7 +75,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         title: const Text('历史记录'),
       ),
       body: _isLoading
-          ? const LoadingView(message: '正在加载历史记录...')
+          ? const VideoListSkeleton()
           : _history.isEmpty
               ? const EmptyView(message: '暂无历史记录或未登录', icon: Icons.history_rounded)
               : NotificationListener<ScrollNotification>(
@@ -84,7 +89,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadHistory(refresh: true),
                     child: ListView.separated(
-                      cacheExtent: 500.0,
+                      scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       itemCount: _history.length + (_isLoadingMore ? 1 : 0),
                       separatorBuilder: (ctx, _) => Divider(

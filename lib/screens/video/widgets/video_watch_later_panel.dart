@@ -263,7 +263,8 @@ class VideoWatchLaterSheet {
               ),
               Flexible(
                 child: ListView.separated(
-                  shrinkWrap: true,
+                  // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
+                  shrinkWrap: items.length <= 12,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   itemCount: items.length,
                   separatorBuilder: (c, _) => const SizedBox(height: 8),

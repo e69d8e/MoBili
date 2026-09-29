@@ -49,6 +49,7 @@ dependencies:
   path_provider: ^2.1.5
   screen_brightness: ^2.1.11
   flutter_volume_controller: ^2.0.2
+  app_links: ^7.2.1
 
 dev_dependencies:
   flutter_test:

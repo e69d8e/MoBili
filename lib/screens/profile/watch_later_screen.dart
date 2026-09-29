@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/storage/history_storage_service.dart';
@@ -179,7 +180,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
         ],
       ),
       body: _isLoading && _items.isEmpty
-          ? const LoadingView(message: '正在加载稍后观看...')
+          ? const VideoListSkeleton()
           : _items.isEmpty
               ? EmptyView(
                   message: '暂无稍后观看视频',
@@ -197,7 +198,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.builder(
-                      cacheExtent: 500.0,
+                      scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       itemCount: _items.length + 1 + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (ctx, idx) {

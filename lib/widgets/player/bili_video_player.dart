@@ -113,13 +113,15 @@ enum _PanGestureMode {
   verticalVolume,
 }
 
-class BiliVideoPlayerState extends State<BiliVideoPlayer> {
+class BiliVideoPlayerState extends State<BiliVideoPlayer>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   VideoPlayerController? _pendingController;
   int _initToken = 0;
   late DanmakuController _danmakuController;
   bool _wakelockEnabled = false;
   bool _isExplicitlyPaused = false;
+  bool _pausedByAppLifecycle = false;
 
   VideoPlayerController? get controller => _controller;
   double get playbackSpeed => _playbackSpeed;
@@ -206,6 +208,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _danmakuController = DanmakuController();
     _danmakuController.setDanmakus(widget.danmakus);
     SleepTimerService().registerPauseCallback(_onSleepTimerPause);
@@ -244,9 +247,29 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         _currentVolume = sysVolume;
       });
     }
+    // 异步初始化期间页面可能已退出（dispose 已 removeVolumeListener），不再回注回调
+    if (!mounted) return;
     SystemMediaControlService.instance.addVolumeListener(
       _onSystemVolumeChanged,
     );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (!mounted) return;
+    // 切后台/系统打断时暂停，回到前台自动续播（仅限本次由生命周期触发的暂停；
+    // 用户主动暂停的保持暂停）。后台音频由听书模式独立管理，不受影响。
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      if (_controller?.value.isPlaying == true) {
+        _pausedByAppLifecycle = true;
+        pause();
+      }
+    } else if (state == AppLifecycleState.resumed && _pausedByAppLifecycle) {
+      _pausedByAppLifecycle = false;
+      play();
+    }
   }
 
   int _lastVolumePanEndTime = 0;
@@ -363,6 +386,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (!hasLocalFile && (url == null || url.isEmpty)) return;
 
     final VideoPlayerController controller;
+    // mixWithOthers: true 保持与听书/其他后台音频共存；系统音频焦点策略不在播放器层强制切换
     final playerOptions = VideoPlayerOptions(mixWithOthers: true);
     if (hasLocalFile) {
       controller = VideoPlayerController.file(
@@ -810,6 +834,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   @override
   void dispose() {
     _initToken++;
+    WidgetsBinding.instance.removeObserver(this);
+    SleepTimerService().unregisterPauseCallback(_onSleepTimerPause);
     _hideTimer?.cancel();
     _lockIconTimer?.cancel();
     _hudTimer?.cancel();
@@ -1801,6 +1827,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                 children: [
                   IconButton(
                     visualDensity: VisualDensity.compact,
+                    tooltip: '退出全屏',
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       color: Colors.white,
@@ -1898,6 +1925,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
+                    tooltip: '弹幕设置',
                     icon: const Icon(
                       Icons.tune_rounded,
                       color: Colors.white,
@@ -1919,6 +1947,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                   }
                   return IconButton(
                     iconSize: 44,
+                    tooltip: '播放/暂停',
                     icon: Icon(Icons.play_circle_fill_rounded, color: accent),
                     onPressed: _togglePlayPause,
                   );
@@ -1942,6 +1971,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                         return IconButton(
                           visualDensity: VisualDensity.compact,
                           padding: EdgeInsets.zero,
+                          tooltip: val.isPlaying ? '暂停' : '播放',
                           icon: Icon(
                             val.isPlaying
                                 ? Icons.pause_rounded
@@ -1957,6 +1987,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
+                      tooltip: '播放',
                       icon: const Icon(
                         Icons.play_arrow_rounded,
                         color: Colors.white,
@@ -2085,6 +2116,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                       return IconButton(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 2),
+                        tooltip: _danmakuController.enabled ? '关闭弹幕' : '开启弹幕',
                         icon: Icon(
                           _danmakuController.enabled
                               ? Icons.subtitles_rounded
@@ -2168,6 +2200,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(horizontal: 2),
+                    tooltip: isFull ? '退出全屏' : '进入全屏',
                     icon: Icon(
                       isFull
                           ? Icons.fullscreen_exit_rounded

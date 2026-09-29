@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认禁止全局明文 HTTP，仅放行两类确需明文的地址：
+   1. 本地回环：BiliStreamProxy 本地流代理（http://127.0.0.1:port/...）
+   2. B 站视频 CDN 父域名：播放器可能直接播放 playurl 返回的 http:// 流地址
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">bilivideo.com</domain>
+        <domain includeSubdomains="true">bilivideo.cn</domain>
+        <domain includeSubdomains="true">akamaized.net</domain>
+        <domain includeSubdomains="true">szbdyd.com</domain>
+    </domain-config>
+</network-security-config>

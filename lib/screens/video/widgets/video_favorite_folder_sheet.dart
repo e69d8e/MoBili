@@ -56,6 +56,7 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
   Set<int> _initialSelectedFolderIds = {};
   Set<int> _selectedFolderIds = {};
   bool _isLoading = true;
+  bool _loadError = false;
   bool _isSubmitting = false;
 
   @override
@@ -66,7 +67,18 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
 
   Future<void> _loadFolders() async {
     setState(() => _isLoading = true);
-    final folders = await UserApiService().getUserFavFolders(widget.mid, rid: widget.aid);
+    List<FavFolder> folders;
+    try {
+      folders = await UserApiService().getUserFavFolders(widget.mid, rid: widget.aid);
+      _loadError = false;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadError = true;
+      });
+      return;
+    }
     if (mounted) {
       final selected = <int>{};
       for (final f in folders) {
@@ -190,12 +202,15 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                     child: LoadingView(message: '正在获取收藏夹...'),
                   )
                 : _folders.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: EmptyView(message: '暂无收藏夹'),
+                    ? Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: _loadError
+                            ? ErrorView(message: '收藏夹获取失败', onRetry: _loadFolders)
+                            : const EmptyView(message: '暂无收藏夹'),
                       )
                     : ListView.separated(
-                        shrinkWrap: true,
+                        // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
+                        shrinkWrap: _folders.length <= 12,
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: _folders.length,
                         separatorBuilder: (ctx, _) => Divider(

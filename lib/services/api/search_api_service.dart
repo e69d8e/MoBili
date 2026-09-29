@@ -57,40 +57,38 @@ class SearchApiService {
 
   /// Search videos using WBI signature
   /// order options: totalrank (综合), click (最多播放), pubdate (最新发布), dm (最多弹幕), stow (最多收藏)
+  /// 失败时抛出异常（而非返回空列表），让 Provider 呈现错误态
   Future<List<VideoItem>> searchVideos({
     required String keyword,
     int page = 1,
     String order = 'totalrank',
   }) async {
     if (keyword.trim().isEmpty) return [];
-    try {
-      final res = await BiliHttpClient().getWbi(
-        ApiEndpoints.searchAll,
-        queryParameters: {
-          'keyword': keyword,
-          'page': page,
-          'order': order,
-          'search_type': 'video',
-        },
-      );
+    final res = await BiliHttpClient().getWbi(
+      ApiEndpoints.searchAll,
+      queryParameters: {
+        'keyword': keyword,
+        'page': page,
+        'order': order,
+        'search_type': 'video',
+      },
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final result = res.data['data']['result'];
-        if (result is List) {
-          // Bilibili search result has multiple categories: find video category
-          for (final section in result) {
-            if (section is Map && section['result_type'] == 'video' && section['data'] is List) {
-              return (section['data'] as List)
-                  .map((item) => VideoItem.fromJson(item))
-                  .toList();
-            }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final result = res.data['data']['result'];
+      if (result is List) {
+        // Bilibili search result has multiple categories: find video category
+        for (final section in result) {
+          if (section is Map && section['result_type'] == 'video' && section['data'] is List) {
+            return (section['data'] as List)
+                .map((item) => VideoItem.fromJson(item))
+                .toList();
           }
         }
       }
       return [];
-    } catch (_) {
-      return [];
     }
+    throw Exception(res.data?['message'] ?? '搜索请求失败');
   }
 
   /// Search users / UP creators
@@ -101,27 +99,24 @@ class SearchApiService {
     String order = '0',
   }) async {
     if (keyword.trim().isEmpty) return [];
-    try {
-      final res = await BiliHttpClient().getWbi(
-        ApiEndpoints.searchType,
-        queryParameters: {
-          'keyword': keyword,
-          'page': page,
-          'order': order,
-          'search_type': 'bili_user',
-        },
-      );
+    final res = await BiliHttpClient().getWbi(
+      ApiEndpoints.searchType,
+      queryParameters: {
+        'keyword': keyword,
+        'page': page,
+        'order': order,
+        'search_type': 'bili_user',
+      },
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final result = res.data['data']['result'];
-        if (result is List) {
-          return result.map((item) => SearchUserItem.fromJson(item)).toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final result = res.data['data']['result'];
+      if (result is List) {
+        return result.map((item) => SearchUserItem.fromJson(item)).toList();
       }
       return [];
-    } catch (_) {
-      return [];
     }
+    throw Exception(res.data?['message'] ?? '搜索请求失败');
   }
 
   /// Search articles / Opus / pictures
@@ -132,26 +127,23 @@ class SearchApiService {
     String order = 'totalrank',
   }) async {
     if (keyword.trim().isEmpty) return [];
-    try {
-      final res = await BiliHttpClient().getWbi(
-        ApiEndpoints.searchType,
-        queryParameters: {
-          'keyword': keyword,
-          'page': page,
-          'order': order,
-          'search_type': 'article',
-        },
-      );
+    final res = await BiliHttpClient().getWbi(
+      ApiEndpoints.searchType,
+      queryParameters: {
+        'keyword': keyword,
+        'page': page,
+        'order': order,
+        'search_type': 'article',
+      },
+    );
 
-      if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
-        final result = res.data['data']['result'];
-        if (result is List) {
-          return result.map((item) => SearchArticleItem.fromJson(item)).toList();
-        }
+    if (res.data != null && res.data['code'] == 0 && res.data['data'] != null) {
+      final result = res.data['data']['result'];
+      if (result is List) {
+        return result.map((item) => SearchArticleItem.fromJson(item)).toList();
       }
       return [];
-    } catch (_) {
-      return [];
     }
+    throw Exception(res.data?['message'] ?? '搜索请求失败');
   }
 }

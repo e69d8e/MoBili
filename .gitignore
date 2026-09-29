@@ -63,6 +63,14 @@ app.*.map.json
 **/android/captures/
 **/android/gradle/wrapper/gradle-wrapper.jar.sha256
 
+# Release signing (never commit keystore material)
+android/key.properties
+*.jks
+*.keystore
+
 # Widget Preview related
 .widget_preview/
 mobili_architecture.*
+
+# zcode
+.zcode/
