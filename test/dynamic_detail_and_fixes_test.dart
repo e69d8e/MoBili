@@ -11,6 +11,7 @@ import 'package:mobili/screens/dynamic/dynamic_detail_screen.dart';
 import 'package:mobili/screens/up/up_space_screen.dart';
 import 'package:mobili/services/api/api_endpoints.dart';
 import 'package:mobili/services/player_settings_service.dart';
+import 'package:mobili/utils/image_decode_sizing.dart';
 import 'package:mobili/widgets/comment_item_widget.dart';
 import 'package:mobili/widgets/dynamic_card.dart';
 import 'package:mobili/widgets/network_image_view.dart';
@@ -980,8 +981,20 @@ void main() {
 
       expect(find.text('地球知识局'), findsOneWidget);
       expect(find.text('越南的直辖市，已经是中国两倍了！| 地球知识局'), findsOneWidget);
-      expect(find.text('就在刚刚，越南国会通过决议...'), findsOneWidget);
       expect(find.byType(NetworkImageView), findsWidgets);
+
+      // 正文段落改为 SliverList 懒加载：屏幕外的段落滚动到可见范围后才构建
+      final scrollable = find.descendant(
+        of: find.byType(CustomScrollView),
+        matching: find.byType(Scrollable),
+      );
+      for (int i = 0;
+          i < 10 && find.text('就在刚刚，越南国会通过决议...').evaluate().isEmpty;
+          i++) {
+        await tester.drag(scrollable, const Offset(0, -300));
+        await tester.pump();
+      }
+      expect(find.text('就在刚刚，越南国会通过决议...'), findsOneWidget);
     });
 
     testWidgets('DynamicDetailScreen renders quote, list and code paragraphs', (tester) async {
@@ -1075,6 +1088,118 @@ void main() {
             .first,
       );
       expect(aspect.aspectRatio, closeTo(0.25, 0.001));
+    });
+
+    testWidgets('DynamicDetailScreen 懒加载图文段落，屏幕外的长图不会被解码', (tester) async {
+      const longPic = DynamicPicture(
+        url: 'https://i0.hdslb.com/bfs/new_dyn/lazy-long.png',
+        width: 1080,
+        height: 4320,
+      );
+      final opusItem = DynamicItem(
+        id: '778899',
+        type: 'DYNAMIC_TYPE_DRAW',
+        author: DynamicAuthor(
+          mid: 1006,
+          name: '懒加载UP主',
+          face: 'https://i0.hdslb.com/bfs/face/lazy.jpg',
+          pubTime: '刚刚',
+          pubAction: '投稿了图文',
+        ),
+        text: '正文摘要',
+        stat: DynamicStat(commentCount: 1, likeCount: 2),
+        paragraphs: [
+          for (int i = 0; i < 20; i++)
+            DynamicParagraph(type: 1, text: '第 $i 段正文内容，用来把长图推到首屏之外。' * 3),
+          const DynamicParagraph(type: 2, picture: longPic),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+            ChangeNotifierProvider<ListenVideoProvider>(create: (_) => ListenVideoProvider()),
+          ],
+          child: MaterialApp(
+            home: DynamicDetailScreen(
+              dynamicId: '778899',
+              initialItem: opusItem,
+            ),
+          ),
+        ),
+      );
+
+      Finder longImage() => find.byWidgetPredicate(
+            (widget) => widget is NetworkImageView && widget.url.contains('lazy-long.png'),
+          );
+
+      // 首屏只构建可见段落：远处的图片既没有构建、也就不会发起解码
+      expect(find.text('第 0 段正文内容，用来把长图推到首屏之外。' * 3), findsOneWidget);
+      expect(longImage(), findsNothing);
+
+      final scrollable = find.descendant(
+        of: find.byType(CustomScrollView),
+        matching: find.byType(Scrollable),
+      );
+      for (int i = 0; i < 20 && longImage().evaluate().isEmpty; i++) {
+        await tester.drag(scrollable, const Offset(0, -800));
+        await tester.pump();
+      }
+
+      expect(longImage(), findsOneWidget);
+    });
+
+    testWidgets('DynamicDetailScreen 长图解码分辨率受像素预算约束', (tester) async {
+      const longPic = DynamicPicture(
+        url: 'https://i0.hdslb.com/bfs/new_dyn/budget-long.png',
+        width: 1080,
+        height: 4320,
+      );
+      final opusItem = DynamicItem(
+        id: '889900',
+        type: 'DYNAMIC_TYPE_DRAW',
+        author: DynamicAuthor(
+          mid: 1007,
+          name: '预算UP主',
+          face: 'https://i0.hdslb.com/bfs/face/budget.jpg',
+          pubTime: '刚刚',
+          pubAction: '投稿了图文',
+        ),
+        text: '一张长图',
+        stat: DynamicStat(commentCount: 1, likeCount: 2),
+        paragraphs: const [DynamicParagraph(type: 2, picture: longPic)],
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+            ChangeNotifierProvider<ListenVideoProvider>(create: (_) => ListenVideoProvider()),
+          ],
+          child: MaterialApp(
+            home: DynamicDetailScreen(
+              dynamicId: '889900',
+              initialItem: opusItem,
+            ),
+          ),
+        ),
+      );
+
+      final imageView = tester
+          .widgetList<NetworkImageView>(find.byType(NetworkImageView))
+          .firstWhere((widget) => widget.url.contains('budget-long.png'));
+
+      final cacheWidth = imageView.memCacheWidth;
+      expect(cacheWidth, isNotNull);
+      const ratio = 1080 / 4320;
+      final decodedPixels = cacheWidth! * (cacheWidth / ratio);
+      expect(
+        decodedPixels,
+        lessThanOrEqualTo(ImageDecodeSizing.defaultMaxPixels.toDouble()),
+      );
+      // 不再按“显示宽度 × DPR”的全分辨率解码
+      expect(cacheWidth, lessThan(1440));
     });
   });
 }

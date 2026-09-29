@@ -11,6 +11,7 @@ import '../../services/api/dynamic_api_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../utils/image_decode_sizing.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/audio/mini_audio_player.dart';
 import '../../widgets/comment_item_widget.dart';
@@ -366,10 +367,8 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                           },
                           child: CustomScrollView(
                             slivers: [
-                              // Dynamic Main Content Card
-                              SliverToBoxAdapter(
-                                child: _buildDynamicBody(context, _item!, isDark, primaryColor),
-                              ),
+                              // Dynamic Main Content Card（正文分段懒加载）
+                              ..._buildContentSlivers(context, _item!, isDark, primaryColor),
 
                               // Divider & Comments Header
                               SliverToBoxAdapter(
@@ -452,15 +451,69 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildDynamicBody(
+  /// 内容区 slivers：作者信息 + 正文 + 底部互动区。
+  ///
+  /// 图文正文按段拆进 [SliverList] 懒加载：只有滚动到可见范围附近的段落
+  /// 才会构建并解码图片。此前整篇正文放在同一个 sliver 里，进入页面就会
+  /// 一次性解码全部大图，长图（单张位图可达十几 MB）导致上下滑动明显卡顿。
+  List<Widget> _buildContentSlivers(
     BuildContext context,
     DynamicItem item,
     bool isDark,
     Color primaryColor,
   ) {
+    final cardColor = isDark ? AppTheme.cardDark : AppTheme.cardLight;
+    final video = item.video;
+    final hasVideo = video != null && video.bvid.isNotEmpty;
+
+    return [
+      SliverToBoxAdapter(
+        child: _buildAuthorHeader(context, item, isDark, primaryColor, cardColor),
+      ),
+      if (item.paragraphs.isNotEmpty)
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (ctx, index) {
+              if (index >= item.paragraphs.length) {
+                return ColoredBox(
+                  color: cardColor,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _buildVideoCard(ctx, video!, isDark),
+                  ),
+                );
+              }
+              return ColoredBox(
+                color: cardColor,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, index == 0 ? 14 : 0, 16, 0),
+                  child: _buildParagraph(ctx, item.paragraphs[index], item.pictures, isDark),
+                ),
+              );
+            },
+            childCount: item.paragraphs.length + (hasVideo ? 1 : 0),
+          ),
+        )
+      else
+        SliverToBoxAdapter(
+          child: _buildPlainContent(context, item, isDark, cardColor),
+        ),
+      SliverToBoxAdapter(
+        child: _buildStatsFooter(context, item, isDark, primaryColor, cardColor),
+      ),
+    ];
+  }
+
+  Widget _buildAuthorHeader(
+    BuildContext context,
+    DynamicItem item,
+    bool isDark,
+    Color primaryColor,
+    Color cardColor,
+  ) {
     return Container(
-      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      color: cardColor,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -565,40 +618,69 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             ),
           ],
 
-          // Content
-          if (item.paragraphs.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _buildParagraphs(context, item.paragraphs, item.pictures, isDark),
-            if (item.video != null && item.video!.bvid.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildVideoCard(context, item.video!, isDark),
-            ],
-          ] else ...[
-            // Text Content
-            if (item.text.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                item.text,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.55,
-                  color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-                ),
+        ],
+      ),
+    );
+  }
+
+  /// 没有段落结构的动态正文（普通图文、视频动态等）。
+  Widget _buildPlainContent(
+    BuildContext context,
+    DynamicItem item,
+    bool isDark,
+    Color cardColor,
+  ) {
+    final video = item.video;
+    final hasVideo = video != null && video.bvid.isNotEmpty;
+    final hasText = item.text.isNotEmpty;
+    final hasPictures = item.pictures.isNotEmpty;
+    if (!hasText && !hasVideo && !hasPictures) return const SizedBox.shrink();
+
+    return Container(
+      color: cardColor,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasText)
+            Text(
+              item.text,
+              style: TextStyle(
+                fontSize: 14.5,
+                height: 1.55,
+                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
               ),
-            ],
+            ),
 
-            // Video Card (if any)
-            if (item.video != null && item.video!.bvid.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildVideoCard(context, item.video!, isDark),
-            ],
-
-            // Pictures (if any)
-            if (item.pictures.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildImages(context, item.pictures, isDark),
-            ],
+          // Video Card (if any)
+          if (hasVideo) ...[
+            if (hasText) const SizedBox(height: 12),
+            _buildVideoCard(context, video, isDark),
           ],
+
+          // Pictures (if any)
+          if (hasPictures) ...[
+            if (hasText || hasVideo) const SizedBox(height: 12),
+            _buildImages(context, item.pictures, isDark),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsFooter(
+    BuildContext context,
+    DynamicItem item,
+    bool isDark,
+    Color primaryColor,
+    Color cardColor,
+  ) {
+    return Container(
+      color: cardColor,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
 
           // Forwarded Dynamic (if any)
           if (item.orig != null) ...[
@@ -823,142 +905,128 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildParagraphs(
+  /// 单个正文段落。作为 [SliverList] 的子项按需构建，
+  /// 所以图片只有滚动到可见范围附近时才会开始解码。
+  Widget _buildParagraph(
     BuildContext context,
-    List<DynamicParagraph> paragraphs,
+    DynamicParagraph p,
     List<DynamicPicture> allPictures,
     bool isDark,
   ) {
-    final widgets = <Widget>[];
-
-    for (int i = 0; i < paragraphs.length; i++) {
-      final p = paragraphs[i];
-      if (p.isQuote) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFF5F6F8),
-                borderRadius: BorderRadius.circular(6),
-                border: Border(
-                  left: BorderSide(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
-                    width: 3,
-                  ),
-                ),
-              ),
-              child: Text(
-                p.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.6,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                ),
+    if (p.isQuote) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFF5F6F8),
+            borderRadius: BorderRadius.circular(6),
+            border: Border(
+              left: BorderSide(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
+                width: 3,
               ),
             ),
           ),
-        );
-      } else if (p.isCode) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF16161C) : const Color(0xFFF2F3F5),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Text(
-                  p.text,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.5,
-                    fontFamily: 'monospace',
-                    color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-                  ),
-                ),
-              ),
+          child: Text(
+            p.text,
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.6,
+              color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
             ),
           ),
-        );
-      } else if (p.type == 4) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 10, bottom: 4),
-            child: Text(
-              p.text,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                height: 1.45,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-              ),
-            ),
-          ),
-        );
-      } else if (p.isText) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Text(
-              p.text,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.65,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
-              ),
-            ),
-          ),
-        );
-      } else if (p.isPicture) {
-        final pic = p.picture!;
-        final picIndex = allPictures.indexWhere((item) => item.url == pic.url);
-        final effectiveIndex = picIndex >= 0 ? picIndex : 0;
-
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: GestureDetector(
-              onTap: () => ImageViewer.show(
-                context,
-                pictures: allPictures.isNotEmpty ? allPictures : [pic],
-                initialIndex: effectiveIndex,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: double.infinity,
-                  color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
-                  child: _buildPictureBlock(pic),
-                ),
-              ),
-            ),
-          ),
-        );
-      } else if (p.isDivider) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Divider(
-              height: 1,
-              thickness: 0.6,
-              color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
-            ),
-          ),
-        );
-      }
+        ),
+      );
     }
+    if (p.isCode) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF16161C) : const Color(0xFFF2F3F5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              p.text,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.5,
+                fontFamily: 'monospace',
+                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (p.type == 4) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Text(
+          p.text,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            height: 1.45,
+            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+          ),
+        ),
+      );
+    }
+    if (p.isText) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Text(
+          p.text,
+          style: TextStyle(
+            fontSize: 15,
+            height: 1.65,
+            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+          ),
+        ),
+      );
+    }
+    if (p.isPicture) {
+      final pic = p.picture!;
+      final picIndex = allPictures.indexWhere((item) => item.url == pic.url);
+      final effectiveIndex = picIndex >= 0 ? picIndex : 0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
-    );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: GestureDetector(
+          onTap: () => ImageViewer.show(
+            context,
+            pictures: allPictures.isNotEmpty ? allPictures : [pic],
+            initialIndex: effectiveIndex,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: double.infinity,
+              color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+              child: _buildPictureBlock(context, pic),
+            ),
+          ),
+        ),
+      );
+    }
+    if (p.isDivider) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Divider(
+          height: 1,
+          thickness: 0.6,
+          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildImages(
@@ -982,7 +1050,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           child: Container(
             width: double.infinity,
             color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
-            child: _buildPictureBlock(pic),
+            child: _buildPictureBlock(context, pic),
           ),
         ),
       );
@@ -1034,7 +1102,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
   /// 详情页图片块：长图按原始比例完整展开（详情页以看全内容为准），
   /// 普通图片限制极端比例，始终使用 contain 避免裁掉内容。
-  Widget _buildPictureBlock(DynamicPicture pic) {
+  ///
+  /// 解码宽度按「显示宽度 × 像素预算」计算：长图不再按全宽原样解码成
+  /// 几十 MB 的位图，从而避免滚动时反复解码 / 回收导致的卡顿。
+  /// 图片仍然保持原始宽高比，只是分辨率上限降低，不会被裁切。
+  Widget _buildPictureBlock(BuildContext context, DynamicPicture pic) {
     final ratio = pic.aspectRatio;
     if (ratio == null) {
       return ConstrainedBox(
@@ -1048,17 +1120,29 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
       );
     }
 
-    final displayRatio = pic.isLongImage
-        ? ratio.clamp(0.02, 6.0)
-        : ratio.clamp(0.4, 2.5);
-    return AspectRatio(
-      aspectRatio: displayRatio,
-      child: NetworkImageView(
-        url: pic.url,
-        fit: BoxFit.contain,
-        alignment: pic.isLongImage ? Alignment.topCenter : Alignment.center,
-        memCacheWidth: 720,
-      ),
+    final isLong = pic.isLongImage;
+    final displayRatio = isLong ? ratio.clamp(0.02, 6.0) : ratio.clamp(0.4, 2.5);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+        final cacheWidth = ImageDecodeSizing.decodeWidthForDisplay(
+          displayWidth: constraints.maxWidth,
+          devicePixelRatio: dpr,
+          aspectRatio: ratio,
+        );
+        // 图片单独成层，滚动时不会因为父级重绘而重新栅格化。
+        return RepaintBoundary(
+          child: AspectRatio(
+            aspectRatio: displayRatio,
+            child: NetworkImageView(
+              url: pic.url,
+              fit: BoxFit.contain,
+              alignment: isLong ? Alignment.topCenter : Alignment.center,
+              memCacheWidth: cacheWidth,
+            ),
+          ),
+        );
+      },
     );
   }
 
