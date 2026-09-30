@@ -1310,12 +1310,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
         },
         onDoubleTap: () {
           if (_isScreenLocked || !hasController) return;
-          final screenWidth = MediaQuery.of(context).size.width;
+          // 以播放器自身宽度划分区域；横屏/全屏时两侧命中区扩大到 20%
+          // （便于盲操作），中间 60% 双击切换播放/暂停；竖屏小窗保持 35%。
+          final playerWidth =
+              context.size?.width ?? MediaQuery.of(context).size.width;
           final x = _lastTapDownPosition.dx;
-          if (x < screenWidth * 0.35) {
+          final edgeRatio = isFull ? 0.20 : 0.35;
+          if (x < playerWidth * edgeRatio) {
             _seekRelative(-10);
             _showSeekHud(isForward: false, seconds: 10);
-          } else if (x > screenWidth * 0.65) {
+          } else if (x > playerWidth * (1 - edgeRatio)) {
             _seekRelative(10);
             _showSeekHud(isForward: true, seconds: 10);
           } else {
