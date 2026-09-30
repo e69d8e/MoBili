@@ -120,8 +120,7 @@ enum _PanGestureMode {
   verticalVolume,
 }
 
-class BiliVideoPlayerState extends State<BiliVideoPlayer>
-    with WidgetsBindingObserver {
+class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   VideoPlayerController? _controller;
   VideoPlayerController? _pendingController;
 
@@ -144,7 +143,6 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   late DanmakuController _danmakuController;
   bool _wakelockEnabled = false;
   bool _isExplicitlyPaused = false;
-  bool _pausedByAppLifecycle = false;
 
   VideoPlayerController? get controller => _controller;
   double get playbackSpeed => _playbackSpeed;
@@ -231,7 +229,6 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _danmakuController = DanmakuController();
     _danmakuController.setDanmakus(widget.danmakus);
     SleepTimerService().registerPauseCallback(_onSleepTimerPause);
@@ -277,23 +274,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     );
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (!mounted) return;
-    // 切后台/系统打断时暂停，回到前台自动续播（仅限本次由生命周期触发的暂停；
-    // 用户主动暂停的保持暂停）。后台音频由听书模式独立管理，不受影响。
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
-      if (_controller?.value.isPlaying == true) {
-        _pausedByAppLifecycle = true;
-        pause();
-      }
-    } else if (state == AppLifecycleState.resumed && _pausedByAppLifecycle) {
-      _pausedByAppLifecycle = false;
-      play();
-    }
-  }
+  // 有意不监听 AppLifecycleState：拉下状态栏/通知栏（inactive）与切后台
+  // （paused）均不自动暂停，保持播放（后台继续出声），由用户手动控制暂停。
 
   int _lastVolumePanEndTime = 0;
 
@@ -1106,7 +1088,6 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   @override
   void dispose() {
     _initToken++;
-    WidgetsBinding.instance.removeObserver(this);
     SleepTimerService().unregisterPauseCallback(_onSleepTimerPause);
     _hideTimer?.cancel();
     _lockIconTimer?.cancel();
