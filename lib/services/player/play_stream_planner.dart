@@ -84,19 +84,27 @@ bool isDashStreamUrl(String url) {
 
 /// 把远程流地址解析成播放器可直接使用的地址。
 ///
-/// DASH 轨道（.m4s）经过本地代理：音轨 CDN 返回 `application/octet-stream`，
-/// 且 `.m4s` 扩展名会让 iOS AVPlayer 拒绝加载；代理解析后是 `.mp4` + 正确的
-/// `video/mp4` / `audio/mp4`，并附带 Referer/Cookie 与 Range 支持。
-/// 渐进式 mp4 保持直连（不改变既有可用路径）。
+/// 所有远程轨道统一经本地代理：
+/// - DASH 轨道（.m4s）：音轨 CDN 返回 `application/octet-stream`，且 `.m4s`
+///   扩展名会让 iOS AVPlayer 拒绝加载；代理解析后是 `.mp4` + 正确的
+///   `video/mp4` / `audio/mp4`，并附带 Referer/Cookie 与 Range 支持；
+/// - 渐进式 mp4：直连本可用，但走代理可获得「边播边缓存」，回拖/重播秒开。
+///
+/// [cacheKey] 为稳定缓存键（bvid+cid+轨+画质）。CDN 签名地址每次请求都会
+/// 变化，不提供稳定键时缓存仅在会话内有效。
 Future<String> resolvePlayableUrl(
   String url, {
   required bool isAudio,
+  String? cacheKey,
 }) async {
   if (url.isEmpty || kIsWeb) return url;
   if (url.startsWith('file:')) return url;
-  if (!isDashStreamUrl(url)) return url;
   try {
-    return await BiliStreamProxy().getProxyUrl(url, isAudio: isAudio);
+    return await BiliStreamProxy().getProxyUrl(
+      url,
+      isAudio: isAudio,
+      cacheKey: cacheKey,
+    );
   } catch (_) {
     return url;
   }

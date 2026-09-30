@@ -6,6 +6,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'history_storage_service.dart';
+import '../player/bili_stream_proxy.dart';
 import 'video_cache_service.dart';
 
 enum AutoCleanInterval {
@@ -393,6 +394,9 @@ class AppCacheService extends ChangeNotifier {
           } catch (_) {}
         }
       }
+      // 播放流磁盘缓存随临时目录一并被删，同步清掉代理内存索引，
+      // 否则后续请求会试图读取已不存在的缓存块
+      BiliStreamProxy().invalidateAll();
     } catch (_) {}
 
     await calculateAllCacheSizes();

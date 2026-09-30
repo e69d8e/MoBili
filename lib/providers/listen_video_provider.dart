@@ -248,7 +248,11 @@ class ListenVideoProvider extends ChangeNotifier {
 
           String playFreshUrl = freshUrl;
           if (!kIsWeb && (freshUrl.startsWith('http://') || freshUrl.startsWith('https://'))) {
-            playFreshUrl = await BiliStreamProxy().getProxyUrl(freshUrl, isAudio: true);
+            playFreshUrl = await BiliStreamProxy().getProxyUrl(
+              freshUrl,
+              isAudio: true,
+              cacheKey: 'listen|$_bvid|$_cid',
+            );
           }
           if (_isDisposed || _playToken != token) {
             _isRecovering = false;
@@ -418,7 +422,11 @@ class ListenVideoProvider extends ChangeNotifier {
 
       String playStreamUrl = streamUrl;
       if (!kIsWeb && (streamUrl.startsWith('http://') || streamUrl.startsWith('https://'))) {
-        playStreamUrl = await BiliStreamProxy().getProxyUrl(streamUrl, isAudio: true);
+        playStreamUrl = await BiliStreamProxy().getProxyUrl(
+          streamUrl,
+          isAudio: true,
+          cacheKey: 'listen|$bvid|$cid',
+        );
       }
       if (_isDisposed || _playToken != token) return;
 

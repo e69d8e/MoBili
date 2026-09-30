@@ -21,6 +21,7 @@ import '../../services/api/subtitle_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/api/video_api_service.dart';
 import '../../services/player/play_stream_planner.dart';
+import '../../services/player/video_prefetch_service.dart';
 import '../../services/player_settings_service.dart';
 import '../../services/sleep_timer_service.dart';
 import '../../services/storage/history_storage_service.dart';
@@ -250,9 +251,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       _loadPlayUrlAndDanmaku(widget.initialVideo!.cid);
     }
 
-    // 1. Fetch Online Video Detail
+    // 1. Fetch Online Video Detail（命中预取缓存时可跳过网络等待）
     try {
-      final detail = await VideoApiService().getVideoDetail(_currentBvid);
+      final detail = await VideoPrefetchService.instance.getDetail(_currentBvid);
       if (detail != null && mounted && _detailLoadToken == detailToken) {
         setState(() {
           _detail = detail;
@@ -268,11 +269,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           await _loadPlayUrlAndDanmaku(cid);
         }
 
+        // 多 P 视频预取下一 P 的播放地址，切集时秒开
+        if (detail.pages.length > _selectedPageIndex + 1) {
+          unawaited(VideoPrefetchService.instance.getPlayStream(
+            _currentBvid,
+            detail.pages[_selectedPageIndex + 1].cid,
+          ));
+        }
+
         // 4. Fetch Related Videos
         final relatedBvid = _currentBvid;
         VideoApiService().getRelatedVideos(relatedBvid).then((list) {
           if (mounted && relatedBvid == _currentBvid) {
             setState(() => _relatedVideos = list);
+            // 预取前几个相关视频的详情与播放地址，点开时秒开
+            VideoPrefetchService.instance.prefetchVideos(list);
           }
         });
 
@@ -386,15 +397,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         );
       }
     } else {
-      final result = await VideoApiService().fetchPlayStream(
-        bvid: _currentBvid,
-        cid: cid,
-        qn: PlayerSettingsService.defaultQuality,
-      );
-      playUrl = result.ok ? result.info : null;
-      playUrlError = result.ok
-          ? null
-          : (result.message.isNotEmpty ? result.message : '播放地址获取失败');
+      // 优先命中预取缓存（相关视频 / 下一 P 提前拿到的播放地址）
+      final result = await VideoPrefetchService.instance.getPlayStream(_currentBvid, cid);
+      if (result != null) {
+        playUrl = result.info;
+      } else {
+        final fetched = await VideoApiService().fetchPlayStream(
+          bvid: _currentBvid,
+          cid: cid,
+          qn: PlayerSettingsService.defaultQuality,
+        );
+        playUrl = fetched.ok ? fetched.info : null;
+        playUrlError = fetched.ok
+            ? null
+            : (fetched.message.isNotEmpty ? fetched.message : '播放地址获取失败');
+      }
     }
 
     final danmakuListFuture = DanmakuService().getDanmakuList(
@@ -853,7 +870,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     _detailLoadToken++;
     final detailToken = _detailLoadToken;
 
-    final detail = await VideoApiService().getVideoDetail(_currentBvid);
+    final detail = await VideoPrefetchService.instance.getDetail(_currentBvid);
     if (detail != null && mounted && _detailLoadToken == detailToken) {
       setState(() {
         _detail = detail;
@@ -868,6 +885,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       VideoApiService().getRelatedVideos(relatedBvid).then((list) {
         if (mounted && relatedBvid == _currentBvid) {
           setState(() => _relatedVideos = list);
+          VideoPrefetchService.instance.prefetchVideos(list);
         }
       });
 

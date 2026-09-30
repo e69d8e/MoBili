@@ -376,13 +376,25 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     }
   }
 
-  /// 远程流地址落地：DASH 轨道经本地代理（.mp4 + 正确 MIME + Referer/Cookie）
-  Future<String> _resolveRemoteUrl(String url, {required bool isAudio}) async {
+  /// 远程流地址落地：统一经本地代理（.mp4 + 正确 MIME + Referer/Cookie + 磁盘缓存）。
+  /// [cacheKey] 用稳定键（bvid+cid+轨+画质），CDN 签名地址变化不影响缓存命中。
+  Future<String> _resolveRemoteUrl(
+    String url, {
+    required bool isAudio,
+    String? cacheKey,
+  }) async {
     try {
-      return await resolvePlayableUrl(url, isAudio: isAudio);
+      return await resolvePlayableUrl(url, isAudio: isAudio, cacheKey: cacheKey);
     } catch (_) {
       return url;
     }
+  }
+
+  /// 播放流磁盘缓存的稳定键：优先 videoKey（bvid_cid）。
+  String get _streamCacheBaseKey {
+    final key = widget.videoKey;
+    if (key != null && key.isNotEmpty) return key;
+    return widget.playUrlInfo.primaryVideoUrl ?? widget.title;
   }
 
   /// 本地缓存音轨落地：`.m4s` 扩展名会被 iOS AVPlayer 拒绝，优先走本地文件服务，
@@ -406,12 +418,58 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       return VideoPlayerController.file(File(path), videoPlayerOptions: options);
     }
 
-    final playable = await _resolveRemoteUrl(audioUrl, isAudio: true);
+    final playable = await _resolveRemoteUrl(
+      audioUrl,
+      isAudio: true,
+      cacheKey: '$_streamCacheBaseKey|a',
+    );
     return VideoPlayerController.networkUrl(
       Uri.parse(playable),
       videoPlayerOptions: options,
       httpHeaders: kIsWeb ? const {} : _biliHeaders,
     );
+  }
+
+  /// 初始化独立伴音轨（与视频轨并行执行，缩短起播等待）。
+  ///
+  /// 返回 null 表示失败（调用方按音轨失败回退处理）；初始化期间被更新的
+  /// 初始化作废或页面退出时，自行 dispose 后返回 null。
+  Future<VideoPlayerController?> _initAudioTrack(
+    String audioUrl,
+    VideoPlayerOptions options,
+    int token,
+  ) async {
+    VideoPlayerController? audio;
+    try {
+      audio = await _buildAudioController(audioUrl, options);
+      if (!mounted || _initToken != token) {
+        try {
+          await audio.dispose();
+        } catch (_) {}
+        return null;
+      }
+      _pendingAudioController = audio;
+      await audio.initialize();
+      await audio.setVolume(1.0);
+      if (!mounted || _initToken != token || _pendingAudioController != audio) {
+        _pendingAudioController = null;
+        try {
+          await audio.pause();
+          await audio.dispose();
+        } catch (_) {}
+        return null;
+      }
+      _pendingAudioController = null;
+      return audio;
+    } catch (_) {
+      if (_pendingAudioController == audio) {
+        _pendingAudioController = null;
+      }
+      try {
+        await audio?.dispose();
+      } catch (_) {}
+      return null;
+    }
   }
 
   Future<void> _initPlayer({Duration? initialPosition}) async {
@@ -477,8 +535,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
         videoPlayerOptions: playerOptions,
       );
     } else {
-      // DASH 视频轨（.m4s）经本地代理，避免 iOS AVPlayer 因扩展名/MIME 拒播
-      final playableVideoUrl = await _resolveRemoteUrl(url!, isAudio: false);
+      // 远程轨道统一经本地代理（MIME/Referer 修正 + 边播边磁盘缓存）
+      final playableVideoUrl = await _resolveRemoteUrl(
+        url!,
+        isAudio: false,
+        cacheKey: '$_streamCacheBaseKey|v${widget.playUrlInfo.currentQuality}',
+      );
       if (!mounted || _initToken != token) return;
       controller = VideoPlayerController.networkUrl(
         Uri.parse(playableVideoUrl),
@@ -490,6 +552,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
 
     // DASH 双流：独立音轨（渐进式单流时为 null）
     final separateAudioUrl = widget.playUrlInfo.separateAudioUrl;
+
+    // 音轨与视频轨并行初始化：起播等待从「两者之和」降为「两者最大值」
+    Future<VideoPlayerController?>? audioInitFuture;
+    if (separateAudioUrl != null && separateAudioUrl.isNotEmpty) {
+      audioInitFuture = _initAudioTrack(separateAudioUrl, playerOptions, token);
+    }
 
     try {
       await controller.initialize();
@@ -506,23 +574,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
 
       VideoPlayerController? audioController;
       bool audioFailed = false;
-      if (separateAudioUrl != null && separateAudioUrl.isNotEmpty) {
-        try {
-          final audio = await _buildAudioController(separateAudioUrl, playerOptions);
-          _pendingAudioController = audio;
-          await audio.initialize();
-          await audio.setVolume(1.0);
-          if (!mounted || _initToken != token || _pendingAudioController != audio) {
-            try {
-              await audio.dispose();
-            } catch (_) {}
-            return;
-          }
-          _pendingAudioController = null;
-          audioController = audio;
-        } catch (_) {
-          _pendingAudioController = null;
+      if (audioInitFuture != null) {
+        final audio = await audioInitFuture;
+        if (!mounted || _initToken != token) return;
+        if (audio == null) {
           audioFailed = true;
+        } else {
+          audioController = audio;
         }
       }
 
