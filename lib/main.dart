@@ -7,6 +7,7 @@ import 'providers/listen_video_provider.dart';
 import 'providers/search_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/main_tab_screen.dart';
+import 'services/app_memory_manager.dart';
 import 'services/danmaku_settings_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/player_settings_service.dart';
@@ -51,6 +52,9 @@ void main() async {
       listenVideoProvider: listenVideoProvider,
     ),
   );
+
+  // 退后台 / 系统内存告急时收缩位图与播放器内存，降低后台被杀概率
+  AppMemoryManager.instance.start();
 
   // Defer remote credentials check and network sync to run in background
   unawaited(authProvider.initNetwork());

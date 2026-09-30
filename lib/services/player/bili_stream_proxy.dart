@@ -472,6 +472,15 @@ class BiliStreamProxy {
     _resetCacheIndex();
   }
 
+  /// 内存紧张时清掉未落盘的块缓冲（磁盘索引不受影响，缺的块回源即可）。
+  /// 正在出流/预取的条目跳过，避免打断在途的块组装。
+  void trimInMemoryBuffers() {
+    for (final entry in _cacheEntries.values) {
+      if (entry.activeRequests > 0) continue;
+      entry.disposeData();
+    }
+  }
+
   void _resetCacheIndex() {
     for (final entry in _cacheEntries.values) {
       entry.disposeData();
@@ -1190,7 +1199,9 @@ class _BlockBuffer {
   }
 
   Uint8List takeBytes() {
-    return Uint8List.fromList(_data.sublist(0, filled));
+    // _data 落盘前不再复用（takeBytes 后该缓冲即被 dropBuffer 丢弃），
+    // sublist 自带一次拷贝即可，不要再套 fromList 二次拷贝 2MB。
+    return _data.sublist(0, filled);
   }
 }
 

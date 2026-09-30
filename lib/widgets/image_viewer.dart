@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -448,11 +450,44 @@ class _ZoomableImageState extends State<_ZoomableImage> with SingleTickerProvide
   Widget build(BuildContext context) {
     final formattedUrl = _formatUrl(widget.picture.url);
 
+    // 解码预算：按 contain 后的显示尺寸 × DPR × 1.25 缩放余量解码，
+    // 总像素不超过原 2048² 的预算。方形大图 ~16.7MB → ~8MB，长图不再被
+    // 2048 长边压到低于屏幕清晰度；无宽高比时维持 2048 兜底。
+    final ratio = widget.picture.aspectRatio;
+    int memCacheWidth = 2048;
+    int memCacheHeight = 2048;
+    if (ratio != null && ratio > 0) {
+      final size = MediaQuery.sizeOf(context);
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final sw = size.width;
+      final sh = size.height;
+      double dispW;
+      double dispH;
+      if (ratio >= sw / sh) {
+        dispW = sw;
+        dispH = sw / ratio;
+      } else {
+        dispH = sh;
+        dispW = sh * ratio;
+      }
+      const headroom = 1.25;
+      int w = (dispW * dpr * headroom).round();
+      int h = (dispH * dpr * headroom).round();
+      const maxPixels = 2048 * 2048;
+      if (w * h > maxPixels) {
+        final scale = math.sqrt(maxPixels / (w * h));
+        w = (w * scale).round();
+        h = (h * scale).round();
+      }
+      memCacheWidth = w.clamp(32, maxPixels);
+      memCacheHeight = h.clamp(32, maxPixels);
+    }
+
     Widget imageWidget = CachedNetworkImage(
       imageUrl: formattedUrl,
       fit: BoxFit.contain,
-      memCacheWidth: 2048,
-      memCacheHeight: 2048,
+      memCacheWidth: memCacheWidth,
+      memCacheHeight: memCacheHeight,
       fadeInDuration: const Duration(milliseconds: 100),
       fadeOutDuration: Duration.zero,
       httpHeaders: kIsWeb

@@ -46,6 +46,8 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
   // Comments State
   final List<CommentItem> _comments = [];
+  // 已加载评论的 rpid 集合：增量维护，避免每页去重时重建全量 Set（O(n²)）
+  final Set<int> _knownRpid = {};
   int _commentMode = 3; // 3: 热门, 2: 最新
   int _commentNextCursor = 0;
   String _commentNextOffset = '';
@@ -161,12 +163,15 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
         setState(() {
           if (refresh) {
             _comments.clear();
+            _knownRpid.clear();
             _comments.addAll(res.replies);
+            for (final r in res.replies) {
+              _knownRpid.add(r.rpid);
+            }
           } else {
-            final existingIds = _comments.map((c) => c.rpid).toSet();
             int added = 0;
             for (final r in res.replies) {
-              if (!existingIds.contains(r.rpid)) {
+              if (_knownRpid.add(r.rpid)) {
                 _comments.add(r);
                 added++;
               }
@@ -315,6 +320,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           _replyTarget = null;
           if (res.reply != null) {
             _comments.insert(0, res.reply!);
+            _knownRpid.add(res.reply!.rpid);
             _commentTotalCount++;
           }
         });

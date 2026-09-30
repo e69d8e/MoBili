@@ -2500,6 +2500,8 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
   _VideoDetailScreenState get state => widget.state;
 
   List<CommentItem> _comments = [];
+  // 已加载评论的 rpid 集合：增量维护，避免每页去重时重建全量 Set（O(n²)）
+  final Set<int> _knownRpid = {};
   int _commentNextCursor = 0;
   String _commentNextOffset = '';
   bool _commentIsEnd = false;
@@ -2540,6 +2542,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
       _reportCount();
       setState(() {
         _comments = [];
+        _knownRpid.clear();
         _commentPage = 1;
         _commentInMode2Stream = false;
         _commentNextCursor = 0;
@@ -2580,10 +2583,12 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
       setState(() {
         if (refresh || _comments.isEmpty) {
           _comments = res.replies;
+          _knownRpid
+            ..clear()
+            ..addAll(res.replies.map((c) => c.rpid));
         } else {
-          final existingIds = _comments.map((c) => c.rpid).toSet();
           for (final r in res.replies) {
-            if (!existingIds.contains(r.rpid)) {
+            if (_knownRpid.add(r.rpid)) {
               _comments.add(r);
             }
           }
@@ -2636,10 +2641,9 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
 
     if (mounted) {
       setState(() {
-        final existingIds = _comments.map((c) => c.rpid).toSet();
         int addedCount = 0;
         for (final r in res.replies) {
-          if (!existingIds.contains(r.rpid)) {
+          if (_knownRpid.add(r.rpid)) {
             _comments.add(r);
             addedCount++;
           }
@@ -2663,6 +2667,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
     setState(() {
       _commentMode = mode;
       _comments = [];
+      _knownRpid.clear();
       _commentPage = 1;
       _commentInMode2Stream = false;
       _commentNextCursor = 0;
@@ -2704,6 +2709,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
       if (res.reply != null && root == 0) {
         setState(() {
           _comments.insert(0, res.reply!);
+          _knownRpid.add(res.reply!.rpid);
           _commentTotalCount++;
         });
       } else {

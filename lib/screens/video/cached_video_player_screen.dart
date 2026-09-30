@@ -42,6 +42,10 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
   List<DanmakuItem> _danmakus = [];
   bool _isPlayerFullScreen = false;
 
+  // 最近一次播放位置：dispose 时子组件已卸载，GlobalKey 取不到播放器，
+  // 退出保存进度只能靠这里兜底（同 video_detail_screen 的做法）
+  Duration _lastPlayerPosition = Duration.zero;
+
   @override
   void initState() {
     super.initState();
@@ -214,6 +218,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
   void _switchEpisode(VideoCacheItem ep) {
     if (ep.taskId == _currentItem.taskId) return;
     _reportProgress();
+    _lastPlayerPosition = Duration.zero;
     setState(() {
       _currentItem = ep;
       _playUrlInfo = null;
@@ -223,8 +228,10 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
   }
 
   void _reportProgress() {
-    final pos = _playerKey.currentState?.controller?.value.position;
-    if (pos != null && pos > Duration.zero) {
+    final pos =
+        _playerKey.currentState?.controller?.value.position ??
+        _lastPlayerPosition;
+    if (pos > Duration.zero) {
       HistoryStorageService().saveProgress(
         bvid: _currentItem.bvid,
         progress: pos.inSeconds,
@@ -775,6 +782,11 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
             ? '${_currentItem.title} · ${_currentItem.pageTitle}'
             : _currentItem.title,
         initialPosition: initialPos,
+        // 切集时 _playUrlInfo 先置空，旧播放器卸载前的回调不再写入，
+        // 避免旧分P的进度残留到新分P
+        onProgressUpdate: (pos, _) {
+          if (_playUrlInfo != null) _lastPlayerPosition = pos;
+        },
         onFullScreenChanged: (full) {
           setState(() => _isPlayerFullScreen = full);
         },
