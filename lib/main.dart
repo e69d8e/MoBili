@@ -18,9 +18,11 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configure balanced image cache (120MB) to prevent OOM on mid-low tier devices
+  // Image cache: 256MB. 图文详情长图单张位图可达 ~12MB（解码预算见
+  // ImageDecodeSizing），120MB 时十几张长图就把缓存挤满，来回滚动会
+  // 反复重新解码 + GC 造成卡顿；提高上限减少淘汰，中低端机仍可接受。
   PaintingBinding.instance.imageCache.maximumSize = 1000;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 120 << 20; // 120MB
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 256 << 20; // 256MB
 
   final authProvider = AuthProvider();
   final homeProvider = HomeProvider();

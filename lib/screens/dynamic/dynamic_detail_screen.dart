@@ -355,91 +355,91 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               : Column(
                   children: [
                     Expanded(
-                      child: SelectionArea(
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (scrollInfo) {
-                            if (scrollInfo is ScrollUpdateNotification &&
-                                scrollInfo.metrics.maxScrollExtent > 50 &&
-                                scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
-                              _loadMoreComments();
-                            }
-                            return false;
-                          },
-                          child: CustomScrollView(
-                            slivers: [
-                              // Dynamic Main Content Card（正文分段懒加载）
-                              ..._buildContentSlivers(context, _item!, isDark, primaryColor),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (scrollInfo) {
+                          if (scrollInfo is ScrollUpdateNotification &&
+                              scrollInfo.metrics.maxScrollExtent > 50 &&
+                              scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+                            _loadMoreComments();
+                          }
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          slivers: [
+                            // Dynamic Main Content Card（正文分段懒加载）
+                            ..._buildContentSlivers(context, _item!, isDark, primaryColor),
 
-                              // Divider & Comments Header
-                              SliverToBoxAdapter(
-                                child: _buildCommentsHeader(isDark, primaryColor),
-                              ),
-
-                            // Comments List
-                            if (_commentLoading && _comments.isEmpty)
-                              const SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 36),
-                                  child: Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                ),
-                              )
-                            else if (_comments.isEmpty)
-                              const SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 40),
-                                  child: Center(
-                                    child: Text(
-                                      '暂无评论，快来抢沙发吧~',
-                                      style: TextStyle(fontSize: 13, color: Colors.grey),
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              SliverList(
-                                delegate: SliverChildBuilderDelegate(
-                                  (ctx, idx) {
-                                    final comment = _comments[idx];
-                                    return RepaintBoundary(
-                                      child: CommentItemWidget(
-                                        comment: comment,
-                                        onReplyTap: () => _startReply(comment),
-                                      ),
-                                    );
-                                  },
-                                  childCount: _comments.length,
-                                ),
-                              ),
-
-                            if (_commentLoadingMore)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
-                                  ),
-                                ),
-                              )
-                            else if (_commentIsEnd && _comments.isNotEmpty)
-                              const SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Center(
-                                    child: Text(
-                                      '没有更多评论了',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                            const SliverToBoxAdapter(
-                              child: SizedBox(height: 80),
+                            // Divider & Comments Header
+                            SliverToBoxAdapter(
+                              child: _buildCommentsHeader(isDark, primaryColor),
                             ),
-                          ],
-                        ),
+
+                          // Comments List
+                          if (_commentLoading && _comments.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 36),
+                                child: Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          else if (_comments.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 40),
+                                child: Center(
+                                  child: Text(
+                                    '暂无评论，快来抢沙发吧~',
+                                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (ctx, idx) {
+                                  final comment = _comments[idx];
+                                  return RepaintBoundary(
+                                    child: CommentItemWidget(
+                                      comment: comment,
+                                      onReplyTap: () => _startReply(comment),
+                                    ),
+                                  );
+                                },
+                                childCount: _comments.length,
+                                // 评论项各自带 RepaintBoundary，无需自动保活包装
+                                addAutomaticKeepAlives: false,
+                              ),
+                            ),
+
+                          if (_commentLoadingMore)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+                                ),
+                              ),
+                            )
+                          else if (_commentIsEnd && _comments.isNotEmpty)
+                            const SliverToBoxAdapter(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Center(
+                                  child: Text(
+                                    '没有更多评论了',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: 80),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -492,6 +492,8 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               );
             },
             childCount: item.paragraphs.length + (hasVideo ? 1 : 0),
+            // 纯内容段落无需 KeepAlive，省掉每项的自动保活包装开销
+            addAutomaticKeepAlives: false,
           ),
         )
       else
