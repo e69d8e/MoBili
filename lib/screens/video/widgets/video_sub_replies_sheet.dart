@@ -216,12 +216,15 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
 
                         // Empty State
                         if (_subReplies.isEmpty && index == 1) {
-                          return const Padding(
-                            padding: EdgeInsets.all(32),
+                          return Padding(
+                            padding: const EdgeInsets.all(32),
                             child: Center(
                               child: Text(
                                 '暂无更多子级回复',
-                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                ),
                               ),
                             ),
                           );

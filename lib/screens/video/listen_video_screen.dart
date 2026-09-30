@@ -453,6 +453,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   Widget _buildVinylArtwork(String coverUrl, double size) {
     final innerPadding = size * 0.13;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return RepaintBoundary(
       child: RotationTransition(
         turns: _rotationController,
@@ -461,10 +462,12 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black87,
+            // 深色背景下 black87 会与页面背景融没，提亮一档并加描边保持唱片轮廓
+            color: isDark ? AppTheme.surfaceDark : Colors.black87,
+            border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.08)) : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
+                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.28),
                 blurRadius: size * 0.1,
                 spreadRadius: 2,
                 offset: Offset(0, size * 0.04),

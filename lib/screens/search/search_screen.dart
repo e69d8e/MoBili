@@ -292,14 +292,15 @@ class _SearchScreenState extends State<SearchScreen> {
                     : AppTheme.textHintLight;
                 Color? rankBadgeBg;
                 if (rank == 1) {
-                  rankColor = const Color(0xFFC0483E); // 朱砂
-                  rankBadgeBg = const Color(0xFFC0483E).withValues(alpha: 0.12);
+                  // 深色下换亮色变体，避免低对比
+                  rankColor = isDark ? const Color(0xFFE57373) : const Color(0xFFC0483E); // 朱砂
+                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
                 } else if (rank == 2) {
-                  rankColor = const Color(0xFFE67E22); // 琥珀
-                  rankBadgeBg = const Color(0xFFE67E22).withValues(alpha: 0.12);
+                  rankColor = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE67E22); // 琥珀
+                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
                 } else if (rank == 3) {
-                  rankColor = const Color(0xFF2A6F97); // 霁蓝
-                  rankBadgeBg = const Color(0xFF2A6F97).withValues(alpha: 0.12);
+                  rankColor = isDark ? const Color(0xFF64B5F6) : const Color(0xFF2A6F97); // 霁蓝
+                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
                 }
 
                 return ListTile(

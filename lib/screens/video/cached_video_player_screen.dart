@@ -665,7 +665,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                               fontSize: 13,
                                               fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
                                               color: isPlaying
-                                                  ? (isDark ? AppTheme.textMainDark : primaryColor)
+                                                  ? primaryColor
                                                   : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
                                             ),
                                             maxLines: 1,

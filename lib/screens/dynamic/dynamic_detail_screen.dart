@@ -391,13 +391,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                               ),
                             )
                           else if (_comments.isEmpty)
-                            const SliverToBoxAdapter(
+                            SliverToBoxAdapter(
                               child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 40),
+                                padding: const EdgeInsets.symmetric(vertical: 40),
                                 child: Center(
                                   child: Text(
                                     '暂无评论，快来抢沙发吧~',
-                                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                                    style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
                                   ),
                                 ),
                               ),
@@ -430,13 +430,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                               ),
                             )
                           else if (_commentIsEnd && _comments.isNotEmpty)
-                            const SliverToBoxAdapter(
+                            SliverToBoxAdapter(
                               child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
+                                padding: const EdgeInsets.symmetric(vertical: 20),
                                 child: Center(
                                   child: Text(
                                     '没有更多评论了',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
                                   ),
                                 ),
                               ),
@@ -709,7 +709,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF191920) : const Color(0xFFF4F5F7),
+                  color: isDark ? const Color(0xFF22222A) : const Color(0xFFF4F5F7),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
@@ -955,7 +955,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF16161C) : const Color(0xFFF2F3F5),
+            color: isDark ? const Color(0xFF22222A) : const Color(0xFFF2F3F5),
             borderRadius: BorderRadius.circular(8),
           ),
           child: SingleChildScrollView(
@@ -1269,14 +1269,17 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 onPressed: _isSendingComment ? null : _sendComment,
                 style: IconButton.styleFrom(
                   backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   visualDensity: VisualDensity.compact,
                 ),
                 icon: _isSendingComment
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
                       )
                     : const Icon(Icons.send_rounded, size: 17),
               ),

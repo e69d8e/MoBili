@@ -192,7 +192,7 @@ class _LoginDialogState extends State<LoginDialog> {
                                       padding: const EdgeInsets.all(10),
                                     ),
                                   )
-                                : const Center(child: Text('加载失败', style: TextStyle(fontSize: 12)))),
+                                : const Center(child: Text('加载失败', style: TextStyle(fontSize: 12, color: Colors.black87)))),
                   ),
                   const SizedBox(height: 14),
                   Text(

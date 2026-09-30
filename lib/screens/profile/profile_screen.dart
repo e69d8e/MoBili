@@ -136,7 +136,11 @@ class ProfileScreen extends StatelessWidget {
                                         ),
                                         child: Text(
                                           user.vipLabel,
-                                          style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onPrimary,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -319,7 +323,11 @@ class ProfileScreen extends StatelessWidget {
                               ),
                               child: Text(
                                 '$activeCount 个下载中',
-                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 4),

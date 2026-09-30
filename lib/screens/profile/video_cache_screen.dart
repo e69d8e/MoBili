@@ -356,7 +356,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                               memCacheHeight: 136,
                             )
                           else
-                            Container(color: Colors.black26),
+                            Container(color: isDark ? Colors.white10 : Colors.black26),
                           // Duration badge
                           if (item.duration > 0)
                             Positioned(
@@ -549,7 +549,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                 memCacheWidth: 144,
                                 memCacheHeight: 96,
                               )
-                            : Container(color: Colors.black26),
+                            : Container(color: isDark ? Colors.white10 : Colors.black26),
                       ),
                     ),
                     const SizedBox(width: 10),

@@ -78,7 +78,7 @@ class HomeScreenState extends State<HomeScreen>
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : AppTheme.textMainLight,
+                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
                 letterSpacing: -0.5,
               ),
             ),
