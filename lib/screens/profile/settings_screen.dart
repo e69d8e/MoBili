@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/theme_provider.dart';
-import '../../services/player_settings_service.dart';
-import '../../services/sleep_timer_service.dart';
+import '../../services/settings/player_settings_service.dart';
+import '../../services/player/sleep_timer_service.dart';
 import '../../services/storage/app_cache_service.dart';
 import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/app_constants.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/player/sleep_timer_bottom_sheet.dart';
@@ -41,12 +42,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('外观与设置'),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
         children: [
           // App Brand Header
           Center(
             child: Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 20),
+              padding: const EdgeInsets.only(top: 8.0, bottom: 20.0),
               child: Column(
                 children: [
                   Container(
@@ -68,12 +69,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8.0),
                   const Text(
                     '墨哩 MoBili',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -82,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     '极简水墨 · 沉浸哔哩',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                 ],
@@ -91,20 +92,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           // Section: Theme Presets
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '主题配色',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('主题配色'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
@@ -114,7 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 1,
                       thickness: 0.5,
                       indent: 52,
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                      color: context.colors.divider,
                     ),
                   _buildPresetTile(
                     context: context,
@@ -128,23 +119,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 20.0),
 
           // Section: Theme Mode (Light / Dark / AMOLED)
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '显示模式',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('显示模式'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
@@ -159,7 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 _buildThemeOption(
                   context: context,
@@ -172,7 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 _buildThemeOption(
                   context: context,
@@ -185,16 +166,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('AMOLED 纯黑模式', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('AMOLED 纯黑模式', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '深色模式下使用极致纯黑背景，更沉浸省电',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: themeProvider.isAmoled,
@@ -205,23 +186,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 20.0),
 
           // Section: Playback & Screen
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '播放与屏幕',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('播放与屏幕'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
@@ -230,12 +201,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   builder: (context, autoRotate, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('感应自动横屏', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('感应自动横屏', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         '竖屏播放时，旋转手机自动进入横屏全屏播放',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                       value: autoRotate,
@@ -252,19 +223,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ValueListenableBuilder<bool>(
                   valueListenable: PlayerSettingsService.subtitleEnabledListenable,
                   builder: (context, subtitleEnabled, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('默认开启字幕', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('默认开启字幕', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         '视频含字幕时自动开启，并记忆播放器中的开关状态',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                       value: subtitleEnabled,
@@ -281,19 +252,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ValueListenableBuilder<int>(
                   valueListenable: PlayerSettingsService.qualityListenable,
                   builder: (context, currentQuality, _) {
                     return ListTile(
                       dense: true,
-                      title: const Text('默认首选画质', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('默认首选画质', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         _getQualityLabel(currentQuality),
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
@@ -305,16 +276,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ListTile(
                   dense: true,
-                  title: const Text('默认播放倍速', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('默认播放倍速', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '${PlayerSettingsService.defaultPlaybackSpeed}x',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
@@ -324,16 +295,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ListTile(
                   dense: true,
-                  title: const Text('双击快进步长', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('双击快进步长', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '${PlayerSettingsService.doubleTapSeekSeconds} 秒',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
@@ -343,16 +314,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('自动连播下一分P', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('自动连播下一分P', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '当前分P播放结束时，自动连播下一集',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: PlayerSettingsService.autoPlayNextEpisode,
@@ -367,7 +338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 AnimatedBuilder(
                   animation: SleepTimerService(),
@@ -384,14 +355,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       leading: Icon(
                         Icons.bedtime_outlined,
                         size: 20,
-                        color: sleepService.isActive ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                        color: sleepService.isActive ? primaryColor : (context.colors.textSub),
                       ),
-                      title: const Text('睡眠定时器', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('睡眠定时器', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         statusText,
                         style: TextStyle(
                           fontSize: 11,
-                          color: sleepService.isActive ? primaryColor : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          color: sleepService.isActive ? primaryColor : (context.colors.textHint),
                         ),
                       ),
                       trailing: Row(
@@ -399,14 +370,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           if (sleepService.isActive)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
                               decoration: BoxDecoration(
                                 color: primaryColor.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 sleepService.formatRemaining(),
-                                style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.bold),
+                                style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600),
                               ),
                             ),
                           const SizedBox(width: 4),
@@ -421,23 +392,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ValueListenableBuilder<bool>(
                   valueListenable: PlayerSettingsService.incognitoListenable,
                   builder: (context, incognito, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('无痕浏览模式 (隐私)', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('无痕浏览模式 (隐私)', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         '开启后不上报播放进度至哔哩哔哩，本地亦不记录播放历史',
                         style: TextStyle(
                           fontSize: 11,
-                          color: incognito ? Colors.orangeAccent : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          color: incognito ? context.colors.warning : (context.colors.textHint),
                         ),
                       ),
                       value: incognito,
-                      activeTrackColor: Colors.orangeAccent,
+                      activeTrackColor: context.colors.warning,
                       onChanged: (val) {
                         setState(() {
                           PlayerSettingsService.setIncognitoMode(val);
@@ -455,34 +426,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 20.0),
 
           // Section: Gestures & Interactions
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '交互与手势',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('交互与手势'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
                 SwitchListTile(
                   dense: true,
-                  title: const Text('长按 2.0x 倍速播放', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('长按 2.0x 倍速播放', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '在播放器上长按手指即可触发 2.0x 高速播放，松手恢复',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: PlayerSettingsService.enableLongPressSpeed,
@@ -497,16 +458,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('屏幕两侧滑动调节 (亮度/音量)', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('屏幕两侧滑动调节 (亮度/音量)', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '左侧上下滑动调节屏幕亮度，右侧上下滑动调节音量',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: PlayerSettingsService.enableVerticalPanVolumeBrightness,
@@ -521,16 +482,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('水平滑动手势快进快退', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('水平滑动手势快进快退', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '在画面上左右平移拖动即可精确快进或快退',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: PlayerSettingsService.enableHorizontalPanSeek,
@@ -545,16 +506,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('手势预返回 (Predictive Back)', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('手势预返回 (Predictive Back)', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
                     '侧滑返回时实时预览上一级页面（默认关闭，开启需系统与设备支持）',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                   value: themeProvider.enablePredictiveBack,
@@ -565,23 +526,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 20.0),
 
           // Section: Storage & Cache
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '存储与缓存',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('存储与缓存'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: AnimatedBuilder(
               animation: _cacheService,
@@ -593,12 +544,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     ListTile(
                       dense: true,
-                      title: const Text('缓存深度管理', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                      title: const Text('缓存深度管理', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                       subtitle: Text(
                         '可视化查看并清理网络图片、播放临时缓冲及记录',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                       trailing: Row(
@@ -606,22 +557,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           if (info.cleanableBytes > 0)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
                               decoration: BoxDecoration(
                                 color: primaryColor.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 cleanableStr,
                                 style: TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: primaryColor,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                           const SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
                         ],
                       ),
                       onTap: () async {
@@ -635,7 +586,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 1,
                       thickness: 0.5,
                       indent: 16,
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                      color: context.colors.divider,
                     ),
                     AnimatedBuilder(
                       animation: VideoCacheService(),
@@ -645,12 +596,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                         return ListTile(
                           dense: true,
-                          title: const Text('视频离线缓存', style: TextStyle(fontSize: 13.5)),
+                          title: const Text('视频离线缓存', style: TextStyle(fontSize: 14)),
                           subtitle: Text(
                             count > 0 ? '已缓存 $count 个视频，占用 $sizeStr' : '暂无缓存视频',
                             style: TextStyle(
                               fontSize: 11,
-                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                              color: context.colors.textHint,
                             ),
                           ),
                           trailing: Row(
@@ -660,11 +611,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 sizeStr,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
                             ],
                           ),
                           onTap: () async {
@@ -680,18 +631,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 1,
                       thickness: 0.5,
                       indent: 16,
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                      color: context.colors.divider,
                     ),
                     ListTile(
                       dense: true,
-                      title: const Text('快速清理图片缓存', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('快速清理图片缓存', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         info.imageCacheBytes > 0
                             ? '当前图片缓存占用 ${AppCacheService.formatBytes(info.imageCacheBytes)}'
                             : '释放封面与头像网络图片所占用的内存和磁盘缓存',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                       trailing: const Icon(Icons.cleaning_services_rounded, size: 18),
@@ -710,32 +661,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 1,
                       thickness: 0.5,
                       indent: 16,
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                      color: context.colors.divider,
                     ),
                     ListTile(
                       dense: true,
-                      title: const Text('清空播放历史记录', style: TextStyle(fontSize: 13.5)),
+                      title: const Text('清空播放历史记录', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
                         info.historyCount > 0
                             ? '已记录 ${info.historyCount} 条本地视频播放进度'
                             : '清空本地保存的所有视频播放进度与历史记录',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
-                      trailing: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                      trailing: Icon(Icons.delete_outline_rounded, size: 18, color: context.colors.danger),
                       onTap: () async {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                             content: const Text('确定要清空本地保存的所有播放历史记录吗？'),
                             actions: [
                               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('清空', style: TextStyle(color: Colors.red)),
+                                child: Text('清空', style: TextStyle(color: context.colors.danger)),
                               ),
                             ],
                           ),
@@ -754,34 +705,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 20.0),
 
           // Section: About
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              '关于墨哩',
-              style: TextStyle(
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          _buildSectionHeader('关于墨哩'),
           Material(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-            borderRadius: BorderRadius.circular(14),
+            color: context.colors.card,
+            borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
                 ListTile(
                   dense: true,
-                  title: const Text('软件版本', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('软件版本', style: TextStyle(fontSize: 14)),
                   trailing: Text(
                     AppConstants.versionDisplay,
                     style: TextStyle(
-                      fontSize: 12.5,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      fontSize: 13,
+                      color: context.colors.textHint,
                     ),
                   ),
                 ),
@@ -789,16 +730,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
                 ListTile(
                   dense: true,
-                  title: const Text('技术栈', style: TextStyle(fontSize: 13.5)),
+                  title: const Text('技术栈', style: TextStyle(fontSize: 14)),
                   trailing: Text(
                     AppConstants.techStack,
                     style: TextStyle(
-                      fontSize: 12.5,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      fontSize: 13,
+                      color: context.colors.textHint,
                     ),
                   ),
                 ),
@@ -806,6 +747,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: context.colors.textSub,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -857,17 +812,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(
             preset.name,
             style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               color: isSelected
                   ? (isDark ? AppTheme.textMainDark : activePrimary)
-                  : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                  : (context.colors.textMain),
             ),
           ),
           if (preset == AppThemePreset.ink) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 4.0),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.5),
               decoration: BoxDecoration(
                 color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(4),
@@ -875,9 +830,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Text(
                 '默认',
                 style: TextStyle(
-                  fontSize: 9.5,
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                  color: context.colors.textSub,
                 ),
               ),
             ),
@@ -888,7 +843,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         preset.description,
         style: TextStyle(
           fontSize: 11,
-          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+          color: context.colors.textHint,
         ),
       ),
       trailing: isSelected
@@ -909,7 +864,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: Text(
         title,
         style: TextStyle(
-          fontSize: 13.5,
+          fontSize: 14,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
@@ -958,7 +913,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            color: context.colors.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
@@ -974,17 +929,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text('选择默认首选画质', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12.0),
+              const Text('选择默认首选画质', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8.0),
               for (final q in qualities) ...[
                 ListTile(
                   dense: true,
-                  title: Text(q['label'] as String, style: const TextStyle(fontSize: 13.5)),
+                  title: Text(q['label'] as String, style: const TextStyle(fontSize: 14)),
                   trailing: PlayerSettingsService.defaultQuality == q['val']
                       ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
                       : null,
@@ -1015,7 +970,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            color: context.colors.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
@@ -1031,17 +986,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text('选择默认播放倍速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12.0),
+              const Text('选择默认播放倍速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8.0),
               for (final sp in speeds) ...[
                 ListTile(
                   dense: true,
-                  title: Text('${sp}x', style: const TextStyle(fontSize: 13.5)),
+                  title: Text('${sp}x', style: const TextStyle(fontSize: 14)),
                   trailing: PlayerSettingsService.defaultPlaybackSpeed == sp
                       ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
                       : null,
@@ -1072,7 +1027,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            color: context.colors.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
@@ -1088,17 +1043,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text('双击快进步长', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12.0),
+              const Text('双击快进步长', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8.0),
               for (final s in secs) ...[
                 ListTile(
                   dense: true,
-                  title: Text('$s 秒', style: const TextStyle(fontSize: 13.5)),
+                  title: Text('$s 秒', style: const TextStyle(fontSize: 14)),
                   trailing: PlayerSettingsService.doubleTapSeekSeconds == s
                       ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
                       : null,

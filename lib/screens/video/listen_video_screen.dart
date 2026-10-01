@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../services/api/video_api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
@@ -206,27 +207,26 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   void _showSpeedDialog(BuildContext context, ListenVideoProvider provider) {
     final speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      backgroundColor: context.colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
                   '播放速度',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 12.0),
                 ...speeds.map((s) {
                   final isSelected = (provider.speed - s).abs() < 0.01;
                   return ListTile(
@@ -235,7 +235,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                         '${s}x',
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                           color: isSelected ? primary : null,
                         ),
                       ),
@@ -255,19 +255,18 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   }
 
   void _showSleepTimerDialog(BuildContext context, ListenVideoProvider provider) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      backgroundColor: context.colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -275,14 +274,14 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.bedtime_outlined, size: 18, color: primary),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4.0),
                     const Text(
                       '定时关闭',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 12.0),
                 ListTile(
                   title: Center(
                     child: Text(
@@ -293,7 +292,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                             ? primary
                             : null,
                         fontWeight: !provider.isSleepTimerActive && !provider.isSleepEndOfTrack
-                            ? FontWeight.bold
+                            ? FontWeight.w600
                             : FontWeight.normal,
                       ),
                     ),
@@ -314,7 +313,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                       style: TextStyle(
                         fontSize: 14,
                         color: provider.isSleepEndOfTrack ? primary : null,
-                        fontWeight: provider.isSleepEndOfTrack ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: provider.isSleepEndOfTrack ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -390,8 +389,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   }) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: isLandscape ? 16 : 12,
-        vertical: isLandscape ? 4 : 8,
+        horizontal: isLandscape ? 16.0 : 12.0,
+        vertical: isLandscape ? 4 : 8.0,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -408,7 +407,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             onTap: () => _handleSwitchToVideo(provider),
             borderRadius: BorderRadius.circular(20),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
               decoration: BoxDecoration(
                 color: primary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
@@ -418,7 +417,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.smart_display_rounded, size: 16, color: primary),
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 4.0),
                   Text(
                     '转为视频播放',
                     style: TextStyle(
@@ -504,7 +503,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     final playIconSize = isLandscape ? 30.0 : 36.0;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 20),
+      padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8.0 : 20.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -514,18 +513,18 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             borderRadius: BorderRadius.circular(20),
             child: Container(
               padding: EdgeInsets.symmetric(
-                horizontal: isLandscape ? 8 : 10,
-                vertical: isLandscape ? 4 : 6,
+                horizontal: isLandscape ? 8.0 : 8.0,
+                vertical: isLandscape ? 4 : 4.0,
               ),
               decoration: BoxDecoration(
-                color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                borderRadius: BorderRadius.circular(14),
+                color: context.colors.fill,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 '${provider.speed}x',
                 style: TextStyle(
                   fontSize: isLandscape ? 11.5 : 12,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -658,7 +657,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      backgroundColor: context.colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -668,14 +667,14 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
                 child: Row(
                   children: [
                     Icon(Icons.queue_music_rounded, size: 18, color: primary),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 8.0),
                     Text(
                       '听视频播放列表 (共 ${_playlist!.length} 个)',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
                     IconButton(
@@ -690,15 +689,15 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               Divider(
                 height: 1,
                 thickness: 0.5,
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                color: context.colors.divider,
               ),
               Flexible(
                 child: ListView.separated(
                   // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
                   shrinkWrap: _playlist!.length <= 12,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   itemCount: _playlist!.length,
-                  separatorBuilder: (c, _) => const SizedBox(height: 6),
+                  separatorBuilder: (c, _) => const SizedBox(height: 4.0),
                   itemBuilder: (c, idx) {
                     final item = _playlist![idx];
                     final isPlaying = idx == _currentPlaylistIndex;
@@ -710,7 +709,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                       },
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
                         decoration: BoxDecoration(
                           color: isPlaying
                               ? primary.withValues(alpha: 0.12)
@@ -725,24 +724,24 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                           children: [
                             if (isPlaying)
                               Padding(
-                                padding: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.only(right: 8.0),
                                 child: Icon(Icons.volume_up_rounded, color: primary, size: 16),
                               )
                             else
                               Padding(
-                                padding: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.only(right: 8.0),
                                 child: Text(
                                   '${idx + 1}',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                    color: context.colors.textHint,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),
                             if (item.coverUrl.isNotEmpty)
                               Padding(
-                                padding: const EdgeInsets.only(right: 10),
+                                padding: const EdgeInsets.only(right: 8.0),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(4),
                                   child: NetworkImageView(
@@ -764,11 +763,11 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: 13,
+                                      fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
                                       color: isPlaying
                                           ? primary
-                                          : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                          : (context.colors.textMain),
                                     ),
                                   ),
                                   if (item.upName.isNotEmpty)
@@ -777,8 +776,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                        fontSize: 11,
+                                        color: context.colors.textHint,
                                       ),
                                     ),
                                 ],
@@ -789,7 +788,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                 Formatters.formatDuration(item.duration!.inSeconds),
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                           ],
@@ -837,7 +836,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                   Expanded(
                     flex: 5,
                     child: Padding(
-                      padding: const EdgeInsets.only(right: 20, left: 8),
+                      padding: const EdgeInsets.only(right: 20.0, left: 8.0),
                       child: SingleChildScrollView(
                         physics: const ClampingScrollPhysics(),
                         child: Column(
@@ -849,8 +848,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                               textAlign: TextAlign.center,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                                 height: 1.3,
                               ),
                             ),
@@ -862,7 +861,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                 Icon(
                                   Icons.person_outline_rounded,
                                   size: 13,
-                                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                  color: context.colors.textSub,
                                 ),
                                 const SizedBox(width: 4),
                                 Flexible(
@@ -872,7 +871,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                      color: context.colors.textSub,
                                     ),
                                   ),
                                 ),
@@ -882,12 +881,12 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                               const SizedBox(height: 4),
                               InkWell(
                                 onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: primary.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(12),
                                     border: Border.all(color: primary.withValues(alpha: 0.3), width: 0.8),
                                   ),
                                   child: Row(
@@ -897,7 +896,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                       const SizedBox(width: 4),
                                       Text(
                                         '播放列表 · ${_currentPlaylistIndex + 1}/${_playlist!.length}',
-                                        style: TextStyle(fontSize: 10.5, color: primary, fontWeight: FontWeight.w600),
+                                        style: TextStyle(fontSize: 11, color: primary, fontWeight: FontWeight.w600),
                                       ),
                                     ],
                                   ),
@@ -908,10 +907,10 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: primary.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
@@ -919,14 +918,14 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                   ),
                                 ),
                               ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4.0),
                             _ListenProgressSection(
                               fallbackDuration: widget.totalDuration,
                               primary: primary,
                               isDark: isDark,
                               horizontalPadding: 12,
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4.0),
                             _buildControlButtons(context, provider, primary, isDark, isLandscape: true),
                           ],
                         ),
@@ -969,7 +968,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             const Spacer(flex: 1),
 
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: 28.0),
               child: Column(
                 children: [
                   Text(
@@ -979,18 +978,18 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 8.0),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.person_outline_rounded,
                         size: 14,
-                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                        color: context.colors.textSub,
                       ),
                       const SizedBox(width: 4),
                       Flexible(
@@ -1000,19 +999,19 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                            color: context.colors.textSub,
                           ),
                         ),
                       ),
                     ],
                   ),
                   if (_playlist != null && _playlist!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 8.0),
                     InkWell(
                       onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
                         decoration: BoxDecoration(
                           color: primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -1034,16 +1033,16 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                   ],
                   if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.only(top: 8.0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
                         decoration: BoxDecoration(
                           color: primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
-                          style: TextStyle(fontSize: 10.5, color: primary),
+                          style: TextStyle(fontSize: 11, color: primary),
                         ),
                       ),
                     ),
@@ -1051,7 +1050,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 20.0),
 
             _ListenProgressSection(
               fallbackDuration: widget.totalDuration,
@@ -1060,7 +1059,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               horizontalPadding: 24,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 16.0),
 
             _buildControlButtons(context, provider, primary, isDark, isLandscape: false),
 
@@ -1242,7 +1241,7 @@ class _ListenProgressSectionState extends State<_ListenProgressSection> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1250,14 +1249,14 @@ class _ListenProgressSectionState extends State<_ListenProgressSection> {
                       Formatters.formatDuration(pos.inSeconds),
                       style: TextStyle(
                         fontSize: 11,
-                        color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                     ),
                     Text(
                       Formatters.formatDuration(dur.inSeconds),
                       style: TextStyle(
                         fontSize: 11,
-                        color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                     ),
                   ],

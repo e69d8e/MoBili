@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/auth_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/app_toast.dart';
 
 class LoginDialog extends StatefulWidget {
@@ -91,10 +91,10 @@ class _LoginDialogState extends State<LoginDialog> {
         color: Colors.transparent,
         child: Container(
           width: 300,
-          margin: const EdgeInsets.symmetric(horizontal: 24),
+          margin: const EdgeInsets.symmetric(horizontal: 24.0),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xD91E1E24) : const Color(0xF0FFFFFF),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
               width: 1,
@@ -112,7 +112,7 @@ class _LoginDialogState extends State<LoginDialog> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 16.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -122,10 +122,10 @@ class _LoginDialogState extends State<LoginDialog> {
                       Row(
                         children: [
                           Icon(Icons.qr_code_scanner_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 8.0),
                           const Text(
                             '扫码登录',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -137,14 +137,14 @@ class _LoginDialogState extends State<LoginDialog> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 16.0),
                   // QR Code Box
                   Container(
                     width: 180,
                     height: 180,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFE8E8E8)),
                       boxShadow: [
                         BoxShadow(
@@ -173,7 +173,7 @@ class _LoginDialogState extends State<LoginDialog> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(Icons.refresh_rounded, size: 34, color: Theme.of(context).colorScheme.primary),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4.0),
                                       const Text(
                                         '二维码已失效\n点击刷新',
                                         textAlign: TextAlign.center,
@@ -189,21 +189,21 @@ class _LoginDialogState extends State<LoginDialog> {
                                       data: _qrResult!.url,
                                       version: QrVersions.auto,
                                       size: 160.0,
-                                      padding: const EdgeInsets.all(10),
+                                      padding: const EdgeInsets.all(8.0),
                                     ),
                                   )
                                 : const Center(child: Text('加载失败', style: TextStyle(fontSize: 12, color: Colors.black87)))),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12.0),
                   Text(
                     _statusText,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
-                      color: _isExpired ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                      color: _isExpired ? Theme.of(context).colorScheme.primary : (context.colors.textSub),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 12.0),
                 ],
               ),
             ),

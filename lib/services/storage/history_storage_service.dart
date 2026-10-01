@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../player_settings_service.dart';
+import '../settings/player_settings_service.dart';
 
 /// 在后台 isolate 解析历史记录 JSON（compute 顶层函数，避免启动阻塞 UI 线程）
 Map<String, Map<String, dynamic>> _decodeHistory(String raw) {

@@ -47,7 +47,7 @@ class UserAvatar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
               decoration: BoxDecoration(
                 color: _getLevelColor(level!),
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: Theme.of(context).cardColor,
                   width: 1,
@@ -57,8 +57,8 @@ class UserAvatar extends StatelessWidget {
                 'Lv$level',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 7.5,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
                   height: 1,
                 ),
               ),

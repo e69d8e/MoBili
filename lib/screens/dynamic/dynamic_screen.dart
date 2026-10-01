@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/dynamic_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/dynamic_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/dynamic_card.dart';
 import '../../widgets/state_views.dart';
@@ -54,7 +54,6 @@ class DynamicScreenState extends State<DynamicScreen> with SingleTickerProviderS
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -68,8 +67,8 @@ class DynamicScreenState extends State<DynamicScreen> with SingleTickerProviderS
             indicatorWeight: 2.5,
             indicatorSize: TabBarIndicatorSize.label,
             labelColor: primaryColor,
-            unselectedLabelColor: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            unselectedLabelColor: context.colors.textSub,
+            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.normal),
             dividerColor: Colors.transparent,
             dividerHeight: 0,
@@ -252,7 +251,7 @@ class DynamicFeedTabState extends State<_DynamicFeedTab> with AutomaticKeepAlive
         child: ListView.builder(
           controller: _scrollController,
           scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
           itemCount: _items.length + (_isLoadingMore ? 1 : 0),
           itemBuilder: (ctx, idx) {
             if (idx == _items.length) {

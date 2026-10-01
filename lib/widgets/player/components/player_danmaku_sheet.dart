@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/overlay_colors.dart';
 import '../danmaku_overlay.dart';
 
 /// Modal bottom sheet for configuring player danmaku opacity, font size, and area ratio.
@@ -10,7 +11,7 @@ class PlayerDanmakuSheet {
   }) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF18181C),
+      backgroundColor: OverlayColors.sheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -19,7 +20,7 @@ class PlayerDanmakuSheet {
           builder: (context, setSheetState) {
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -27,10 +28,10 @@ class PlayerDanmakuSheet {
                     const Center(
                       child: Text(
                         '弹幕设置',
-                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12.0),
                     // Opacity
                     Row(
                       children: [
@@ -83,12 +84,12 @@ class PlayerDanmakuSheet {
                     Row(
                       children: [
                         const Text('显示区域', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12.0),
                         ...[0.25, 0.5, 0.75, 1.0].map((ratio) {
                           final selected = (danmakuController.areaRatio - ratio).abs() < 0.05;
                           final label = '${(ratio * 100).toInt()}%';
                           return Padding(
-                            padding: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.only(right: 8.0),
                             child: InkWell(
                               onTap: () {
                                 setSheetState(() {});
@@ -96,11 +97,11 @@ class PlayerDanmakuSheet {
                               },
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? accent.withValues(alpha: 0.22)
-                                      : const Color(0xFF262630),
+                                      : OverlayColors.sheetItem,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
                                     color: selected
@@ -114,7 +115,7 @@ class PlayerDanmakuSheet {
                                   style: TextStyle(
                                     color: selected ? accent : Colors.white70,
                                     fontSize: 12,
-                                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                                   ),
                                 ),
                               ),

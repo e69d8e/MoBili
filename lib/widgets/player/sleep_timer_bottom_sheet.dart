@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../services/sleep_timer_service.dart';
-import '../../theme/app_theme.dart';
+import '../../services/player/sleep_timer_service.dart';
+import '../../theme/app_colors.dart';
 import '../app_toast.dart';
 
 class SleepTimerBottomSheet extends StatefulWidget {
@@ -31,11 +31,11 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDlgState) {
           return AlertDialog(
-            title: const Text('自定义定时分钟', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            title: const Text('自定义定时分钟', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$customMins 分钟后停止播放', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                Text('$customMins 分钟后停止播放', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                 Slider(
                   value: customMins.toDouble(),
                   min: 5,
@@ -83,7 +83,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
 
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+            color: context.colors.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.only(
@@ -103,11 +103,11 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 12.0),
 
               // Title bar
               Row(
@@ -116,10 +116,10 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                   Row(
                     children: [
                       Icon(Icons.bedtime_outlined, size: 20, color: primaryColor),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 8.0),
                       const Text(
                         '睡眠定时器',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -137,10 +137,10 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
 
               // Active status card if running
               if (isActive) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 12.0),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   decoration: BoxDecoration(
                     color: primaryColor.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
@@ -153,7 +153,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                         color: primaryColor,
                         size: 22,
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8.0),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +162,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                               _service.isEndOfVideoMode ? '当前模式：播完本视频后停止' : '定时倒计时中',
                               style: TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w600,
                                 color: primaryColor,
                               ),
                             ),
@@ -172,7 +172,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                                 '剩余时间: ${_service.formatRemaining()}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                  color: context.colors.textSub,
                                 ),
                               ),
                             ],
@@ -183,8 +183,8 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                         Text(
                           _service.formatRemaining(),
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
                             color: primaryColor,
                             fontFeatures: const [FontFeature.tabularFigures()],
                           ),
@@ -194,16 +194,16 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                 ),
               ],
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 16.0),
               Text(
                 '选择定时模式',
                 style: TextStyle(
-                  fontSize: 12.5,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                  fontSize: 13,
+                  color: context.colors.textSub,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8.0),
 
               // Presets wrap
               Wrap(
@@ -213,11 +213,11 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                   for (final mins in _presetMinutes) ...[
                     ActionChip(
                       label: Text('$mins 分钟'),
-                      backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                      backgroundColor: context.colors.fill,
                       labelStyle: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                        color: context.colors.textMain,
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       onPressed: () {
@@ -230,7 +230,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                   ActionChip(
                     avatar: const Icon(Icons.tune_rounded, size: 16),
                     label: const Text('自定义'),
-                    backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    backgroundColor: context.colors.fill,
                     onPressed: () {
                       Navigator.pop(context);
                       _showCustomMinutesDialog();
@@ -239,18 +239,18 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                 ],
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12.0),
               // Stop after current video tile
               Material(
-                color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                color: context.colors.fill,
                 borderRadius: BorderRadius.circular(12),
                 child: ListTile(
                   dense: true,
                   leading: Icon(
                     Icons.skip_next_rounded,
-                    color: _service.isEndOfVideoMode ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                    color: _service.isEndOfVideoMode ? primaryColor : (context.colors.textSub),
                   ),
-                  title: const Text('播完当前视频后停止', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                  title: const Text('播完当前视频后停止', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   subtitle: const Text('当前分P/视频播放结束时自动停止，不再连播下一集', style: TextStyle(fontSize: 11)),
                   trailing: _service.isEndOfVideoMode
                       ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)

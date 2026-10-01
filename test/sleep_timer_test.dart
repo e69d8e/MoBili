@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mobili/services/sleep_timer_service.dart';
+import 'package:mobili/services/player/sleep_timer_service.dart';
 import 'package:mobili/widgets/player/sleep_timer_bottom_sheet.dart';
 
 void main() {

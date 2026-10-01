@@ -4,7 +4,7 @@ import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../models/video_model.dart';
 import '../../services/api/user_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
@@ -125,7 +125,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                       _spaceInfo!.name,
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     centerTitle: false,
@@ -134,9 +134,9 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                   // UP Info Header Card
                   SliverToBoxAdapter(
                     child: Container(
-                      margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                      margin: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 8.0),
                       decoration: BoxDecoration(
-                        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                        color: context.colors.card,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: isDark
@@ -145,7 +145,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                           width: 0.8,
                         ),
                       ),
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -156,7 +156,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                                 size: 56,
                                 level: _spaceInfo!.level,
                               ),
-                              const SizedBox(width: 14),
+                              const SizedBox(width: 12.0),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,8 +164,8 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                                     Text(
                                       _spaceInfo!.name,
                                       style: const TextStyle(
-                                        fontSize: 16.5,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -175,19 +175,15 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                                           '${Formatters.formatCount(_spaceInfo!.fans)} 粉丝',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? AppTheme.textHintDark
-                                                : AppTheme.textHintLight,
+                                            color: context.colors.textHint,
                                           ),
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: 12.0),
                                         Text(
                                           '${Formatters.formatCount(_spaceInfo!.attention)} 关注',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: isDark
-                                                ? AppTheme.textHintDark
-                                                : AppTheme.textHintLight,
+                                            color: context.colors.textHint,
                                           ),
                                         ),
                                       ],
@@ -199,23 +195,19 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                                 onPressed: _toggleFollow,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: _isFollowing
-                                      ? (isDark
-                                            ? AppTheme.surfaceDark
-                                            : AppTheme.surfaceLight)
+                                      ? (context.colors.fill)
                                       : primaryColor,
                                   foregroundColor: _isFollowing
-                                      ? (isDark
-                                            ? AppTheme.textSubDark
-                                            : AppTheme.textSubLight)
+                                      ? (context.colors.textSub)
                                       : Theme.of(context).colorScheme.onPrimary,
                                   elevation: 0,
                                   visualDensity: VisualDensity.compact,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
+                                    horizontal: 12.0,
                                     vertical: 0,
                                   ),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18),
+                                    borderRadius: BorderRadius.circular(20),
                                   ),
                                 ),
                                 icon: Icon(
@@ -233,14 +225,12 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                             ],
                           ),
                           if (_spaceInfo!.sign.isNotEmpty) ...[
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 12.0),
                             Text(
                               _spaceInfo!.sign,
                               style: TextStyle(
-                                fontSize: 12.5,
-                                color: isDark
-                                    ? AppTheme.textSubDark
-                                    : AppTheme.textSubLight,
+                                fontSize: 13,
+                                color: context.colors.textSub,
                                 height: 1.45,
                               ),
                             ),
@@ -253,12 +243,12 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                   // Section Title
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
                       child: Text(
                         '投稿视频 (${_videos.length})',
                         style: const TextStyle(
                           fontSize: 15,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -271,7 +261,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                     )
                   else
                     SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
                       sliver: SliverGrid(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount:
@@ -297,7 +287,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                   if (_isLoadingMore)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(16.0),
                         child: Center(
                           child: CircularProgressIndicator(
                             strokeWidth: 2,

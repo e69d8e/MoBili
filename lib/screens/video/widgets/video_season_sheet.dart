@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../models/video_model.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../utils/formatters.dart';
 
 /// Modal dialog/bottom sheet for browsing and selecting UGC collection/season episodes.
@@ -41,7 +41,7 @@ class VideoSeasonSheet {
         return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
+            padding: EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0 + bottomInset),
             child: Material(
               color: Colors.transparent,
               child: Container(
@@ -67,7 +67,7 @@ class VideoSeasonSheet {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,24 +79,24 @@ class VideoSeasonSheet {
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Icon(Icons.video_library_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 8.0),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
                                     '合集选集',
-                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                                   ),
                                   Text(
                                     '${season.title} · 共${season.epCount}集',
                                     style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                      fontSize: 11,
+                                      color: context.colors.textHint,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -112,13 +112,13 @@ class VideoSeasonSheet {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 8.0),
                         Divider(
                           height: 1,
                           thickness: 0.5,
-                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                          color: context.colors.divider,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 8.0),
 
                         // Episode List（打开时自动定位到正在播放的剧集）
                         Flexible(
@@ -215,15 +215,15 @@ class _EpisodeListState extends State<_EpisodeList> {
       double contentHeight = _measureOneLineHeight(
         '${i + 1}. ${ep.title}',
         baseStyle.merge(TextStyle(
-          fontSize: 11.5,
-          fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+          fontSize: 12,
+          fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
         )),
       );
       if (ep.duration > 0) {
         contentHeight += _durationGap;
         contentHeight += _measureOneLineHeight(
           Formatters.formatDuration(ep.duration),
-          baseStyle.merge(const TextStyle(fontSize: 9.5)),
+          baseStyle.merge(const TextStyle(fontSize: 10)),
         );
       }
       offset += contentHeight + _itemOuterHeight + _separatorHeight;
@@ -273,7 +273,7 @@ class _EpisodeListState extends State<_EpisodeList> {
           },
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             decoration: BoxDecoration(
               color: isPlaying
                   ? primaryColor.withValues(alpha: 0.14)
@@ -290,7 +290,7 @@ class _EpisodeListState extends State<_EpisodeList> {
               children: [
                 if (isPlaying)
                   Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
+                    padding: const EdgeInsets.only(right: 4.0),
                     child: Icon(
                       Icons.play_circle_fill_rounded,
                       color: primaryColor,
@@ -306,15 +306,13 @@ class _EpisodeListState extends State<_EpisodeList> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12,
                           fontWeight: isPlaying
-                              ? FontWeight.bold
+                              ? FontWeight.w600
                               : FontWeight.normal,
                           color: isPlaying
                               ? primaryColor
-                              : (widget.isDark
-                                    ? AppTheme.textMainDark
-                                    : AppTheme.textMainLight),
+                              : (context.colors.textMain),
                         ),
                       ),
                       if (ep.duration > 0) ...[
@@ -322,10 +320,8 @@ class _EpisodeListState extends State<_EpisodeList> {
                         Text(
                           Formatters.formatDuration(ep.duration),
                           style: TextStyle(
-                            fontSize: 9.5,
-                            color: widget.isDark
-                                ? AppTheme.textHintDark
-                                : AppTheme.textHintLight,
+                            fontSize: 10,
+                            color: context.colors.textHint,
                           ),
                         ),
                       ],

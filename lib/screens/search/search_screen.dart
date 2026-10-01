@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/search_model.dart';
 import '../../providers/search_provider.dart';
+import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../utils/responsive_util.dart';
@@ -68,10 +69,10 @@ class _SearchScreenState extends State<SearchScreen> {
         titleSpacing: 0,
         title: Container(
           height: 36,
-          margin: const EdgeInsets.only(right: 6),
+          margin: const EdgeInsets.only(right: 4.0),
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(18),
+            color: context.colors.fill,
+            borderRadius: BorderRadius.circular(20),
           ),
           alignment: Alignment.center,
           child: TextField(
@@ -81,19 +82,19 @@ class _SearchScreenState extends State<SearchScreen> {
                 widget.initialKeyword == null || widget.initialKeyword!.isEmpty,
             textAlignVertical: TextAlignVertical.center,
             textInputAction: TextInputAction.search,
-            style: const TextStyle(fontSize: 13.5),
+            style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               isDense: true,
               isCollapsed: true,
               hintText: '搜索视频、UP主、图文...',
               hintStyle: TextStyle(
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
-                fontSize: 12.5,
+                color: context.colors.textHint,
+                fontSize: 13,
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
                 size: 18,
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                color: context.colors.textHint,
               ),
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 36,
@@ -135,12 +136,12 @@ class _SearchScreenState extends State<SearchScreen> {
               '搜索',
               style: TextStyle(
                 color: primaryColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4.0),
         ],
       ),
       body: _buildBody(searchProvider, isDark),
@@ -158,7 +159,7 @@ class _SearchScreenState extends State<SearchScreen> {
           height: 1,
           thickness: 0.5,
           indent: 38,
-          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+          color: context.colors.divider,
         ),
         itemBuilder: (ctx, idx) {
           final item = sp.suggestions[idx];
@@ -166,13 +167,13 @@ class _SearchScreenState extends State<SearchScreen> {
             leading: Icon(
               Icons.search_rounded,
               size: 16,
-              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+              color: context.colors.textHint,
             ),
             title: Text(
               item.value,
               style: TextStyle(
-                fontSize: 13.5,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                fontSize: 14,
+                color: context.colors.textMain,
               ),
             ),
             dense: true,
@@ -193,7 +194,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildHistoryAndHot(SearchProvider sp, bool isDark) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -204,20 +205,18 @@ class _SearchScreenState extends State<SearchScreen> {
               children: [
                 const Text(
                   '搜索历史',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                  color: isDark
-                      ? AppTheme.textHintDark
-                      : AppTheme.textHintLight,
+                  color: context.colors.textHint,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () => sp.clearHistory(),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 8.0),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -226,29 +225,25 @@ class _SearchScreenState extends State<SearchScreen> {
                   onTap: () => _doSearch(h),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+                      horizontal: 8.0,
+                      vertical: 4.0,
                     ),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppTheme.surfaceDark
-                          : AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(14),
+                      color: context.colors.fill,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       h,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark
-                            ? AppTheme.textSubDark
-                            : AppTheme.textSubLight,
+                        color: context.colors.textSub,
                       ),
                     ),
                   ),
                 );
               }).toList(),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 20.0),
           ],
 
           // Trending / Hot Search
@@ -257,16 +252,16 @@ class _SearchScreenState extends State<SearchScreen> {
               const Icon(
                 Icons.local_fire_department_rounded,
                 size: 16,
-                color: Color(0xFFFF6699),
+                color: AppTheme.biliPink,
               ),
               const SizedBox(width: 4),
               const Text(
                 '热搜榜',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8.0),
           if (sp.hotSearches.isEmpty)
             SizedBox(
               height: 100,
@@ -287,9 +282,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 final idx = entry.key;
                 final item = entry.value;
                 final rank = idx + 1;
-                Color rankColor = isDark
-                    ? AppTheme.textHintDark
-                    : AppTheme.textHintLight;
+                Color rankColor = context.colors.textHint;
                 Color? rankBadgeBg;
                 if (rank == 1) {
                   // 深色下换亮色变体，避免低对比
@@ -312,13 +305,13 @@ class _SearchScreenState extends State<SearchScreen> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: rankBadgeBg ?? Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$rank',
                       style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: rankColor,
                       ),
                     ),
@@ -334,7 +327,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         ),
                       ),
                       if (item.icon.isNotEmpty) ...[
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4.0),
                         NetworkImageView(url: item.icon, width: 14, height: 14),
                       ],
                     ],
@@ -357,13 +350,13 @@ class _SearchScreenState extends State<SearchScreen> {
         // Category Pills (Video / UP / Article)
         Container(
           height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
           child: Row(
             children: [
               _buildCategoryChip('视频', 'video', sp, isDark),
-              const SizedBox(width: 8),
+              const SizedBox(width: 8.0),
               _buildCategoryChip('UP主', 'bili_user', sp, isDark),
-              const SizedBox(width: 8),
+              const SizedBox(width: 8.0),
               _buildCategoryChip('图文', 'article', sp, isDark),
             ],
           ),
@@ -372,15 +365,15 @@ class _SearchScreenState extends State<SearchScreen> {
         // Sort Bar (only for video)
         if (sp.currentCategory == 'video')
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
             child: Row(
               children: [
                 _buildSortChip('综合排序', 'totalrank', sp, isDark),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4.0),
                 _buildSortChip('最多点击', 'click', sp, isDark),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4.0),
                 _buildSortChip('最新发布', 'pubdate', sp, isDark),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4.0),
                 _buildSortChip('最多弹幕', 'danmaku', sp, isDark),
               ],
             ),
@@ -389,7 +382,7 @@ class _SearchScreenState extends State<SearchScreen> {
         Divider(
           height: 1,
           thickness: 0.5,
-          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+          color: context.colors.divider,
         ),
 
         // Main Content Area（加载/错误态由各分类内容自行处理）
@@ -411,21 +404,21 @@ class _SearchScreenState extends State<SearchScreen> {
     return GestureDetector(
       onTap: () => sp.setCategory(catKey),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
         decoration: BoxDecoration(
           color: isSelected
               ? primaryColor
-              : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+              : (context.colors.fill),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             color: isSelected
                 ? onPrimary
-                : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                : (context.colors.textSub),
           ),
         ),
       ),
@@ -444,21 +437,21 @@ class _SearchScreenState extends State<SearchScreen> {
     return GestureDetector(
       onTap: () => sp.changeOrder(orderKey),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.5),
         decoration: BoxDecoration(
           color: isSelected
               ? primaryColor.withValues(alpha: 0.12)
-              : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
-          borderRadius: BorderRadius.circular(10),
+              : (context.colors.fill),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 11,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             color: isSelected
                 ? primaryColor
-                : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                : (context.colors.textSub),
           ),
         ),
       ),
@@ -469,7 +462,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (sp.currentCategory == 'video') {
       if (sp.isLoading && sp.searchResults.isEmpty) {
         return const VideoGridSkeleton(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
         );
       }
       if (sp.searchResults.isEmpty) {
@@ -503,7 +496,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: GridView.builder(
             scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossAxisCount,
               childAspectRatio: childAspectRatio,
@@ -530,7 +523,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     '没有更多了',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                      color: context.colors.textHint,
                     ),
                   ),
                 );
@@ -570,14 +563,14 @@ class _SearchScreenState extends State<SearchScreen> {
           child: ListView.separated(
             scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             itemCount: sp.searchUsers.length +
                 ((sp.isLoadingMore || !sp.hasMore) ? 1 : 0),
             separatorBuilder: (ctx, _) => Divider(
               height: 1,
               thickness: 0.5,
               indent: 62,
-              color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              color: context.colors.divider,
             ),
             itemBuilder: (ctx, idx) {
               if (idx == sp.searchUsers.length) {
@@ -599,9 +592,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       '没有更多了',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark
-                            ? AppTheme.textHintDark
-                            : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                     ),
                   ),
@@ -642,10 +633,10 @@ class _SearchScreenState extends State<SearchScreen> {
           child: ListView.separated(
             scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             itemCount: sp.searchArticles.length +
                 ((sp.isLoadingMore || !sp.hasMore) ? 1 : 0),
-            separatorBuilder: (ctx, _) => const SizedBox(height: 10),
+            separatorBuilder: (ctx, _) => const SizedBox(height: 8.0),
             itemBuilder: (ctx, idx) {
               if (idx == sp.searchArticles.length) {
                 if (sp.isLoadingMore) {
@@ -666,9 +657,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       '没有更多了',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark
-                            ? AppTheme.textHintDark
-                            : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                     ),
                   ),
@@ -710,13 +699,13 @@ class _SearchScreenState extends State<SearchScreen> {
           MaterialPageRoute(builder: (ctx) => UpSpaceScreen(mid: user.mid)),
         );
       },
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4),
         child: Row(
           children: [
             UserAvatar(url: user.upic, size: 46),
-            const SizedBox(width: 12),
+            const SizedBox(width: 12.0),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,7 +723,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4.0),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 4,
@@ -747,8 +736,8 @@ class _SearchScreenState extends State<SearchScreen> {
                         child: Text(
                           'Lv${user.level}',
                           style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                             color: primaryColor,
                           ),
                         ),
@@ -759,10 +748,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   Text(
                     '粉丝: ${Formatters.formatCount(user.fans)} · 视频: ${user.videos}',
                     style: TextStyle(
-                      fontSize: 11.5,
-                      color: isDark
-                          ? AppTheme.textHintDark
-                          : AppTheme.textHintLight,
+                      fontSize: 12,
+                      color: context.colors.textHint,
                     ),
                   ),
                   if (user.usign.isNotEmpty) ...[
@@ -773,20 +760,18 @@ class _SearchScreenState extends State<SearchScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppTheme.textSubDark
-                            : AppTheme.textSubLight,
+                        color: context.colors.textSub,
                       ),
                     ),
                   ],
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 8.0),
             Icon(
               Icons.chevron_right_rounded,
               size: 20,
-              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+              color: context.colors.textHint,
             ),
           ],
         ),
@@ -798,9 +783,9 @@ class _SearchScreenState extends State<SearchScreen> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+        color: context.colors.card,
         borderRadius: BorderRadius.circular(12),
         boxShadow: isDark
             ? null
@@ -822,25 +807,25 @@ class _SearchScreenState extends State<SearchScreen> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
               height: 1.35,
             ),
           ),
           if (article.desc.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4.0),
             Text(
               article.desc,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                color: context.colors.textSub,
                 height: 1.4,
               ),
             ),
           ],
           if (article.imageUrls.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 8.0),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: SizedBox(
@@ -863,7 +848,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 8.0),
           // Meta Row
           Row(
             children: [
@@ -890,10 +875,8 @@ class _SearchScreenState extends State<SearchScreen> {
               Text(
                 '阅读 ${Formatters.formatCount(article.view)} · 点赞 ${Formatters.formatCount(article.like)}',
                 style: TextStyle(
-                  fontSize: 10.5,
-                  color: isDark
-                      ? AppTheme.textHintDark
-                      : AppTheme.textHintLight,
+                  fontSize: 11,
+                  color: context.colors.textHint,
                 ),
               ),
             ],

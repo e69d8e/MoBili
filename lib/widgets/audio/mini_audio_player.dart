@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../screens/video/listen_video_screen.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../network_image_view.dart';
 
 class _MiniPlayerMetadata {
@@ -94,10 +94,10 @@ class MiniAudioPlayer extends StatelessWidget {
 
         return RepaintBoundary(
           child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 8.0),
             decoration: BoxDecoration(
-              color: isDark ? AppTheme.cardDark : Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              color: context.colors.card,
+              borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
@@ -106,7 +106,7 @@ class MiniAudioPlayer extends StatelessWidget {
                 ),
               ],
               border: Border.all(
-                color: isDark ? const Color(0xFF2E2E36) : const Color(0xFFEBECEF),
+                color: context.colors.divider,
                 width: 0.8,
               ),
             ),
@@ -132,7 +132,7 @@ class MiniAudioPlayer extends StatelessWidget {
                     );
                   },
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
                     child: Row(
                       children: [
                         // Album Thumbnail
@@ -164,7 +164,7 @@ class MiniAudioPlayer extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8.0),
 
                         // Title & UP
                         Expanded(
@@ -177,7 +177,7 @@ class MiniAudioPlayer extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 12.5,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -189,12 +189,12 @@ class MiniAudioPlayer extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                      fontSize: 11,
+                                      color: context.colors.textSub,
                                     ),
                                   ),
                                   if (meta.isSleepTimerActive && meta.sleepTimerMinutes != null) ...[
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 4.0),
                                     Text(
                                       '🌙 ${meta.sleepTimerMinutes}m',
                                       style: TextStyle(fontSize: 10, color: primary),
@@ -234,7 +234,7 @@ class MiniAudioPlayer extends StatelessWidget {
                           icon: Icon(
                             Icons.close_rounded,
                             size: 18,
-                            color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                            color: context.colors.textHint,
                           ),
                           onPressed: () => context.read<ListenVideoProvider>().stopAndClear(),
                         ),

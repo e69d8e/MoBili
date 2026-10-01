@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../theme/overlay_colors.dart';
 import 'package:flutter/services.dart';
 import '../models/dynamic_model.dart';
 import 'app_toast.dart';
@@ -155,7 +156,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
     final curPic = widget.pictures[_currentIndex];
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF222228),
+      backgroundColor: OverlayColors.viewerSheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -166,7 +167,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
             children: [
               ListTile(
                 leading: const Icon(Icons.copy_rounded, color: Colors.white),
-                title: const Text('复制图片链接', style: TextStyle(color: Colors.white, fontSize: 14.5)),
+                title: const Text('复制图片链接', style: TextStyle(color: Colors.white, fontSize: 14)),
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: curPic.url));
                   Navigator.of(ctx).pop();
@@ -175,14 +176,14 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
               ),
               ListTile(
                 leading: const Icon(Icons.download_rounded, color: Colors.white),
-                title: const Text('保存图片', style: TextStyle(color: Colors.white, fontSize: 14.5)),
+                title: const Text('保存图片', style: TextStyle(color: Colors.white, fontSize: 14)),
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: curPic.url));
                   Navigator.of(ctx).pop();
                   AppToast.show(context, '图片链接已复制', icon: Icons.download_done_rounded);
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 8.0),
             ],
           ),
         );
@@ -254,7 +255,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
               duration: const Duration(milliseconds: 180),
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -279,16 +280,16 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
                       // Index Indicator
                       if (total > 1)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '${_currentIndex + 1} / $total',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13.5,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.5,
                             ),
@@ -330,7 +331,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
                 duration: const Duration(milliseconds: 180),
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
                       borderRadius: BorderRadius.circular(16),
@@ -343,7 +344,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
                         SizedBox(width: 4),
                         Text(
                           '长图，可双指缩放或滑动查看',
-                          style: TextStyle(color: Colors.white, fontSize: 11.5),
+                          style: TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ],
                     ),
@@ -511,7 +512,7 @@ class _ZoomableImageState extends State<_ZoomableImage> with SingleTickerProvide
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.broken_image_rounded, size: 48, color: Colors.white38),
-            const SizedBox(height: 8),
+            const SizedBox(height: 8.0),
             Text(
               '图片加载失败',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),

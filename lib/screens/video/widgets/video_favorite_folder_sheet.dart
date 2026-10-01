@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../models/user_model.dart';
 import '../../../services/api/user_api_service.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/state_views.dart';
 
@@ -133,7 +133,6 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDark;
     final primaryColor = widget.primaryColor;
 
     return Container(
@@ -141,27 +140,27 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
         maxHeight: MediaQuery.of(context).size.height * 0.65,
       ),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E24) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        color: context.colors.card,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Header Bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+            padding: const EdgeInsets.fromLTRB(16.0, 12.0, 12.0, 8.0),
             child: Row(
               children: [
                 const Text(
                   '添加到收藏夹',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
                 if (!_isLoading)
                   TextButton(
                     onPressed: _isSubmitting ? null : _saveFavorites,
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
                       visualDensity: VisualDensity.compact,
                     ),
                     child: _isSubmitting
@@ -174,7 +173,7 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                             '完成',
                             style: TextStyle(
                               color: primaryColor,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                               fontSize: 14,
                             ),
                           ),
@@ -191,7 +190,7 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
           Divider(
             height: 1,
             thickness: 0.5,
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            color: context.colors.divider,
           ),
 
           // Folder List
@@ -211,13 +210,13 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                     : ListView.separated(
                         // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
                         shrinkWrap: _folders.length <= 12,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
                         itemCount: _folders.length,
                         separatorBuilder: (ctx, _) => Divider(
                           height: 1,
                           thickness: 0.5,
                           indent: 16,
-                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                          color: context.colors.divider,
                         ),
                         itemBuilder: (ctx, idx) {
                           final folder = _folders[idx];
@@ -235,15 +234,15 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                               HapticFeedback.selectionClick();
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                               child: Row(
                                 children: [
                                   Icon(
                                     isSelected ? Icons.folder_special_rounded : Icons.folder_outlined,
                                     size: 24,
-                                    color: isSelected ? primaryColor : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                                    color: isSelected ? primaryColor : (context.colors.textHint),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 12.0),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,9 +250,9 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                                         Text(
                                           folder.title,
                                           style: TextStyle(
-                                            fontSize: 13.5,
+                                            fontSize: 14,
                                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                                            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                            color: context.colors.textMain,
                                           ),
                                         ),
                                         const SizedBox(height: 2),
@@ -261,7 +260,7 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
                                           '${folder.mediaCount} 个内容',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                            color: context.colors.textHint,
                                           ),
                                         ),
                                       ],

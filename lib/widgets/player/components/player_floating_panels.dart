@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../theme/overlay_colors.dart';
 import '../../../models/subtitle_model.dart';
 import '../../../models/video_model.dart';
 import '../../../utils/formatters.dart';
@@ -28,8 +29,8 @@ class PlayerQualityPanel extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 3),
         constraints: BoxConstraints(maxHeight: isFull ? 240 : 120),
         decoration: BoxDecoration(
-          color: const Color(0xF0181820),
-          borderRadius: BorderRadius.circular(10),
+          color: OverlayColors.panel,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
           boxShadow: [
             BoxShadow(
@@ -49,13 +50,13 @@ class PlayerQualityPanel extends StatelessWidget {
 
               return InkWell(
                 onTap: () => onSelectQuality(item.quality),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.5),
                   margin: const EdgeInsets.symmetric(vertical: 1),
                   decoration: BoxDecoration(
                     color: isSelected ? accent.withValues(alpha: 0.25) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSelected ? accent.withValues(alpha: 0.55) : Colors.transparent,
                       width: 0.8,
@@ -76,7 +77,7 @@ class PlayerQualityPanel extends StatelessWidget {
                                       alpha: item.locked ? 0.55 : 0.85,
                                     ),
                               fontSize: 11,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                             ),
                           ),
                         ),
@@ -127,8 +128,8 @@ class PlayerSpeedPanel extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 3),
         constraints: BoxConstraints(maxHeight: isFull ? 240 : 120),
         decoration: BoxDecoration(
-          color: const Color(0xF0181820),
-          borderRadius: BorderRadius.circular(10),
+          color: OverlayColors.panel,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
           boxShadow: [
             BoxShadow(
@@ -147,13 +148,13 @@ class PlayerSpeedPanel extends StatelessWidget {
               final isSelected = currentSpeed == s;
               return InkWell(
                 onTap: () => onSelectSpeed(s),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.5),
                   margin: const EdgeInsets.symmetric(vertical: 1),
                   decoration: BoxDecoration(
                     color: isSelected ? accent.withValues(alpha: 0.25) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSelected ? accent.withValues(alpha: 0.55) : Colors.transparent,
                       width: 0.8,
@@ -165,7 +166,7 @@ class PlayerSpeedPanel extends StatelessWidget {
                       style: TextStyle(
                         color: isSelected ? accent : Colors.white.withValues(alpha: 0.85),
                         fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -201,14 +202,14 @@ class PlayerChapterPanel extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4),
         constraints: BoxConstraints(
           maxHeight: isFull ? 240 : 130,
           maxWidth: isFull ? 220 : 170,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xF0181820),
-          borderRadius: BorderRadius.circular(10),
+          color: OverlayColors.panel,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
           boxShadow: [
             BoxShadow(
@@ -223,7 +224,7 @@ class PlayerChapterPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+              padding: const EdgeInsets.fromLTRB(8.0, 2, 8.0, 4),
               child: Row(
                 children: [
                   Icon(Icons.bookmark_outline_rounded, size: 12, color: accent),
@@ -233,7 +234,7 @@ class PlayerChapterPanel extends StatelessWidget {
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 11,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -251,13 +252,13 @@ class PlayerChapterPanel extends StatelessWidget {
 
                     return InkWell(
                       onTap: () => onSelectChapter(ch),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
                         margin: const EdgeInsets.symmetric(vertical: 1),
                         decoration: BoxDecoration(
                           color: isCurrent ? accent.withValues(alpha: 0.22) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isCurrent ? accent.withValues(alpha: 0.55) : Colors.transparent,
                             width: 0.8,
@@ -273,7 +274,7 @@ class PlayerChapterPanel extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4.0),
                             Expanded(
                               child: Text(
                                 ch.title,
@@ -282,7 +283,7 @@ class PlayerChapterPanel extends StatelessWidget {
                                 style: TextStyle(
                                   color: isCurrent ? accent : Colors.white.withValues(alpha: 0.85),
                                   fontSize: 11,
-                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
                                 ),
                               ),
                             ),
@@ -329,13 +330,13 @@ class PlayerSubtitlePanel extends StatelessWidget {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.5),
         margin: const EdgeInsets.symmetric(vertical: 1),
         decoration: BoxDecoration(
           color: isSelected ? accent.withValues(alpha: 0.25) : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? accent.withValues(alpha: 0.55) : Colors.transparent,
             width: 0.8,
@@ -351,7 +352,7 @@ class PlayerSubtitlePanel extends StatelessWidget {
                 style: TextStyle(
                   color: isSelected ? accent : Colors.white.withValues(alpha: 0.85),
                   fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -363,14 +364,14 @@ class PlayerSubtitlePanel extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
                   'AI',
                   style: TextStyle(
                     color: Colors.white60,
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -386,14 +387,14 @@ class PlayerSubtitlePanel extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4),
         constraints: BoxConstraints(
           maxHeight: isFull ? 240 : 130,
           maxWidth: isFull ? 200 : 160,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xF0181820),
-          borderRadius: BorderRadius.circular(10),
+          color: OverlayColors.panel,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
           boxShadow: [
             BoxShadow(

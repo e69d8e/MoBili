@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
@@ -43,7 +43,6 @@ class _RelationScreenState extends State<RelationScreen> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -57,8 +56,8 @@ class _RelationScreenState extends State<RelationScreen> with SingleTickerProvid
             indicatorWeight: 2.5,
             indicatorSize: TabBarIndicatorSize.label,
             labelColor: primaryColor,
-            unselectedLabelColor: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            unselectedLabelColor: context.colors.textSub,
+            labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.normal),
             dividerColor: Colors.transparent,
             dividerHeight: 0,
@@ -209,7 +208,6 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_isLoading && _users.isEmpty) {
       return LoadingView(message: widget.isFollowings ? '正在加载关注列表...' : '正在加载粉丝列表...');
@@ -235,10 +233,10 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
         // Search Bar for Followings / Followers
         Container(
           height: 36,
-          margin: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+          margin: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 4.0),
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(18),
+            color: context.colors.fill,
+            borderRadius: BorderRadius.circular(20),
           ),
           alignment: Alignment.center,
           child: TextField(
@@ -250,13 +248,13 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
               isCollapsed: true,
               hintText: widget.isFollowings ? '搜索已关注的UP主...' : '搜索粉丝...',
               hintStyle: TextStyle(
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                color: context.colors.textHint,
                 fontSize: 12,
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
                 size: 17,
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                color: context.colors.textHint,
               ),
               prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34, maxWidth: 34, maxHeight: 34),
               suffixIcon: _searchQuery.isNotEmpty
@@ -303,13 +301,13 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.separated(
                       scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                       itemCount: displayedUsers.length + (_isLoadingMore ? 1 : 0),
                       separatorBuilder: (ctx, _) => Divider(
                         height: 1,
                         thickness: 0.5,
                         indent: 58,
-                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                        color: context.colors.divider,
                       ),
                       itemBuilder: (ctx, idx) {
                         final primaryColor = Theme.of(context).colorScheme.primary;
@@ -333,11 +331,11 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                           },
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4),
                             child: Row(
                               children: [
                                 UserAvatar(url: user.face, size: 44),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 12.0),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,26 +348,26 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                fontSize: 13.5,
+                                                fontSize: 14,
                                                 fontWeight: FontWeight.w600,
                                                 color: user.vipLabel.isNotEmpty ? primaryColor : null,
                                               ),
                                             ),
                                           ),
                                           if (user.vipLabel.isNotEmpty) ...[
-                                            const SizedBox(width: 6),
+                                            const SizedBox(width: 4.0),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                               decoration: BoxDecoration(
                                                 color: primaryColor.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(3),
+                                                borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
                                                 user.vipLabel,
                                                 style: TextStyle(
                                                   color: primaryColor,
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
                                             ),
@@ -383,30 +381,30 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                          color: context.colors.textSub,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 8.0),
                                 if (widget.isFollowings)
                                   OutlinedButton(
                                     onPressed: () => _toggleFollow(user, rawIndex != -1 ? rawIndex : idx),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: user.isFollowing
-                                          ? (isDark ? AppTheme.textSubDark : AppTheme.textSubLight)
+                                          ? (context.colors.textSub)
                                           : primaryColor,
                                       side: BorderSide(
                                         color: user.isFollowing
-                                            ? (isDark ? AppTheme.dividerDark : AppTheme.dividerLight)
+                                            ? (context.colors.divider)
                                             : primaryColor,
                                       ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
                                       minimumSize: Size.zero,
                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                       shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                     child: Text(
@@ -418,7 +416,7 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                                   Icon(
                                     Icons.chevron_right_rounded,
                                     size: 18,
-                                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                    color: context.colors.textHint,
                                   ),
                               ],
                             ),

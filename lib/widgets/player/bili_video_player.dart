@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../theme/overlay_colors.dart';
+import '../../theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -14,9 +16,9 @@ import '../../models/subtitle_model.dart';
 import '../../models/video_model.dart';
 import '../../services/api/bili_http_client.dart';
 import '../../services/player/play_stream_planner.dart';
-import '../../services/player_settings_service.dart';
+import '../../services/settings/player_settings_service.dart';
 import '../../services/player/system_media_control_service.dart';
-import '../../services/sleep_timer_service.dart';
+import '../../services/player/sleep_timer_service.dart';
 import '../../utils/formatters.dart';
 import '../app_toast.dart';
 import 'components/player_danmaku_sheet.dart';
@@ -25,42 +27,7 @@ import 'danmaku_overlay.dart';
 import 'sleep_timer_bottom_sheet.dart';
 import 'subtitle_overlay.dart';
 
-/// Represents current video player state snapshot for UI observation & testing
-class BiliPlayerValue {
-  final Duration position;
-  final Duration duration;
-  final bool isPlaying;
-  final bool isBuffering;
-  final bool isInitialized;
-  final double aspectRatio;
-
-  const BiliPlayerValue({
-    this.position = Duration.zero,
-    this.duration = Duration.zero,
-    this.isPlaying = false,
-    this.isBuffering = false,
-    this.isInitialized = false,
-    this.aspectRatio = 16 / 9,
-  });
-
-  BiliPlayerValue copyWith({
-    Duration? position,
-    Duration? duration,
-    bool? isPlaying,
-    bool? isBuffering,
-    bool? isInitialized,
-    double? aspectRatio,
-  }) {
-    return BiliPlayerValue(
-      position: position ?? this.position,
-      duration: duration ?? this.duration,
-      isPlaying: isPlaying ?? this.isPlaying,
-      isBuffering: isBuffering ?? this.isBuffering,
-      isInitialized: isInitialized ?? this.isInitialized,
-      aspectRatio: aspectRatio ?? this.aspectRatio,
-    );
-  }
-}
+export 'bili_player_value.dart';
 
 class BiliVideoPlayer extends StatefulWidget {
   final PlayUrlInfo playUrlInfo;
@@ -1253,7 +1220,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     // On the video player's dark background, if primary is dark (e.g. Ink theme light mode #22242A),
     // fallback to clean white #EDEDF2 to guarantee high contrast and readability.
     if (primary.computeLuminance() < 0.35) {
-      return const Color(0xFFEDEDF2);
+      return AppTheme.textMainDark;
     }
     return primary;
   }
@@ -1624,11 +1591,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
               Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 14,
+                    horizontal: 20.0,
+                    vertical: 12.0,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xE614141C),
+                    color: OverlayColors.bar,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white24, width: 0.8),
                     boxShadow: [
@@ -1652,7 +1619,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                             color: accent,
                             size: 26,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 8.0),
                           Text(
                             _targetSeekPosition >= _dragStartPosition
                                 ? '+${Formatters.formatDuration((_targetSeekPosition - _dragStartPosition).inSeconds)}'
@@ -1660,12 +1627,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                             style: TextStyle(
                               color: accent,
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 8.0),
                       Text(
                         '${Formatters.formatDuration(_targetSeekPosition.inSeconds)} / ${Formatters.formatDuration(_controller!.value.duration.inSeconds)}',
                         style: const TextStyle(
@@ -1674,11 +1641,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 8.0),
                       SizedBox(
                         width: 140,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
+                          borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
                             value:
                                 _controller!.value.duration.inMilliseconds > 0
@@ -1712,13 +1679,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     return Transform.scale(
                       scale: scale,
                       child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        margin: const EdgeInsets.symmetric(horizontal: 20.0),
                         padding: EdgeInsets.symmetric(
-                          horizontal: _hudProgress != null ? 18 : 14,
-                          vertical: _hudProgress != null ? 12 : 8,
+                          horizontal: _hudProgress != null ? 16.0 : 12.0,
+                          vertical: _hudProgress != null ? 12.0 : 8.0,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xE614141C),
+                          color: OverlayColors.bar,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.white24, width: 0.8),
                           boxShadow: [
@@ -1735,13 +1702,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                 children: [
                                   if (_hudIcon != null) ...[
                                     Icon(_hudIcon, color: accent, size: 18),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 4.0),
                                   ],
                                   Text(
                                     _hudText,
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 12.5,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -1752,12 +1719,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                 children: [
                                   if (_hudIcon != null) ...[
                                     Icon(_hudIcon, color: accent, size: 28),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 8.0),
                                   ],
                                   SizedBox(
                                     width: 64,
                                     child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(2),
+                                      borderRadius: BorderRadius.circular(4),
                                       child: LinearProgressIndicator(
                                         value: _hudProgress!.clamp(0.0, 1.0),
                                         backgroundColor: Colors.white24,
@@ -1769,12 +1736,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4.0),
                                   Text(
                                     _hudText,
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 12.5,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -1795,11 +1762,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
+                      horizontal: 12.0,
+                      vertical: 4.0,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xD9101016),
+                      color: OverlayColors.bubble,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: accent.withValues(alpha: 0.4),
@@ -1821,13 +1788,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                           color: accent,
                           size: 15,
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4.0),
                         const Text(
                           '2.0X',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -1851,14 +1818,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: _toggleLock,
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(20),
                       child: Container(
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
                           color: _isScreenLocked
                               ? accent.withValues(alpha: 0.85)
-                              : const Color(0x99101016),
+                              : OverlayColors.circle,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: _isScreenLocked ? accent : Colors.white24,
@@ -2106,7 +2073,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
           children: [
             // Top Bar (Back button, Title, Settings)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4),
               child: Row(
                 children: [
                   IconButton(
@@ -2134,10 +2101,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                             File(widget.localFilePath!).existsSync()) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
+                              horizontal: 4.0,
                               vertical: 1.5,
                             ),
-                            margin: const EdgeInsets.only(right: 6),
+                            margin: const EdgeInsets.only(right: 4.0),
                             decoration: BoxDecoration(
                               color: Colors.green.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(4),
@@ -2146,8 +2113,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                               '已离线',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -2243,7 +2210,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
             // Ultra-Compact Single-Row Bottom Controls Bar
             Container(
               height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -2308,7 +2275,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                     '${Formatters.formatDuration(currentPos.inSeconds)} / ${Formatters.formatDuration(duration.inSeconds)}',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 10.5,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: -0.2,
                                     ),

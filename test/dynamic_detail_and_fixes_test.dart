@@ -10,7 +10,7 @@ import 'package:mobili/providers/listen_video_provider.dart';
 import 'package:mobili/screens/dynamic/dynamic_detail_screen.dart';
 import 'package:mobili/screens/up/up_space_screen.dart';
 import 'package:mobili/services/api/api_endpoints.dart';
-import 'package:mobili/services/player_settings_service.dart';
+import 'package:mobili/services/settings/player_settings_service.dart';
 import 'package:mobili/utils/image_decode_sizing.dart';
 import 'package:mobili/widgets/comment_item_widget.dart';
 import 'package:mobili/widgets/dynamic_card.dart';

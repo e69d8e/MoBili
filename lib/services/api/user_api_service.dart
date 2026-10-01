@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../models/user_model.dart';
 import '../../models/video_model.dart';
-import '../player_settings_service.dart';
+import '../settings/player_settings_service.dart';
 import 'api_endpoints.dart';
 import 'bili_http_client.dart';
 

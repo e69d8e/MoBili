@@ -6,7 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/video_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/user_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/video_card.dart';
@@ -170,11 +170,11 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
+                      horizontal: 12.0,
+                      vertical: 8.0,
                     ),
                     itemCount: _folders.length,
-                    separatorBuilder: (ctx, _) => const SizedBox(width: 8),
+                    separatorBuilder: (ctx, _) => const SizedBox(width: 8.0),
                     itemBuilder: (ctx, idx) {
                       final folder = _folders[idx];
                       final isSelected = _selectedFolder?.id == folder.id;
@@ -192,12 +192,10 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                               : (isDark ? Colors.white70 : Colors.black87),
                           fontSize: 12,
                           fontWeight: isSelected
-                              ? FontWeight.bold
+                              ? FontWeight.w600
                               : FontWeight.normal,
                         ),
-                        backgroundColor: isDark
-                            ? const Color(0xFF222228)
-                            : const Color(0xFFF1F2F3),
+                        backgroundColor: context.colors.fill,
                         side: BorderSide.none,
                         onSelected: (_) => _selectFolder(folder),
                       );
@@ -207,14 +205,12 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                 Divider(
                   height: 1,
                   thickness: 0.5,
-                  color: isDark
-                      ? const Color(0xFF26262B)
-                      : const Color(0xFFEEEEEE),
+                  color: context.colors.divider,
                 ),
                 // Videos Grid
                 Expanded(
                   child: _isVideoLoading
-                      ? const VideoGridSkeleton(padding: EdgeInsets.all(12))
+                      ? const VideoGridSkeleton(padding: EdgeInsets.all(12.0))
                       : _error != null && _folderVideos.isEmpty
                       ? ErrorView(message: _error!, onRetry: () => _selectFolder(_selectedFolder!))
                       : RefreshIndicator(
@@ -240,7 +236,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                                   child: GridView.builder(
                                     scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
                                     physics: const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.all(12),
+                                    padding: const EdgeInsets.all(12.0),
                                     gridDelegate:
                                         SliverGridDelegateWithFixedCrossAxisCount(
                                       crossAxisCount:
@@ -277,9 +273,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                                             '没有更多了',
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: isDark
-                                                  ? AppTheme.textHintDark
-                                                  : AppTheme.textHintLight,
+                                              color: context.colors.textHint,
                                             ),
                                           ),
                                         );

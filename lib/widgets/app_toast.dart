@@ -98,7 +98,7 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.72),
                       borderRadius: BorderRadius.circular(20),
@@ -119,13 +119,13 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
                       children: [
                         if (widget.icon != null) ...[
                           Icon(widget.icon, color: Colors.white, size: 14),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4.0),
                         ],
                         Text(
                           widget.message,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 12.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.2,
                           ),

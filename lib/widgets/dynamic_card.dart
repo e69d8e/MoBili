@@ -12,7 +12,7 @@ import '../screens/up/up_space_screen.dart';
 import '../screens/video/video_detail_screen.dart';
 import '../services/api/bili_http_client.dart';
 import '../services/api/dynamic_api_service.dart';
-import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
 import '../utils/formatters.dart';
 import 'app_toast.dart';
 import 'image_viewer.dart';
@@ -93,10 +93,10 @@ class _DynamicCardState extends State<DynamicCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-        borderRadius: BorderRadius.circular(14),
+        color: context.colors.card,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark
               ? Colors.white.withValues(alpha: 0.05)
@@ -117,13 +117,13 @@ class _DynamicCardState extends State<DynamicCard> {
         color: Colors.transparent,
         child: InkWell(
           onTap: _navigateToDetail,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Author Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
                 child: Row(
                   children: [
                     GestureDetector(
@@ -139,7 +139,7 @@ class _DynamicCardState extends State<DynamicCard> {
                       },
                       child: UserAvatar(url: item.author.face, size: 38),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8.0),
                     Expanded(
                       child: GestureDetector(
                         onTap: () {
@@ -158,7 +158,7 @@ class _DynamicCardState extends State<DynamicCard> {
                             Text(
                               item.author.name,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -175,20 +175,16 @@ class _DynamicCardState extends State<DynamicCard> {
                                             : ''),
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: isDark
-                                        ? AppTheme.textHintDark
-                                        : AppTheme.textHintLight,
+                                    color: context.colors.textHint,
                                   ),
                                 ),
                                 if (item.author.pubAction.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
+                                  const SizedBox(width: 4.0),
                                   Text(
                                     '· ${item.author.pubAction}',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: isDark
-                                          ? AppTheme.textHintDark
-                                          : AppTheme.textHintLight,
+                                      color: context.colors.textHint,
                                     ),
                                   ),
                                 ],
@@ -208,17 +204,15 @@ class _DynamicCardState extends State<DynamicCard> {
                   onTap: _navigateToDetail,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
+                      horizontal: 12.0,
                       vertical: 4,
                     ),
                     child: Text(
                       item.text,
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: 14,
                         height: 1.45,
-                        color: isDark
-                            ? AppTheme.textMainDark
-                            : AppTheme.textMainLight,
+                        color: context.colors.textMain,
                       ),
                     ),
                   ),
@@ -227,14 +221,14 @@ class _DynamicCardState extends State<DynamicCard> {
               // Video Card (if any)
               if (item.video != null && item.video!.bvid.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 8.0),
                   child: _buildVideoCard(context, item.video!, isDark),
                 ),
 
               // Images (if any)
               if (item.pictures.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 8.0),
                   child: _buildImages(
                     context,
                     item.pictures,
@@ -246,7 +240,7 @@ class _DynamicCardState extends State<DynamicCard> {
               // Forwarded Dynamic (if any)
               if (item.orig != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(12.0, 4, 12.0, 8.0),
                   child: GestureDetector(
                     onTap: () {
                       if (item.orig!.id.isNotEmpty) {
@@ -261,12 +255,10 @@ class _DynamicCardState extends State<DynamicCard> {
                       }
                     },
                     child: Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8.0),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF1B1B20)
-                            : const Color(0xFFF6F7F9),
-                        borderRadius: BorderRadius.circular(10),
+                        color: context.colors.fill,
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,20 +266,18 @@ class _DynamicCardState extends State<DynamicCard> {
                           Text(
                             '@${item.orig!.author.name}: ${item.orig!.text}',
                             style: TextStyle(
-                              fontSize: 12.5,
-                              color: isDark
-                                  ? AppTheme.textSubDark
-                                  : AppTheme.textSubLight,
+                              fontSize: 13,
+                              color: context.colors.textSub,
                               height: 1.4,
                             ),
                           ),
                           if (item.orig!.video != null &&
                               item.orig!.video!.bvid.isNotEmpty) ...[
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4.0),
                             _buildVideoCard(context, item.orig!.video!, isDark),
                           ],
                           if (item.orig!.pictures.isNotEmpty) ...[
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4.0),
                             _buildImages(
                               context,
                               item.orig!.pictures,
@@ -305,7 +295,7 @@ class _DynamicCardState extends State<DynamicCard> {
               Divider(
                 height: 1,
                 thickness: 0.5,
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                color: context.colors.divider,
               ),
 
               // Action Stats Bar (Comment, Like)
@@ -357,11 +347,11 @@ class _DynamicCardState extends State<DynamicCard> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1F1F26) : const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(10),
+          color: context.colors.fill,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isDark
                 ? Colors.white10
@@ -401,7 +391,7 @@ class _DynamicCardState extends State<DynamicCard> {
                         video.durationText,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 9.5,
+                          fontSize: 10,
                         ),
                       ),
                     ),
@@ -409,11 +399,11 @@ class _DynamicCardState extends State<DynamicCard> {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8.0),
             // Video Title & Stats
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 6, 10, 6),
+                padding: const EdgeInsets.fromLTRB(0, 4.0, 8.0, 4.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -423,50 +413,42 @@ class _DynamicCardState extends State<DynamicCard> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         height: 1.3,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4.0),
                     Row(
                       children: [
                         if (video.playCount.isNotEmpty) ...[
                           Icon(
                             Icons.play_arrow_rounded,
                             size: 13,
-                            color: isDark
-                                ? AppTheme.textHintDark
-                                : AppTheme.textHintLight,
+                            color: context.colors.textHint,
                           ),
                           const SizedBox(width: 2),
                           Text(
                             video.playCount,
                             style: TextStyle(
-                              fontSize: 10.5,
-                              color: isDark
-                                  ? AppTheme.textHintDark
-                                  : AppTheme.textHintLight,
+                              fontSize: 11,
+                              color: context.colors.textHint,
                             ),
                           ),
                         ],
                         if (video.danmakuCount.isNotEmpty) ...[
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8.0),
                           Icon(
                             Icons.subtitles_outlined,
                             size: 11,
-                            color: isDark
-                                ? AppTheme.textHintDark
-                                : AppTheme.textHintLight,
+                            color: context.colors.textHint,
                           ),
                           const SizedBox(width: 3),
                           Text(
                             video.danmakuCount,
                             style: TextStyle(
-                              fontSize: 10.5,
-                              color: isDark
-                                  ? AppTheme.textHintDark
-                                  : AppTheme.textHintLight,
+                              fontSize: 11,
+                              color: context.colors.textHint,
                             ),
                           ),
                         ],
@@ -556,11 +538,11 @@ class _DynamicCardState extends State<DynamicCard> {
             );
           },
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             child: Container(
               width: displayWidth,
               height: displayHeight,
-              color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+              color: context.colors.fill,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -635,9 +617,7 @@ class _DynamicCardState extends State<DynamicCard> {
                     child: Container(
                       width: itemWidth,
                       height: itemHeight,
-                      color: isDark
-                          ? const Color(0xFF1E1E24)
-                          : const Color(0xFFEEEEEE),
+                      color: context.colors.fill,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -666,8 +646,8 @@ class _DynamicCardState extends State<DynamicCard> {
                                 '+${totalCount - 9}',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             )
@@ -693,12 +673,12 @@ class _DynamicCardState extends State<DynamicCard> {
               rowItems.add(SizedBox(width: itemWidth, height: itemHeight));
             }
             if (j < cols - 1) {
-              rowItems.add(const SizedBox(width: 6));
+              rowItems.add(const SizedBox(width: 4.0));
             }
           }
           rows.add(Row(mainAxisSize: MainAxisSize.min, children: rowItems));
           if (i + cols < displayCount) {
-            rows.add(const SizedBox(height: 6));
+            rows.add(const SizedBox(height: 4.0));
           }
         }
 
@@ -713,7 +693,7 @@ class _DynamicCardState extends State<DynamicCard> {
 
   Widget _buildBadge(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(4),
@@ -738,7 +718,7 @@ class _DynamicCardState extends State<DynamicCard> {
   }) {
     final color = active
         ? Theme.of(context).colorScheme.primary
-        : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight);
+        : (context.colors.textSub);
 
     return InkWell(
       onTap: () {
@@ -747,7 +727,7 @@ class _DynamicCardState extends State<DynamicCard> {
       },
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         child: Row(
           children: [
             AnimatedScale(
@@ -760,9 +740,9 @@ class _DynamicCardState extends State<DynamicCard> {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 12,
                 color: color,
-                fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ],

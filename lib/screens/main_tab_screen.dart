@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/audio/mini_audio_player.dart';
 import 'dynamic/dynamic_screen.dart';
@@ -31,7 +31,6 @@ class _MainTabScreenState extends State<MainTabScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return PopScope(
@@ -54,7 +53,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
             color: Theme.of(context).colorScheme.surface,
             border: Border(
               top: BorderSide(
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                color: context.colors.divider,
                 width: 0.6,
               ),
             ),
@@ -89,9 +88,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
                     icon: Icon(
                       Icons.home_outlined,
                       size: 22,
-                      color: isDark
-                          ? AppTheme.textSubDark
-                          : AppTheme.textSubLight,
+                      color: context.colors.textSub,
                     ),
                     selectedIcon: Icon(
                       Icons.home_rounded,
@@ -104,9 +101,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
                     icon: Icon(
                       Icons.dynamic_feed_outlined,
                       size: 22,
-                      color: isDark
-                          ? AppTheme.textSubDark
-                          : AppTheme.textSubLight,
+                      color: context.colors.textSub,
                     ),
                     selectedIcon: Icon(
                       Icons.dynamic_feed_rounded,
@@ -119,9 +114,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
                     icon: Icon(
                       Icons.person_outline_rounded,
                       size: 22,
-                      color: isDark
-                          ? AppTheme.textSubDark
-                          : AppTheme.textSubLight,
+                      color: context.colors.textSub,
                     ),
                     selectedIcon: Icon(
                       Icons.person_rounded,

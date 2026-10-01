@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/danmaku_model.dart';
-import '../../services/danmaku_settings_service.dart';
+import '../../services/settings/danmaku_settings_service.dart';
 
 class DanmakuController extends ChangeNotifier {
   List<DanmakuItem> _sortedDanmakus = [];

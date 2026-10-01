@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../widgets/app_toast.dart';
 
 /// Modal dialog for tipping coins to UP author.
@@ -26,13 +26,13 @@ class VideoCoinDialog {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: isDark ? const Color(0xFF1E1E24) : Colors.white,
+              backgroundColor: context.colors.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Row(
                 children: [
                   Icon(Icons.monetization_on_rounded, color: primaryColor, size: 22),
-                  const SizedBox(width: 8),
-                  const Text('给UP主投币', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8.0),
+                  const Text('给UP主投币', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 ],
               ),
               content: Column(
@@ -43,10 +43,10 @@ class VideoCoinDialog {
                     coinCount > 0 ? '已投 $coinCount 枚硬币，还能投 $maxAvailable 枚' : '选择投币数量：',
                     style: TextStyle(
                       fontSize: 13,
-                      color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                      color: context.colors.textSub,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12.0),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -58,13 +58,13 @@ class VideoCoinDialog {
                           color: selectedCoins == 1
                               ? Theme.of(context).colorScheme.onPrimary
                               : (isDark ? Colors.white70 : Colors.black87),
-                          fontWeight: selectedCoins == 1 ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: selectedCoins == 1 ? FontWeight.w600 : FontWeight.normal,
                         ),
                         showCheckmark: false,
                         onSelected: (_) => setDialogState(() => selectedCoins = 1),
                       ),
                       if (maxAvailable >= 2) ...[
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 16.0),
                         ChoiceChip(
                           label: const Text('2 硬币'),
                           selected: selectedCoins == 2,
@@ -73,7 +73,7 @@ class VideoCoinDialog {
                             color: selectedCoins == 2
                                 ? Theme.of(context).colorScheme.onPrimary
                                 : (isDark ? Colors.white70 : Colors.black87),
-                            fontWeight: selectedCoins == 2 ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: selectedCoins == 2 ? FontWeight.w600 : FontWeight.normal,
                           ),
                           showCheckmark: false,
                           onSelected: (_) => setDialogState(() => selectedCoins = 2),
@@ -81,10 +81,10 @@ class VideoCoinDialog {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8.0),
                   InkWell(
                     onTap: () => setDialogState(() => selectLike = !selectLike),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
@@ -104,7 +104,7 @@ class VideoCoinDialog {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text('取消', style: TextStyle(color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight)),
+                  child: Text('取消', style: TextStyle(color: context.colors.textHint)),
                 ),
                 FilledButton(
                   onPressed: () {

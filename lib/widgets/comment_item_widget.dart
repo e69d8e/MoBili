@@ -4,6 +4,7 @@ import '../models/comment_model.dart';
 import '../screens/up/up_space_screen.dart';
 import '../services/api/comment_api_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
 import '../utils/formatters.dart';
 import 'user_avatar.dart';
 
@@ -79,12 +80,11 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final item = widget.comment;
     final handleRepliesTap = widget.onSubRepliesTap ?? widget.onReplyTap;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -97,7 +97,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
               level: item.member.level,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8.0),
           // Content
           Expanded(
             child: Column(
@@ -111,18 +111,18 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                       child: Text(
                         item.member.uname,
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                          color: context.colors.textMain,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4.0),
                     Text(
                       Formatters.formatTime(item.ctime),
                       style: TextStyle(
-                        fontSize: 10.5,
-                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        fontSize: 11,
+                        color: context.colors.textHint,
                       ),
                     ),
                   ],
@@ -134,10 +134,10 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.4,
-                    color: isDark ? AppTheme.textMainDark : const Color(0xFF202020),
+                    color: context.colors.textMain,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4.0),
                 // Like & Reply button
                 Row(
                   children: [
@@ -156,7 +156,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                               child: Icon(
                                 _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
                                 size: 13,
-                                color: _isLiked ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                                color: _isLiked ? Theme.of(context).colorScheme.primary : (context.colors.textHint),
                               ),
                             ),
                             if (_likeCount > 0) ...[
@@ -164,8 +164,8 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                               Text(
                                 Formatters.formatCount(_likeCount),
                                 style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: _isLiked ? Theme.of(context).colorScheme.primary : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                                  fontSize: 11,
+                                  color: _isLiked ? Theme.of(context).colorScheme.primary : (context.colors.textHint),
                                 ),
                               ),
                             ],
@@ -173,7 +173,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12.0),
                     InkWell(
                       onTap: widget.onReplyTap,
                       borderRadius: BorderRadius.circular(4),
@@ -182,7 +182,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                         child: Icon(
                           Icons.chat_bubble_outline_rounded,
                           size: 13,
-                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          color: context.colors.textHint,
                         ),
                       ),
                     ),
@@ -190,16 +190,16 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                 ),
                 // Sub Replies
                 if (item.replies.isNotEmpty || item.rcount > 0) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4.0),
                   InkWell(
                     onTap: handleRepliesTap,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(8.0),
                       decoration: BoxDecoration(
-                        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(6),
+                        color: context.colors.fill,
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +218,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                                           '${sub.member.uname}: ',
                                           style: const TextStyle(
                                             color: AppTheme.biliBlue,
-                                            fontSize: 11.5,
+                                            fontSize: 12,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
@@ -227,8 +227,8 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                                     TextSpan(
                                       text: sub.message,
                                       style: TextStyle(
-                                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                                        fontSize: 11.5,
+                                        color: context.colors.textSub,
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ],
@@ -245,7 +245,7 @@ class _CommentItemWidgetState extends State<CommentItemWidget> {
                                 '共 ${item.rcount} 条回复 >',
                                 style: const TextStyle(
                                   color: AppTheme.biliBlue,
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/video_model.dart';
 import '../../providers/home_provider.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
@@ -64,7 +64,6 @@ class HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -76,13 +75,13 @@ class HomeScreenState extends State<HomeScreen>
             Text(
               '墨哩',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                color: context.colors.textMain,
                 letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8.0),
             // Minimalist Search Bar Pill
             Expanded(
               child: InkWell(
@@ -94,30 +93,24 @@ class HomeScreenState extends State<HomeScreen>
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? AppTheme.surfaceDark
-                        : AppTheme.surfaceLight,
-                    borderRadius: BorderRadius.circular(18),
+                    color: context.colors.fill,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.search_rounded,
                         size: 16,
-                        color: isDark
-                            ? AppTheme.textHintDark
-                            : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4.0),
                       Text(
                         '搜索视频、UP主、图文...',
                         style: TextStyle(
-                          fontSize: 12.5,
-                          color: isDark
-                              ? AppTheme.textHintDark
-                              : AppTheme.textHintLight,
+                          fontSize: 13,
+                          color: context.colors.textHint,
                         ),
                       ),
                     ],
@@ -130,10 +123,10 @@ class HomeScreenState extends State<HomeScreen>
             IconButton(
               icon: const Icon(Icons.watch_later_outlined, size: 21),
               tooltip: '稍后观看',
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(4.0),
               constraints: const BoxConstraints(),
               visualDensity: VisualDensity.compact,
-              color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+              color: context.colors.textSub,
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (ctx) => const WatchLaterScreen()),
@@ -154,11 +147,9 @@ class HomeScreenState extends State<HomeScreen>
                 indicatorWeight: 2.5,
                 indicatorSize: TabBarIndicatorSize.label,
                 labelColor: primaryColor,
-                unselectedLabelColor: isDark
-                    ? AppTheme.textSubDark
-                    : AppTheme.textSubLight,
+                unselectedLabelColor: context.colors.textSub,
                 labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   fontSize: 15,
                 ),
                 unselectedLabelStyle: const TextStyle(
@@ -535,7 +526,7 @@ class _CommonVideoGrid extends StatelessWidget {
         child: GridView.builder(
           controller: scrollController,
           scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
             childAspectRatio: childAspectRatio,
@@ -562,9 +553,7 @@ class _CommonVideoGrid extends StatelessWidget {
                   '没有更多了',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppTheme.textHintDark
-                        : AppTheme.textHintLight,
+                    color: context.colors.textHint,
                   ),
                 ),
               );

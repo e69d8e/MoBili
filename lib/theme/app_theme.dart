@@ -1,6 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_dimens.dart';
+import 'app_typography.dart';
+
 /// 预设主题风格
 enum AppThemePreset {
   ink(
@@ -114,6 +117,17 @@ class AppTheme {
   static const Color textSubDark = Color(0xFF9898A0);
   static const Color textHintDark = Color(0xFF5E5E68);
 
+  // Semantic status colors
+  static const Color warning = Color(0xFFFFB027);
+  static const Color dangerLight = Color(0xFFE5484D);
+  static const Color dangerDark = Color(0xFFFF6B6B);
+  static const Color successLight = Color(0xFF4CAF50);
+  static const Color successDark = Color(0xFF66BB6A);
+
+  // Skeleton shimmer highlight (lighter than fill)
+  static const Color fillHighlightLight = Color(0xFFF7F8FA);
+  static const Color fillHighlightDark = Color(0xFF2E2E38);
+
   /// Helper to get current primary color from context
   static Color primary(BuildContext context) => Theme.of(context).colorScheme.primary;
 
@@ -131,6 +145,97 @@ class AppTheme {
     );
   }
 
+  /// 组件主题统一收口：组件默认长相由这里决定，页面不再手写。
+  static ThemeData _polish(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final fill = isDark ? surfaceDark : surfaceLight;
+    final sub = isDark ? textSubDark : textSubLight;
+    final hint = isDark ? textHintDark : textHintLight;
+    final noInputBorder = OutlineInputBorder(
+      borderRadius: AppRadius.of(AppRadius.sm),
+      borderSide: BorderSide.none,
+    );
+
+    return theme.copyWith(
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.of(AppRadius.lg)),
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: AppTypography.title3,
+          fontWeight: FontWeight.w600,
+        ),
+        contentTextStyle: TextStyle(
+          color: sub,
+          fontSize: AppTypography.body,
+          height: 1.5,
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        surfaceTintColor: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+      ),
+      inputDecorationTheme: InputDecorationThemeData(
+        filled: true,
+        fillColor: fill,
+        hintStyle: TextStyle(color: hint, fontSize: AppTypography.body),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        isDense: true,
+        border: noInputBorder,
+        enabledBorder: noInputBorder,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: AppRadius.of(AppRadius.sm),
+          borderSide: BorderSide(color: scheme.primary, width: 1.2),
+        ),
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: sub,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: AppTypography.body,
+          fontWeight: FontWeight.w500,
+        ),
+        subtitleTextStyle: TextStyle(color: sub, fontSize: AppTypography.body2),
+      ),
+      chipTheme: theme.chipTheme.copyWith(
+        backgroundColor: fill,
+        side: BorderSide.none,
+        shape: const StadiumBorder(),
+        labelStyle: TextStyle(color: sub, fontSize: AppTypography.footnote),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.of(AppRadius.md)),
+        textStyle: TextStyle(color: scheme.onSurface, fontSize: AppTypography.body),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+        backgroundColor: isDark ? const Color(0xFF2E2E36) : const Color(0xFF33353D),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.of(AppRadius.sm)),
+        contentTextStyle: const TextStyle(color: Colors.white, fontSize: AppTypography.body2),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: scheme.primary,
+          textStyle: const TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.w600),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+          elevation: 0,
+          textStyle: const TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
   static ThemeData lightTheme({
     AppThemePreset preset = AppThemePreset.ink,
     bool enablePredictiveBack = false,
@@ -139,12 +244,13 @@ class AppTheme {
     final secondary = preset.secondary;
     final onPrimary = (primary.computeLuminance() > 0.5) ? Colors.black : Colors.white;
 
-    return ThemeData(
+    return _polish(ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
       primaryColor: primary,
       scaffoldBackgroundColor: bgLight,
       pageTransitionsTheme: _buildPageTransitionsTheme(enablePredictiveBack),
+      textTheme: AppTypography.build(textMainLight),
       colorScheme: ColorScheme.light(
         primary: primary,
         secondary: secondary,
@@ -169,9 +275,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: cardLight,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
         margin: EdgeInsets.zero,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -205,7 +309,7 @@ class AppTheme {
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: primary,
         unselectedLabelColor: textSubLight,
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -236,7 +340,7 @@ class AppTheme {
         space: 1,
       ),
       splashFactory: InkSparkle.splashFactory,
-    );
+    ));
   }
 
   static ThemeData darkTheme({
@@ -250,12 +354,13 @@ class AppTheme {
     final secondary = preset.secondary;
     final onPrimary = (primary.computeLuminance() > 0.5) ? Colors.black : Colors.white;
 
-    return ThemeData(
+    return _polish(ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       primaryColor: primary,
       scaffoldBackgroundColor: bg,
       pageTransitionsTheme: _buildPageTransitionsTheme(enablePredictiveBack),
+      textTheme: AppTypography.build(textMainDark),
       colorScheme: ColorScheme.dark(
         primary: primary,
         secondary: secondary,
@@ -280,9 +385,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: cardBg,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
         margin: EdgeInsets.zero,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -316,7 +419,7 @@ class AppTheme {
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: primary,
         unselectedLabelColor: textSubDark,
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -347,7 +450,7 @@ class AppTheme {
         space: 1,
       ),
       splashFactory: InkSparkle.splashFactory,
-    );
+    ));
   }
 }
 

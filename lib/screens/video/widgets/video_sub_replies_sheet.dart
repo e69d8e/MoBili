@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/comment_model.dart';
 import '../../../services/api/comment_api_service.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/comment_item_widget.dart';
 import '../../../widgets/state_views.dart';
@@ -143,20 +143,20 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: BoxDecoration(
-        color: widget.isDark ? const Color(0xFF1E1E24) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        color: context.colors.card,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         children: [
           // Header Bar
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '回复详情 (${root.rcount > 0 ? root.rcount : _subReplies.length})',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
@@ -170,7 +170,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
           Divider(
             height: 1,
             thickness: 0.5,
-            color: widget.isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            color: context.colors.divider,
           ),
 
           // Scrollable area
@@ -208,7 +208,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                               Divider(
                                 height: 1,
                                 thickness: 0.8,
-                                color: widget.isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                                color: context.colors.divider,
                               ),
                             ],
                           );
@@ -223,7 +223,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                                 '暂无更多子级回复',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                             ),
@@ -247,7 +247,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                                 height: 1,
                                 thickness: 0.5,
                                 indent: 58,
-                                color: widget.isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                                color: context.colors.divider,
                               ),
                             ],
                           );
@@ -256,7 +256,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                         // Footer (Loading More or End Indicator)
                         if (_isLoadingMore) {
                           return Padding(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(12.0),
                             child: Center(
                               child: SizedBox(
                                 width: 18,
@@ -272,13 +272,13 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
 
                         if (_isEnd && _subReplies.isNotEmpty) {
                           return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 12.0),
                             child: Center(
                               child: Text(
                                 '没有更多回复了',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                             ),
@@ -300,10 +300,10 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
               bottom: MediaQuery.of(context).viewInsets.bottom + 8,
             ),
             decoration: BoxDecoration(
-              color: widget.isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+              color: context.colors.fill,
               border: Border(
                 top: BorderSide(
-                  color: widget.isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                   width: 0.8,
                 ),
               ),
@@ -313,10 +313,10 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: widget.isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                      color: context.colors.card,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
                     child: TextField(
                       controller: _inputController,
                       style: const TextStyle(fontSize: 13),
@@ -325,17 +325,17 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                             ? '回复 @${_replyingTo!.member.uname}...'
                             : '回复 @${root.member.uname}...',
                         hintStyle: TextStyle(
-                          fontSize: 12.5,
-                          color: widget.isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                          fontSize: 13,
+                          color: context.colors.textHint,
                         ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 8.0),
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(Icons.send_rounded, color: widget.primaryColor, size: 20),

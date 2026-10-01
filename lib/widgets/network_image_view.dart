@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 class NetworkImageView extends StatelessWidget {
   final String url;
@@ -92,9 +93,7 @@ class NetworkImageView extends StatelessWidget {
           Container(
             width: width,
             height: height,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF222228)
-                : const Color(0xFFEEEEEE),
+            color: context.colors.fill,
           ),
       errorWidget: (context, url, error) =>
           errorWidget ?? _buildFallback(context),
@@ -113,9 +112,7 @@ class NetworkImageView extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      color: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF222228)
-          : const Color(0xFFE5E5E5),
+      color: context.colors.fill,
       child: Icon(
         Icons.image_not_supported_outlined,
         color: Theme.of(context).hintColor,

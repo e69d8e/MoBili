@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobili/widgets/player/bili_video_player.dart';
-import 'package:mobili/services/player_settings_service.dart';
+import 'package:mobili/services/settings/player_settings_service.dart';
 import 'package:mobili/services/player/system_media_control_service.dart';
 import 'package:mobili/models/play_url_model.dart';
 

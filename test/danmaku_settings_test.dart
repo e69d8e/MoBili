@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobili/models/danmaku_model.dart';
-import 'package:mobili/services/danmaku_settings_service.dart';
+import 'package:mobili/services/settings/danmaku_settings_service.dart';
 import 'package:mobili/widgets/player/danmaku_overlay.dart';
 
 void main() {

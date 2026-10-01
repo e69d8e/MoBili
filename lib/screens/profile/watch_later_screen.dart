@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/storage/history_storage_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
@@ -105,7 +105,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('清空稍后观看', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('清空稍后观看', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: const Text('确定要清空稍后观看列表中的所有视频吗？', style: TextStyle(fontSize: 13)),
         actions: [
           TextButton(
@@ -114,7 +114,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空', style: TextStyle(color: Colors.red)),
+            child: Text('清空', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -164,7 +164,6 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -176,7 +175,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
               tooltip: '清空列表',
               onPressed: _clearAll,
             ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4.0),
         ],
       ),
       body: _isLoading && _items.isEmpty
@@ -199,7 +198,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.builder(
                       scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                       itemCount: _items.length + 1 + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (ctx, idx) {
                         final primaryColor = Theme.of(context).colorScheme.primary;
@@ -208,26 +207,26 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                         // Header: Play All action bar
                         if (idx == 0) {
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 12.0),
                             child: Row(
                               children: [
                                 Text(
                                   '共 ${_items.length} 个视频',
                                   style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                    fontSize: 13,
+                                    color: context.colors.textSub,
                                   ),
                                 ),
                                 const Spacer(),
                                 FilledButton.icon(
                                   onPressed: _playAll,
                                   icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                                  label: const Text('播放全部', style: TextStyle(fontSize: 12.5)),
+                                  label: const Text('播放全部', style: TextStyle(fontSize: 13)),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: primaryColor,
                                     foregroundColor: onPrimary,
                                     visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 0),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                   ),
                                 ),
@@ -254,7 +253,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
 
                         return RepaintBoundary(
                           child: Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 12.0),
                             child: InkWell(
                               onTap: () {
                                 Navigator.of(context).push(
@@ -302,7 +301,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                                 ),
                                                 child: Text(
                                                   Formatters.formatDuration(item.duration),
-                                                  style: const TextStyle(color: Colors.white, fontSize: 9.5),
+                                                  style: const TextStyle(color: Colors.white, fontSize: 10),
                                                 ),
                                               ),
                                             ),
@@ -318,7 +317,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                                 ),
                                                 child: Text(
                                                   '看到 ${Formatters.formatDuration(effectiveProgress)}',
-                                                  style: const TextStyle(color: Colors.white, fontSize: 9),
+                                                  style: const TextStyle(color: Colors.white, fontSize: 10),
                                                 ),
                                               ),
                                             ),
@@ -327,7 +326,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8.0),
                                 // Video Info
                                 Expanded(
                                   child: Column(
@@ -338,26 +337,26 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontSize: 12.5,
+                                          fontSize: 13,
                                           fontWeight: FontWeight.w500,
                                           height: 1.35,
-                                          color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                          color: context.colors.textMain,
                                         ),
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4.0),
                                       Text(
                                         item.ownerName,
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                          color: context.colors.textHint,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
                                         item.addAt > 0 ? '添加于 ${Formatters.formatTime(item.addAt)}' : item.bvid,
                                         style: TextStyle(
-                                          fontSize: 10.5,
-                                          color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                          fontSize: 11,
+                                          color: context.colors.textHint,
                                         ),
                                       ),
                                     ],
@@ -368,7 +367,7 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                   icon: Icon(
                                     Icons.delete_outline_rounded,
                                     size: 18,
-                                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                    color: context.colors.textHint,
                                   ),
                                   tooltip: '从稍后观看移除',
                                   onPressed: () => _deleteItem(item, itemIndex),

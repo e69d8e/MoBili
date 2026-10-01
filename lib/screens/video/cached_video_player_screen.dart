@@ -9,10 +9,10 @@ import '../../models/video_cache_model.dart';
 import '../../models/video_model.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../services/api/danmaku_service.dart';
-import '../../services/player_settings_service.dart';
+import '../../services/settings/player_settings_service.dart';
 import '../../services/storage/history_storage_service.dart';
 import '../../services/storage/video_cache_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/player/bili_video_player.dart';
@@ -367,7 +367,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除此集缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('删除此集缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: Text('确定要删除「${_currentItem.pageTitle.isNotEmpty ? _currentItem.pageTitle : _currentItem.title}」的离线缓存吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
@@ -449,7 +449,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                   slivers: [
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                        padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 0),
                         child: Column(
                           children: [
                     // Video Title
@@ -457,26 +457,26 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                       _currentItem.title,
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                         height: 1.35,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8.0),
 
                     // Metadata Card (UP, Quality, Size, Date)
                     Material(
-                      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                      color: context.colors.card,
                       borderRadius: BorderRadius.circular(12),
                       clipBehavior: Clip.antiAlias,
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(12.0),
                         child: Row(
                           children: [
                             UserAvatar(
                               url: _currentItem.ownerFace,
                               size: 38,
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8.0),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,7 +485,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                     _currentItem.ownerName.isNotEmpty
                                         ? _currentItem.ownerName
                                         : '哔哩哔哩 UP主',
-                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -494,17 +494,17 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                     '缓存于 $dateStr · ${VideoCacheService.formatBytes(_currentItem.totalBytes)}',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                      color: context.colors.textHint,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
                               decoration: BoxDecoration(
                                 color: Colors.green.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(8),
                                 border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 0.8),
                               ),
                               child: Row(
@@ -517,7 +517,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: Colors.green,
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
@@ -528,7 +528,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12.0),
 
                     // Action Buttons Row (Listen, Online Detail, Delete)
                     Row(
@@ -543,7 +543,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             onTap: _startListenMode,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 8.0),
                         Expanded(
                           child: _buildActionButton(
                             context,
@@ -554,7 +554,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             onTap: _openOnlineDetail,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 8.0),
                         Expanded(
                           child: _buildActionButton(
                             context,
@@ -569,7 +569,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16.0),
                         ],
                       ),
                     ),
@@ -577,7 +577,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                     // Episodes Section (if multi-part or season) — Sliver 懒加载，避免一次性构建全部剧集
                     if (_cachedEpisodes.isNotEmpty) ...[
                       SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0),
                         sliver: SliverToBoxAdapter(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -585,28 +585,28 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                               Text(
                                 '已缓存剧集 (共 ${_cachedEpisodes.length} 集)',
                                 style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.colors.textMain,
                                 ),
                               ),
                               Text(
                                 '点击直接切集',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 8.0)),
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                        padding: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 12.0),
                         sliver: SliverList.separated(
                           itemCount: _cachedEpisodes.length,
-                          separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                          separatorBuilder: (ctx, i) => const SizedBox(height: 8.0),
                           itemBuilder: (ctx, i) {
                           final ep = _cachedEpisodes[i];
                           final isPlaying = ep.taskId == _currentItem.taskId;
@@ -614,13 +614,13 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                           return Material(
                             color: isPlaying
                                 ? primaryColor.withValues(alpha: 0.12)
-                                : (isDark ? AppTheme.cardDark : AppTheme.cardLight),
-                            borderRadius: BorderRadius.circular(10),
+                                : (context.colors.card),
+                            borderRadius: BorderRadius.circular(12),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
                               onTap: isPlaying ? null : () => _switchEpisode(ep),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                                 decoration: BoxDecoration(
                                   border: Border.all(
                                     color: isPlaying
@@ -628,13 +628,13 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                         : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
                                     width: isPlaying ? 1.2 : 0.8,
                                   ),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
                                   children: [
                                     if (isPlaying) ...[
                                       Icon(Icons.play_circle_fill_rounded, color: primaryColor, size: 18),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 8.0),
                                     ] else ...[
                                       Container(
                                         width: 22,
@@ -642,18 +642,18 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
-                                          borderRadius: BorderRadius.circular(5),
+                                          borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           '${ep.pageIndex + 1}',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                            fontWeight: FontWeight.w600,
+                                            color: context.colors.textSub,
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 8.0),
                                     ],
                                     Expanded(
                                       child: Column(
@@ -663,10 +663,10 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                             ep.pageTitle.isNotEmpty ? ep.pageTitle : '第 ${ep.pageIndex + 1} 集',
                                             style: TextStyle(
                                               fontSize: 13,
-                                              fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
+                                              fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
                                               color: isPlaying
                                                   ? primaryColor
-                                                  : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                                  : (context.colors.textMain),
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -676,7 +676,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                             '${Formatters.formatDuration(ep.duration)} · ${VideoCacheService.formatBytes(ep.totalBytes)} · ${ep.qualityDesc}',
                                             style: TextStyle(
                                               fontSize: 11,
-                                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                              color: context.colors.textHint,
                                             ),
                                           ),
                                         ],
@@ -684,7 +684,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                     ),
                                     if (isPlaying)
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
                                         decoration: BoxDecoration(
                                           color: primaryColor,
                                           borderRadius: BorderRadius.circular(4),
@@ -694,7 +694,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                           style: TextStyle(
                                             color: onPrimary,
                                             fontSize: 10,
-                                            fontWeight: FontWeight.bold,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                       ),
@@ -727,8 +727,8 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     bool isDestructive = false,
   }) {
     return Material(
-      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-      borderRadius: BorderRadius.circular(10),
+      color: context.colors.card,
+      borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
@@ -736,13 +736,13 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
           onTap();
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
           decoration: BoxDecoration(
             border: Border.all(
               color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
               width: 0.8,
             ),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -756,11 +756,11 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: isDestructive
                       ? Colors.redAccent
-                      : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                      : (context.colors.textSub),
                 ),
               ),
             ],

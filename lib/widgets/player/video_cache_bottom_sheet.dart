@@ -4,7 +4,7 @@ import '../../models/video_model.dart';
 import '../../screens/profile/video_cache_screen.dart';
 import '../../services/api/bili_http_client.dart';
 import '../../services/storage/video_cache_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../app_toast.dart';
 
@@ -283,7 +283,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
             maxHeight: MediaQuery.of(context).size.height * 0.75,
           ),
           decoration: BoxDecoration(
-            color: isDark ? AppTheme.cardDark : Colors.white,
+            color: context.colors.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
@@ -295,29 +295,29 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 // Drag Handle
                 Center(
                   child: Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 4),
+                    margin: const EdgeInsets.only(top: 8.0, bottom: 4),
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
                       color: isDark ? Colors.white24 : Colors.black12,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ),
 
                 // Header
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Row(
                     children: [
                       Icon(Icons.download_for_offline_rounded, color: primaryColor, size: 22),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 8.0),
                       Text(
                         '离线缓存',
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                          fontWeight: FontWeight.w600,
+                          color: context.colors.textMain,
                         ),
                       ),
                       const Spacer(),
@@ -328,15 +328,15 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                             MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
                           );
                         },
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
                           child: Row(
                             children: [
                               Text(
                                 '查看缓存',
                                 style: TextStyle(
-                                  fontSize: 12.5,
+                                  fontSize: 13,
                                   color: primaryColor,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -352,7 +352,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         icon: Icon(
                           Icons.close_rounded,
                           size: 20,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          color: context.colors.textSub,
                         ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -365,12 +365,12 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 Divider(
                   height: 1,
                   thickness: 0.5,
-                  color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                  color: context.colors.divider,
                 ),
 
                 // Cache Mode Selector (Video vs Audio Only)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4),
                   child: Row(
                     children: [
                       Text(
@@ -378,10 +378,10 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          color: context.colors.textSub,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 12.0),
                       ChoiceChip(
                         avatar: Icon(Icons.videocam_outlined, size: 15, color: !_isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
                         label: const Text('完整视频'),
@@ -389,14 +389,14 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         selectedColor: primaryColor,
                         labelStyle: TextStyle(
                           fontSize: 12,
-                          fontWeight: !_isAudioOnly ? FontWeight.bold : FontWeight.normal,
-                          color: !_isAudioOnly ? onPrimary : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                          fontWeight: !_isAudioOnly ? FontWeight.w600 : FontWeight.normal,
+                          color: !_isAudioOnly ? onPrimary : (context.colors.textMain),
                         ),
                         onSelected: (val) {
                           if (val) setState(() => _isAudioOnly = false);
                         },
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 8.0),
                       ChoiceChip(
                         avatar: Icon(Icons.headphones_outlined, size: 15, color: _isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
                         label: const Text('仅纯音频 (省空间)'),
@@ -404,8 +404,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         selectedColor: primaryColor,
                         labelStyle: TextStyle(
                           fontSize: 12,
-                          fontWeight: _isAudioOnly ? FontWeight.bold : FontWeight.normal,
-                          color: _isAudioOnly ? onPrimary : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                          fontWeight: _isAudioOnly ? FontWeight.w600 : FontWeight.normal,
+                          color: _isAudioOnly ? onPrimary : (context.colors.textMain),
                         ),
                         onSelected: (val) {
                           if (val) setState(() => _isAudioOnly = true);
@@ -418,7 +418,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 // Quality Selector Section
                 if (!_isAudioOnly)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -429,12 +429,12 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                                color: context.colors.textSub,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 8.0),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.5),
                               decoration: BoxDecoration(
                                 color: (isLoggedIn ? Colors.green : Colors.orange).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
@@ -450,7 +450,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 8.0),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
@@ -460,7 +460,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                               final bool needLogin = q >= 80 && !isLoggedIn;
 
                               return Padding(
-                                padding: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.only(right: 8.0),
                                 child: InkWell(
                                   onTap: () {
                                     if (needLogin) {
@@ -478,11 +478,11 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                   },
                                   borderRadius: BorderRadius.circular(8),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                                     decoration: BoxDecoration(
                                       color: isSelected
                                           ? primaryColor
-                                          : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
+                                          : (context.colors.fill),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: isSelected
@@ -497,11 +497,11 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                         Text(
                                           desc,
                                           style: TextStyle(
-                                            fontSize: 12.5,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                            fontSize: 13,
+                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                                             color: isSelected
                                                 ? onPrimary
-                                                : (isDark ? AppTheme.textMainDark : AppTheme.textMainLight),
+                                                : (context.colors.textMain),
                                           ),
                                         ),
                                         if (needLogin) ...[
@@ -515,8 +515,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                             child: Text(
                                               '需登录',
                                               style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
                                                 color: isSelected ? onPrimary : Colors.orange,
                                               ),
                                             ),
@@ -534,11 +534,11 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                     ),
                   ),
 
-                const SizedBox(height: 6),
+                const SizedBox(height: 4.0),
 
                 // Episodes Section Header & Batch Toolbar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
                   child: Row(
                     children: [
                       Text(
@@ -546,7 +546,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          color: context.colors.textSub,
                         ),
                       ),
                       const Spacer(),
@@ -555,27 +555,27 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                           onTap: () => _toggleSelectAll(episodes),
                           borderRadius: BorderRadius.circular(4),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
                             child: Text(
                               _selectedPageIndices.length >= selectableCount ? '取消全选' : '全选',
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 12,
                                 color: primaryColor,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4.0),
                         InkWell(
                           onTap: () => _invertSelection(episodes),
                           borderRadius: BorderRadius.circular(4),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
                             child: Text(
                               '反选',
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 12,
                                 color: primaryColor,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -583,32 +583,32 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                           ),
                         ),
                         if (episodes.length >= 10) ...[
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4.0),
                           InkWell(
                             onTap: () => _selectRange(episodes, 10, true),
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
                               child: Text(
                                 '前10集',
                                 style: TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: primaryColor,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4.0),
                           InkWell(
                             onTap: () => _selectRange(episodes, 10, false),
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2),
                               child: Text(
                                 '后10集',
                                 style: TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: primaryColor,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -640,9 +640,9 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                       child: ListView.separated(
                         // 长列表懒加载；短列表保持 shrinkWrap 以免弹窗被撑满
                         shrinkWrap: episodes.length <= 12,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                         itemCount: episodes.length,
-                        separatorBuilder: (ctx, i) => const SizedBox(height: 6),
+                        separatorBuilder: (ctx, i) => const SizedBox(height: 4.0),
                         itemBuilder: (ctx, i) {
                           final ep = episodes[i];
                           return _buildEpisodeTile(
@@ -660,12 +660,12 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
 
                 // Bottom Action Bar
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                   decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    color: context.colors.fill,
                     border: Border(
                       top: BorderSide(
-                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                        color: context.colors.divider,
                         width: 0.5,
                       ),
                     ),
@@ -679,9 +679,9 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                           Text(
                             '已选 ${_selectedPageIndices.length} 集',
                             style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: context.colors.textMain,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -689,7 +689,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                             '画质：$_selectedQualityDesc',
                             style: TextStyle(
                               fontSize: 11,
-                              color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                              color: context.colors.textSub,
                             ),
                           ),
                         ],
@@ -705,8 +705,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                               ? '请选择剧集'
                               : '开始缓存 (${_selectedPageIndices.length})',
                           style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             color: onPrimary,
                           ),
                         ),
@@ -715,8 +715,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                           foregroundColor: onPrimary,
                           disabledBackgroundColor: isDark ? Colors.white12 : Colors.black12,
                           disabledForegroundColor: isDark ? Colors.white38 : Colors.black38,
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 0,
                         ),
                       ),
@@ -745,9 +745,9 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
     final isSelected = _selectedPageIndices.contains(ep.index);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16.0, 4, 16.0, 12.0),
       child: Material(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+        color: context.colors.fill,
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -763,7 +763,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                   });
                 },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
@@ -783,9 +783,9 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                       Text(
                         ep.title,
                         style: TextStyle(
-                          fontSize: 13.5,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                          color: context.colors.textMain,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -795,15 +795,15 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         Text(
                           '时长：${Formatters.formatDuration(ep.duration)}',
                           style: TextStyle(
-                            fontSize: 11.5,
-                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                            fontSize: 12,
+                            color: context.colors.textSub,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 12.0),
                 if (isCached)
                   _buildBadge('已缓存', Colors.green)
                 else if (inProgress)
@@ -846,8 +846,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
     final isSelected = _selectedPageIndices.contains(ep.index);
 
     return Material(
-      color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-      borderRadius: BorderRadius.circular(10),
+      color: context.colors.fill,
+      borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: (isCached || inProgress)
@@ -862,7 +862,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 });
               },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
           child: Row(
             children: [
               Container(
@@ -870,19 +870,19 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 height: 24,
                 decoration: BoxDecoration(
                   color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   '${ep.index + 1}',
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                    fontWeight: FontWeight.w600,
+                    color: context.colors.textSub,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8.0),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -892,7 +892,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                        color: context.colors.textMain,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -903,14 +903,14 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         Formatters.formatDuration(ep.duration),
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          color: context.colors.textSub,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 8.0),
               if (isCached)
                 _buildBadge('已缓存', Colors.green)
               else if (inProgress)
@@ -940,10 +940,10 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
 
   Widget _buildBadge(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
       ),
       child: Text(

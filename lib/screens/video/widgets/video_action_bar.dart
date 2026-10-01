@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../utils/formatters.dart';
 
 /// Single action button with optional circular progress (e.g. for long-press triple combo).
@@ -72,7 +72,7 @@ class VideoActionButton extends StatelessWidget {
                       Icon(
                         icon,
                         size: 21,
-                        color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                        color: active ? activeColor : (context.colors.textSub),
                       ),
                     ],
                   ),
@@ -82,8 +82,8 @@ class VideoActionButton extends StatelessWidget {
                   label,
                   style: TextStyle(
                     fontSize: 11,
-                    color: active ? activeColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                    color: active ? activeColor : (context.colors.textSub),
+                    fontWeight: active ? FontWeight.w600 : FontWeight.normal,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -188,7 +188,7 @@ class VideoActionBar extends StatelessWidget {
                     : Icons.download_for_offline_outlined),
             label: isCached ? '已缓存' : (isDownloading ? '缓存中' : '缓存'),
             active: isCached || isDownloading,
-            color: isCached ? Colors.green : null,
+            color: isCached ? context.colors.success : null,
             onTap: onCacheTap,
           ),
           VideoActionButton(

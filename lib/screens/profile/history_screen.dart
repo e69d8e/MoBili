@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import '../../models/user_model.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/storage/history_storage_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/network_image_view.dart';
 import '../../widgets/state_views.dart';
@@ -68,7 +68,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -90,12 +89,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     onRefresh: () => _loadHistory(refresh: true),
                     child: ListView.separated(
                       scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                       itemCount: _history.length + (_isLoadingMore ? 1 : 0),
                       separatorBuilder: (ctx, _) => Divider(
                         height: 16,
                         thickness: 0.5,
-                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                        color: context.colors.divider,
                       ),
                       itemBuilder: (ctx, idx) {
                         if (idx == _history.length) {
@@ -158,7 +157,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                               ),
                                               child: Text(
                                                 '看到 ${Formatters.formatDuration(effectiveProgress)}',
-                                                style: const TextStyle(color: Colors.white, fontSize: 9),
+                                                style: const TextStyle(color: Colors.white, fontSize: 10),
                                               ),
                                             ),
                                           ),
@@ -167,7 +166,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8.0),
                               // Info
                               Expanded(
                                 child: Column(
@@ -178,26 +177,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontSize: 12.5,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                         height: 1.35,
-                                        color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                                        color: context.colors.textMain,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 4.0),
                                     Text(
                                       item.ownerName,
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                        color: context.colors.textHint,
                                       ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       Formatters.formatTime(item.viewAt),
                                       style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                        fontSize: 11,
+                                        color: context.colors.textHint,
                                       ),
                                     ),
                                   ],

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/storage/app_cache_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import 'video_cache_screen.dart';
@@ -59,13 +59,13 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: const Text('确定要清空本地保存的所有播放历史与进度记录吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空', style: TextStyle(color: Colors.red)),
+            child: Text('清空', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -82,13 +82,13 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('清空搜索历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('清空搜索历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: const Text('确定要清空所有搜索历史关键词吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空', style: TextStyle(color: Colors.red)),
+            child: Text('清空', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -127,25 +127,25 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 tooltip: '重新扫描',
                 onPressed: isBusy ? null : () => _cacheService.calculateAllCacheSizes(),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 8.0),
             ],
           ),
           body: Column(
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   children: [
                     // Overview Storage Card
                     _buildOverviewCard(context, info, primary, isDark),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16.0),
 
                     // Section 1: Temporary & Media Caches
                     _buildSectionHeader('临时与媒体缓存 (安全清理)', isDark),
                     Material(
-                      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-                      borderRadius: BorderRadius.circular(14),
+                      color: context.colors.card,
+                      borderRadius: BorderRadius.circular(12),
                       clipBehavior: Clip.antiAlias,
                       child: Column(
                         children: [
@@ -164,12 +164,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             height: 1,
                             thickness: 0.5,
                             indent: 52,
-                            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                            color: context.colors.divider,
                           ),
                           _buildCacheItemTile(
                             context: context,
                             icon: Icons.folder_zip_outlined,
-                            iconColor: Colors.teal,
+                            iconColor: context.colors.primary,
                             title: '系统临时与播放缓冲',
                             subtitle: '音视频播放缓冲分片、网络传输临时文件',
                             sizeText: AppCacheService.formatBytes(info.tempDirBytes),
@@ -181,13 +181,13 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16.0),
 
                     // Section 2: Video Cache (Offline)
                     _buildSectionHeader('离线下载与离线视频', isDark),
                     Material(
-                      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-                      borderRadius: BorderRadius.circular(14),
+                      color: context.colors.card,
+                      borderRadius: BorderRadius.circular(12),
                       clipBehavior: Clip.antiAlias,
                       child: Column(
                         children: [
@@ -213,20 +213,20 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16.0),
 
                     // Section 3: History and records
                     _buildSectionHeader('本地记录与历史数据', isDark),
                     Material(
-                      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-                      borderRadius: BorderRadius.circular(14),
+                      color: context.colors.card,
+                      borderRadius: BorderRadius.circular(12),
                       clipBehavior: Clip.antiAlias,
                       child: Column(
                         children: [
                           _buildCacheItemTile(
                             context: context,
                             icon: Icons.history_rounded,
-                            iconColor: AppTheme.biliBlue,
+                            iconColor: context.colors.primary,
                             title: '本地播放历史与进度',
                             subtitle: '记录视频精准播放秒数与断点续播位置',
                             sizeText: '${info.historyCount} 条记录',
@@ -239,12 +239,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             height: 1,
                             thickness: 0.5,
                             indent: 52,
-                            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                            color: context.colors.divider,
                           ),
                           _buildCacheItemTile(
                             context: context,
                             icon: Icons.search_rounded,
-                            iconColor: Colors.amber.shade800,
+                            iconColor: context.colors.warning,
                             title: '搜索关键词历史',
                             subtitle: '搜索框历史搜索关键词记录',
                             sizeText: '${info.searchHistoryCount} 条搜索词',
@@ -257,13 +257,13 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16.0),
 
                     // Section 4: Auto-Clean Strategy
                     _buildSectionHeader('自动清理策略', isDark),
                     _buildAutoCleanSection(context, primary, isDark),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 24.0),
                   ],
                 ),
               ),
@@ -284,20 +284,20 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     final lastTime = _cacheService.lastAutoCleanTimestamp;
 
     return Material(
-      color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-      borderRadius: BorderRadius.circular(14),
+      color: context.colors.card,
+      borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SwitchListTile(
             dense: true,
-            title: const Text('定时自动清理缓存', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+            title: const Text('定时自动清理缓存', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             subtitle: Text(
               '到达预设周期后在后台自动清理选定的缓存类型',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                color: context.colors.textHint,
               ),
             ),
             value: enabled,
@@ -309,7 +309,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               height: 1,
               thickness: 0.5,
               indent: 16,
-              color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              color: context.colors.divider,
             ),
             ListTile(
               dense: true,
@@ -318,7 +318,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 '当前频率：${interval.label}',
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                  color: context.colors.textHint,
                 ),
               ),
               trailing: Row(
@@ -333,7 +333,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_ios_rounded, size: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
                 ],
               ),
               onTap: () => _showIntervalPickerBottomSheet(context, primary, isDark),
@@ -342,16 +342,16 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               height: 1,
               thickness: 0.5,
               indent: 16,
-              color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+              color: context.colors.divider,
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4),
               child: Text(
                 '自动清理项目选择：',
                 style: TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                  color: context.colors.textSub,
                 ),
               ),
             ),
@@ -360,12 +360,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 dense: true,
                 value: targets.contains(target.key),
                 activeColor: primary,
-                title: Text(target.label, style: const TextStyle(fontSize: 12.5)),
+                title: Text(target.label, style: const TextStyle(fontSize: 13)),
                 subtitle: Text(
                   target.description,
                   style: TextStyle(
-                    fontSize: 10.5,
-                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    fontSize: 11,
+                    color: context.colors.textHint,
                   ),
                 ),
                 onChanged: (checked) {
@@ -378,15 +378,15 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 height: 1,
                 thickness: 0.5,
                 indent: 16,
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                color: context.colors.divider,
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 child: Text(
                   '上次自动清理：${Formatters.formatTime(lastTime ~/ 1000)}',
                   style: TextStyle(
-                    fontSize: 10.5,
-                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    fontSize: 11,
+                    color: context.colors.textHint,
                   ),
                 ),
               ),
@@ -400,7 +400,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
   void _showIntervalPickerBottomSheet(BuildContext context, Color primary, bool isDark) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? AppTheme.cardDark : Colors.white,
+      backgroundColor: context.colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -410,12 +410,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
                 child: Row(
                   children: [
                     const Text(
                       '选择自动清理周期',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
                     IconButton(
@@ -430,7 +430,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               Divider(
                 height: 1,
                 thickness: 0.5,
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                color: context.colors.divider,
               ),
               for (final interval in AutoCleanInterval.values) ...[
                 ListTile(
@@ -438,8 +438,8 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   title: Text(
                     interval.label,
                     style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: _cacheService.autoCleanInterval == interval ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                      fontWeight: _cacheService.autoCleanInterval == interval ? FontWeight.w600 : FontWeight.normal,
                       color: _cacheService.autoCleanInterval == interval ? primary : null,
                     ),
                   ),
@@ -452,7 +452,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   },
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: 8.0),
             ],
           ),
         );
@@ -462,12 +462,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
   Widget _buildSectionHeader(String title, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(left: 4, bottom: 8.0),
       child: Text(
         title,
         style: TextStyle(
-          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-          fontSize: 12.5,
+          color: context.colors.textSub,
+          fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -489,9 +489,9 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     final videoRatio = (info.videoCacheBytes / totalBytes).clamp(0.0, 1.0);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+        color: context.colors.card,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -511,12 +511,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 '可深度释放空间',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                  color: context.colors.textSub,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
                 decoration: BoxDecoration(
                   color: primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -532,21 +532,21 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 8.0),
           Text(
             cleanableStr,
             style: TextStyle(
               fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: info.cleanableBytes > 0 ? primary : (isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+              fontWeight: FontWeight.w600,
+              color: info.cleanableBytes > 0 ? primary : (context.colors.textHint),
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 12.0),
 
           // Segmented Progress Bar
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               height: 10,
               child: info.totalAppStorageBytes <= 0
@@ -573,16 +573,16 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 12.0),
 
           // Legend
           Row(
             children: [
               _buildLegendDot(primary, '图片缓存 (${AppCacheService.formatBytes(info.imageCacheBytes)})', isDark),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12.0),
               _buildLegendDot(Colors.teal, '临时文件 (${AppCacheService.formatBytes(info.tempDirBytes)})', isDark),
               if (info.videoCacheBytes > 0) ...[
-                const SizedBox(width: 14),
+                const SizedBox(width: 12.0),
                 _buildLegendDot(Colors.deepPurpleAccent, '离线视频 (${AppCacheService.formatBytes(info.videoCacheBytes)})', isDark),
               ],
             ],
@@ -608,8 +608,8 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: 10.5,
-            color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+            fontSize: 11,
+            color: context.colors.textHint,
           ),
         ),
       ],
@@ -631,7 +631,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     final primary = Theme.of(context).colorScheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Row(
         children: [
           Container(
@@ -639,11 +639,11 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             height: 36,
             decoration: BoxDecoration(
               color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, size: 20, color: iconColor),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 12.0),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -652,15 +652,15 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
                     Text(
                       sizeText,
                       style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.textMain,
                       ),
                     ),
                   ],
@@ -670,31 +670,31 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   subtitle,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    color: context.colors.textHint,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8.0),
           SizedBox(
             height: 28,
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
-                foregroundColor: isDestructive ? Colors.redAccent : primary,
+                foregroundColor: isDestructive ? context.colors.danger : primary,
                 side: BorderSide(
                   color: isDestructive
-                      ? Colors.redAccent.withValues(alpha: 0.4)
+                      ? context.colors.danger.withValues(alpha: 0.4)
                       : (onAction == null
                           ? (isDark ? Colors.white12 : Colors.black12)
                           : primary.withValues(alpha: 0.4)),
                   width: 0.8,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: onAction,
-              child: Text(actionText, style: const TextStyle(fontSize: 11.5)),
+              child: Text(actionText, style: const TextStyle(fontSize: 12)),
             ),
           ),
         ],
@@ -715,10 +715,10 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.cardDark : Colors.white,
+        color: context.colors.card,
         border: Border(
           top: BorderSide(
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            color: context.colors.divider,
             width: 0.5,
           ),
         ),
@@ -738,20 +738,20 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 Text(
                   '清理不会影响登录态与离线视频',
                   style: TextStyle(
-                    fontSize: 10.5,
-                    color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                    fontSize: 11,
+                    color: context.colors.textHint,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12.0),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
               elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
             icon: _cacheService.isCleaning
@@ -768,7 +768,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                 : const Icon(Icons.cleaning_services_rounded, size: 18),
             label: Text(
               _cacheService.isCleaning ? '正在清理...' : '一键深度清理',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             onPressed: canClean ? _handleClearAllCleanable : null,
           ),

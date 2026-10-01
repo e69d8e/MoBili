@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:mobili/services/player_settings_service.dart';
+import 'package:mobili/services/settings/player_settings_service.dart';
 import 'package:mobili/services/storage/history_storage_service.dart';
 import 'package:mobili/services/api/user_api_service.dart';
 

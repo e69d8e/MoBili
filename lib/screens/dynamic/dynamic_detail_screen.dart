@@ -9,7 +9,7 @@ import '../../services/api/bili_http_client.dart';
 import '../../services/api/comment_api_service.dart';
 import '../../services/api/dynamic_api_service.dart';
 import '../../services/api/user_api_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../utils/image_decode_sizing.dart';
 import '../../widgets/app_toast.dart';
@@ -338,7 +338,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('动态详情', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold)),
+        title: const Text('动态详情', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
         centerTitle: true,
         actions: [
           IconButton(
@@ -397,7 +397,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                                 child: Center(
                                   child: Text(
                                     '暂无评论，快来抢沙发吧~',
-                                    style: TextStyle(fontSize: 13, color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                                    style: TextStyle(fontSize: 13, color: context.colors.textSub),
                                   ),
                                 ),
                               ),
@@ -423,7 +423,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                           if (_commentLoadingMore)
                             SliverToBoxAdapter(
                               child: Padding(
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.all(16.0),
                                 child: Center(
                                   child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
                                 ),
@@ -432,11 +432,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                           else if (_commentIsEnd && _comments.isNotEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                padding: const EdgeInsets.symmetric(vertical: 20.0),
                                 child: Center(
                                   child: Text(
                                     '没有更多评论了',
-                                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                                    style: TextStyle(fontSize: 12, color: context.colors.textHint),
                                   ),
                                 ),
                               ),
@@ -468,7 +468,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     bool isDark,
     Color primaryColor,
   ) {
-    final cardColor = isDark ? AppTheme.cardDark : AppTheme.cardLight;
+    final cardColor = context.colors.card;
     final video = item.video;
     final hasVideo = video != null && video.bvid.isNotEmpty;
 
@@ -484,7 +484,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 return ColoredBox(
                   color: cardColor,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0),
                     child: _buildVideoCard(ctx, video!, isDark),
                   ),
                 );
@@ -492,7 +492,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               return ColoredBox(
                 color: cardColor,
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, index == 0 ? 14 : 0, 16, 0),
+                  padding: EdgeInsets.fromLTRB(16.0, index == 0 ? 12.0 : 0, 16.0, 0),
                   child: _buildParagraph(ctx, item.paragraphs[index], item.pictures, isDark),
                 ),
               );
@@ -521,7 +521,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   ) {
     return Container(
       color: cardColor,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -540,7 +540,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 },
                 child: UserAvatar(url: item.author.face, size: 42),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 12.0),
               Expanded(
                 child: GestureDetector(
                   onTap: () {
@@ -557,7 +557,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                     children: [
                       Text(
                         item.author.name,
-                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 3),
                       Row(
@@ -567,17 +567,17 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                                 ? item.author.pubTime
                                 : (item.author.pubTs > 0 ? Formatters.formatTime(item.author.pubTs) : ''),
                             style: TextStyle(
-                              fontSize: 11.5,
-                              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                              fontSize: 12,
+                              color: context.colors.textHint,
                             ),
                           ),
                           if (item.author.pubAction.isNotEmpty) ...[
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4.0),
                             Text(
                               '· ${item.author.pubAction}',
                               style: TextStyle(
-                                fontSize: 11.5,
-                                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                fontSize: 12,
+                                color: context.colors.textHint,
                               ),
                             ),
                           ],
@@ -592,20 +592,20 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   onPressed: _toggleFollow,
                   style: FilledButton.styleFrom(
                     backgroundColor: _isFollowing
-                        ? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight)
+                        ? (context.colors.fill)
                         : primaryColor,
                     foregroundColor: _isFollowing
-                        ? (isDark ? AppTheme.textSubDark : AppTheme.textSubLight)
+                        ? (context.colors.textSub)
                         : Theme.of(context).colorScheme.onPrimary,
                     elevation: 0,
                     visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   icon: Icon(_isFollowing ? Icons.check : Icons.add, size: 14),
                   label: Text(
                     _isFollowing ? '已关注' : '关注',
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                 ),
             ],
@@ -614,14 +614,14 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           // Title (for article / opus if present and not already first paragraph)
           if (item.title.isNotEmpty &&
               (item.paragraphs.isEmpty || item.paragraphs.first.text != item.title)) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 12.0),
             Text(
               item.title,
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
                 height: 1.4,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                color: context.colors.textMain,
               ),
             ),
           ],
@@ -646,7 +646,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
     return Container(
       color: cardColor,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -654,21 +654,21 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             Text(
               item.text,
               style: TextStyle(
-                fontSize: 14.5,
+                fontSize: 14,
                 height: 1.55,
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                color: context.colors.textMain,
               ),
             ),
 
           // Video Card (if any)
           if (hasVideo) ...[
-            if (hasText) const SizedBox(height: 12),
+            if (hasText) const SizedBox(height: 12.0),
             _buildVideoCard(context, video, isDark),
           ],
 
           // Pictures (if any)
           if (hasPictures) ...[
-            if (hasText || hasVideo) const SizedBox(height: 12),
+            if (hasText || hasVideo) const SizedBox(height: 12.0),
             _buildImages(context, item.pictures, isDark),
           ],
         ],
@@ -685,14 +685,14 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   ) {
     return Container(
       color: cardColor,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
           // Forwarded Dynamic (if any)
           if (item.orig != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 12.0),
             GestureDetector(
               onTap: () {
                 if (item.orig!.id.isNotEmpty) {
@@ -707,10 +707,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 }
               },
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12.0),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF22222A) : const Color(0xFFF4F5F7),
-                  borderRadius: BorderRadius.circular(10),
+                  color: context.colors.fill,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,16 +719,16 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                       '@${item.orig!.author.name}: ${item.orig!.text}',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                        color: context.colors.textSub,
                         height: 1.45,
                       ),
                     ),
                     if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 8.0),
                       _buildVideoCard(context, item.orig!.video!, isDark),
                     ],
                     if (item.orig!.pictures.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 8.0),
                       _buildImages(context, item.orig!.pictures, isDark),
                     ],
                   ],
@@ -737,12 +737,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             ),
           ],
 
-          const SizedBox(height: 16),
-          Divider(height: 1, thickness: 0.5, color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight),
+          const SizedBox(height: 16.0),
+          Divider(height: 1, thickness: 0.5, color: context.colors.divider),
 
           // Action Stats Row (Like, Forward, Comment Count)
           Padding(
-            padding: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.only(top: 8.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -750,21 +750,21 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   onTap: _toggleLike,
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                     child: Row(
                       children: [
                         Icon(
                           _isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
                           size: 17,
-                          color: _isLiked ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                          color: _isLiked ? primaryColor : (context.colors.textSub),
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4.0),
                         Text(
                           _likeCount > 0 ? Formatters.formatCount(_likeCount) : '赞',
                           style: TextStyle(
                             fontSize: 12,
-                            color: _isLiked ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                            fontWeight: _isLiked ? FontWeight.bold : FontWeight.normal,
+                            color: _isLiked ? primaryColor : (context.colors.textSub),
+                            fontWeight: _isLiked ? FontWeight.w600 : FontWeight.normal,
                           ),
                         ),
                       ],
@@ -772,18 +772,18 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                   child: Row(
                     children: [
-                      Icon(Icons.chat_bubble_outline_rounded, size: 17, color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                      const SizedBox(width: 5),
+                      Icon(Icons.chat_bubble_outline_rounded, size: 17, color: context.colors.textSub),
+                      const SizedBox(width: 4.0),
                       Text(
                         _commentTotalCount > 0
                             ? Formatters.formatCount(_commentTotalCount)
                             : (item.stat.commentCount > 0 ? Formatters.formatCount(item.stat.commentCount) : '评论'),
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                          color: context.colors.textSub,
                         ),
                       ),
                     ],
@@ -791,16 +791,16 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 ),
                 if (item.stat.forwardCount > 0)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                     child: Row(
                       children: [
-                        Icon(Icons.share_outlined, size: 17, color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
-                        const SizedBox(width: 5),
+                        Icon(Icons.share_outlined, size: 17, color: context.colors.textSub),
+                        const SizedBox(width: 4.0),
                         Text(
                           Formatters.formatCount(item.stat.forwardCount),
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                            color: context.colors.textSub,
                           ),
                         ),
                       ],
@@ -823,11 +823,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF22222A) : const Color(0xFFF0F1F4),
-          borderRadius: BorderRadius.circular(10),
+          color: context.colors.fill,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
             width: 0.6,
@@ -860,17 +860,17 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                         ),
                         child: Text(
                           video.durationText,
-                          style: const TextStyle(color: Colors.white, fontSize: 9.5),
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
                         ),
                       ),
                     ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8.0),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 6, 10, 6),
+                padding: const EdgeInsets.fromLTRB(0, 4.0, 8.0, 4.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -881,24 +881,24 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4.0),
                     Row(
                       children: [
                         if (video.playCount.isNotEmpty) ...[
-                          Icon(Icons.play_arrow_rounded, size: 13, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          Icon(Icons.play_arrow_rounded, size: 13, color: context.colors.textHint),
                           const SizedBox(width: 2),
                           Text(
                             video.playCount,
-                            style: TextStyle(fontSize: 10.5, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                            style: TextStyle(fontSize: 11, color: context.colors.textHint),
                           ),
                         ],
                         if (video.danmakuCount.isNotEmpty) ...[
-                          const SizedBox(width: 10),
-                          Icon(Icons.subtitles_outlined, size: 11, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                          const SizedBox(width: 8.0),
+                          Icon(Icons.subtitles_outlined, size: 11, color: context.colors.textHint),
                           const SizedBox(width: 3),
                           Text(
                             video.danmakuCount,
-                            style: TextStyle(fontSize: 10.5, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                            style: TextStyle(fontSize: 11, color: context.colors.textHint),
                           ),
                         ],
                       ],
@@ -923,13 +923,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   ) {
     if (p.isQuote) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+          padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFF5F6F8),
-            borderRadius: BorderRadius.circular(6),
+            color: context.colors.fill,
+            borderRadius: BorderRadius.circular(8),
             border: Border(
               left: BorderSide(
                 color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
@@ -942,7 +942,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             style: TextStyle(
               fontSize: 14,
               height: 1.6,
-              color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+              color: context.colors.textSub,
             ),
           ),
         ),
@@ -950,12 +950,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     }
     if (p.isCode) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF22222A) : const Color(0xFFF2F3F5),
+            color: context.colors.fill,
             borderRadius: BorderRadius.circular(8),
           ),
           child: SingleChildScrollView(
@@ -963,10 +963,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             child: Text(
               p.text,
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.5,
                 fontFamily: 'monospace',
-                color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+                color: context.colors.textMain,
               ),
             ),
           ),
@@ -975,27 +975,27 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     }
     if (p.type == 4) {
       return Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        padding: const EdgeInsets.only(top: 8.0, bottom: 4),
         child: Text(
           p.text,
           style: TextStyle(
             fontSize: 17,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
             height: 1.45,
-            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+            color: context.colors.textMain,
           ),
         ),
       );
     }
     if (p.isText) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: Text(
           p.text,
           style: TextStyle(
             fontSize: 15,
             height: 1.65,
-            color: isDark ? AppTheme.textMainDark : AppTheme.textMainLight,
+            color: context.colors.textMain,
           ),
         ),
       );
@@ -1006,7 +1006,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
       final effectiveIndex = picIndex >= 0 ? picIndex : 0;
 
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: GestureDetector(
           onTap: () => ImageViewer.show(
             context,
@@ -1014,10 +1014,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             initialIndex: effectiveIndex,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             child: Container(
               width: double.infinity,
-              color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+              color: context.colors.fill,
               child: _buildPictureBlock(context, pic),
             ),
           ),
@@ -1026,11 +1026,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     }
     if (p.isDivider) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: Divider(
           height: 1,
           thickness: 0.6,
-          color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+          color: context.colors.divider,
         ),
       );
     }
@@ -1054,10 +1054,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           initialIndex: 0,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             width: double.infinity,
-            color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+            color: context.colors.fill,
             child: _buildPictureBlock(context, pic),
           ),
         ),
@@ -1091,7 +1091,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 child: Container(
                   width: itemWidth,
                   height: itemWidth,
-                  color: isDark ? const Color(0xFF1E1E24) : const Color(0xFFEEEEEE),
+                  color: context.colors.fill,
                   child: NetworkImageView(
                     url: pic.url,
                     width: itemWidth,
@@ -1156,13 +1156,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
   Widget _buildCommentsHeader(bool isDark, Color primaryColor) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             '评论 (${_commentTotalCount > 0 ? Formatters.formatCount(_commentTotalCount) : (_item?.stat.commentCount ?? 0)})',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           Row(
             children: [
@@ -1170,29 +1170,29 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 onTap: () => _switchCommentMode(3),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
                   child: Text(
                     '热门',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: _commentMode == 3 ? FontWeight.bold : FontWeight.normal,
-                      color: _commentMode == 3 ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                      fontWeight: _commentMode == 3 ? FontWeight.w600 : FontWeight.normal,
+                      color: _commentMode == 3 ? primaryColor : (context.colors.textSub),
                     ),
                   ),
                 ),
               ),
-              Text(' | ', style: TextStyle(fontSize: 11, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight)),
+              Text(' | ', style: TextStyle(fontSize: 11, color: context.colors.textHint)),
               InkWell(
                 onTap: () => _switchCommentMode(2),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
                   child: Text(
                     '最新',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: _commentMode == 2 ? FontWeight.bold : FontWeight.normal,
-                      color: _commentMode == 2 ? primaryColor : (isDark ? AppTheme.textSubDark : AppTheme.textSubLight),
+                      fontWeight: _commentMode == 2 ? FontWeight.w600 : FontWeight.normal,
+                      color: _commentMode == 2 ? primaryColor : (context.colors.textSub),
                     ),
                   ),
                 ),
@@ -1208,7 +1208,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     return Container(
       padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+        color: context.colors.card,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -1223,12 +1223,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
         children: [
           if (_replyTarget != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 4.0),
               child: Row(
                 children: [
                   Text(
                     '回复 @${_replyTarget!.member.uname}:',
-                    style: TextStyle(fontSize: 11.5, color: primaryColor, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 12, color: primaryColor, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
                   GestureDetector(
@@ -1244,19 +1244,19 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 child: Container(
                   height: 38,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF22222A) : const Color(0xFFEFF0F3),
-                    borderRadius: BorderRadius.circular(19),
+                    color: context.colors.fill,
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   child: TextField(
                     controller: _commentInputController,
                     focusNode: _commentFocusNode,
                     decoration: InputDecoration(
                       hintText: _replyTarget != null ? '回复 @${_replyTarget!.member.uname}...' : '发一条友善的动态评论...',
-                      hintStyle: TextStyle(fontSize: 12.5, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+                      hintStyle: TextStyle(fontSize: 13, color: context.colors.textHint),
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
                     ),
                     style: const TextStyle(fontSize: 13),
                     textInputAction: TextInputAction.send,
@@ -1264,7 +1264,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8.0),
               IconButton.filled(
                 onPressed: _isSendingComment ? null : _sendComment,
                 style: IconButton.styleFrom(

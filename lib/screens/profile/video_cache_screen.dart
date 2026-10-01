@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/video_cache_model.dart';
 import '../../services/storage/video_cache_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
@@ -57,7 +57,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除离线缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('删除离线缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: Text('确定要删除选中的 ${_selectedTaskIds.length} 个离线缓存视频吗？'),
         actions: [
           TextButton(
@@ -66,7 +66,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text('删除', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -91,7 +91,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('清空全部缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('清空全部缓存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         content: const Text('确定要清空所有已下载的离线视频吗？此操作不可恢复。'),
         actions: [
           TextButton(
@@ -100,7 +100,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空', style: TextStyle(color: Colors.red)),
+            child: Text('清空', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -154,9 +154,9 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                     child: Text(
                       '删除(${_selectedTaskIds.length})',
                       style: TextStyle(
-                        color: _selectedTaskIds.isEmpty ? Colors.grey : Colors.red,
+                        color: _selectedTaskIds.isEmpty ? context.colors.textHint : context.colors.danger,
                         fontSize: 13,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -172,16 +172,16 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                   TextButton.icon(
                     onPressed: () => _cacheService.pauseAll(),
                     icon: const Icon(Icons.pause_rounded, size: 16),
-                    label: const Text('全部暂停', style: TextStyle(fontSize: 12.5)),
+                    label: const Text('全部暂停', style: TextStyle(fontSize: 13)),
                   )
                 else
                   TextButton.icon(
                     onPressed: () => _cacheService.resumeAll(),
                     icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                    label: const Text('全部开始', style: TextStyle(fontSize: 12.5)),
+                    label: const Text('全部开始', style: TextStyle(fontSize: 13)),
                   ),
               ],
-              const SizedBox(width: 6),
+              const SizedBox(width: 4.0),
             ],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(44),
@@ -189,7 +189,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+                      color: context.colors.divider,
                       width: 0.5,
                     ),
                   ),
@@ -199,8 +199,8 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                   indicatorColor: primaryColor,
                   indicatorWeight: 2.5,
                   labelColor: primaryColor,
-                  unselectedLabelColor: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
-                  labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  unselectedLabelColor: context.colors.textSub,
+                  labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                   unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
                   onTap: (_) => setState(() {
                     _isBatchEditing = false;
@@ -267,23 +267,23 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
             Icon(
               Icons.download_done_rounded,
               size: 56,
-              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+              color: context.colors.textHint,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12.0),
             Text(
               '暂无已缓存视频',
               style: TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                fontWeight: FontWeight.w600,
+                color: context.colors.textSub,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4.0),
             Text(
               '在视频详情页点击「缓存」即可离线下载视频',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                color: context.colors.textHint,
               ),
             ),
           ],
@@ -292,15 +292,15 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       itemCount: items.length,
-      separatorBuilder: (ctx, i) => const SizedBox(height: 10),
+      separatorBuilder: (ctx, i) => const SizedBox(height: 8.0),
       itemBuilder: (ctx, i) {
         final item = items[i];
         final isSelected = _selectedTaskIds.contains(item.taskId);
 
         return Material(
-          color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+          color: context.colors.card,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -318,7 +318,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
               }
             },
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -366,13 +366,13 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
                                 decoration: BoxDecoration(
                                   color: Colors.black.withValues(alpha: 0.75),
-                                  borderRadius: BorderRadius.circular(3),
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   Formatters.formatDuration(item.duration),
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 9.5,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -383,7 +383,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                     ),
                   ),
 
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8.0),
 
                   // Metadata Info
                   Expanded(
@@ -411,7 +411,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(
                                   color: primaryColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(3),
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   item.qualityDesc,
@@ -422,16 +422,16 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 4.0),
                               Text(
                                 VideoCacheService.formatBytes(item.totalBytes),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                               if (item.ownerName.isNotEmpty) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4.0),
                                 Expanded(
                                   child: Text(
                                     '· ${item.ownerName}',
@@ -439,7 +439,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                      color: context.colors.textHint,
                                     ),
                                   ),
                                 ),
@@ -456,20 +456,20 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                       icon: Icon(
                         Icons.delete_outline_rounded,
                         size: 18,
-                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                       tooltip: '删除',
                       onPressed: () async {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            title: const Text('删除离线视频', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            title: const Text('删除离线视频', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                             content: Text('确定要删除「${item.pageTitle.isNotEmpty ? item.pageTitle : item.title}」的离线缓存吗？'),
                             actions: [
                               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('删除', style: TextStyle(color: Colors.red)),
+                                child: Text('删除', style: TextStyle(color: context.colors.danger)),
                               ),
                             ],
                           ),
@@ -501,15 +501,15 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
             Icon(
               Icons.downloading_rounded,
               size: 56,
-              color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+              color: context.colors.textHint,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12.0),
             Text(
               '暂无正在下载的任务',
               style: TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                fontWeight: FontWeight.w600,
+                color: context.colors.textSub,
               ),
             ),
           ],
@@ -518,18 +518,18 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       itemCount: items.length,
-      separatorBuilder: (ctx, i) => const SizedBox(height: 10),
+      separatorBuilder: (ctx, i) => const SizedBox(height: 8.0),
       itemBuilder: (ctx, i) {
         final item = items[i];
 
         return Material(
-          color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+          color: context.colors.card,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -538,7 +538,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                   children: [
                     // Cover
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                       child: SizedBox(
                         width: 72,
                         height: 48,
@@ -552,7 +552,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                             : Container(color: isDark ? Colors.white10 : Colors.black26),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8.0),
                     // Title & Status
                     Expanded(
                       child: Column(
@@ -570,12 +570,12 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                           Row(
                             children: [
                               _buildStatusTag(item, primaryColor, isDark),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 4.0),
                               Text(
                                 item.qualityDesc,
                                 style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                                  fontSize: 11,
+                                  color: context.colors.textHint,
                                 ),
                               ),
                             ],
@@ -588,11 +588,11 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                   ],
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 8.0),
 
                 // Linear Progress Bar
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: item.status == VideoCacheStatus.pending
                         ? null
@@ -600,12 +600,12 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                     minHeight: 4,
                     backgroundColor: isDark ? Colors.white12 : Colors.black12,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      item.status == VideoCacheStatus.failed ? Colors.redAccent : primaryColor,
+                      item.status == VideoCacheStatus.failed ? context.colors.danger : primaryColor,
                     ),
                   ),
                 ),
 
-                const SizedBox(height: 6),
+                const SizedBox(height: 4.0),
 
                 // Progress Size & Speed
                 Row(
@@ -615,7 +615,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                       '${VideoCacheService.formatBytes(item.downloadedBytes)} / ${item.totalBytes > 0 ? VideoCacheService.formatBytes(item.totalBytes) : '--'} (${(item.progress * 100).toStringAsFixed(1)}%)',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight,
+                        color: context.colors.textHint,
                       ),
                     ),
                     if (item.isDownloading && item.downloadSpeed > 0)
@@ -630,7 +630,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                     else if (item.errorMsg != null)
                       Text(
                         item.errorMsg!,
-                        style: const TextStyle(fontSize: 11, color: Colors.redAccent),
+                        style: TextStyle(fontSize: 11, color: context.colors.danger),
                       ),
                   ],
                 ),
@@ -653,27 +653,27 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
         break;
       case VideoCacheStatus.pending:
         label = '排队中';
-        color = Colors.orange;
+        color = context.colors.warning;
         break;
       case VideoCacheStatus.paused:
         label = '已暂停';
-        color = isDark ? AppTheme.textHintDark : AppTheme.textHintLight;
+        color = context.colors.textHint;
         break;
       case VideoCacheStatus.failed:
         label = '失败';
-        color = Colors.redAccent;
+        color = context.colors.danger;
         break;
       case VideoCacheStatus.completed:
         label = '已完成';
-        color = Colors.green;
+        color = context.colors.success;
         break;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
@@ -700,12 +700,12 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
           )
         else if (item.isFailed)
           IconButton(
-            icon: const Icon(Icons.replay_rounded, color: Colors.redAccent, size: 20),
+            icon: Icon(Icons.replay_rounded, color: context.colors.danger, size: 20),
             tooltip: '重试',
             onPressed: () => _cacheService.retryTask(item.taskId),
           ),
         IconButton(
-          icon: Icon(Icons.close_rounded, size: 18, color: isDark ? AppTheme.textHintDark : AppTheme.textHintLight),
+          icon: Icon(Icons.close_rounded, size: 18, color: context.colors.textHint),
           tooltip: '取消',
           onPressed: () => _cacheService.deleteTask(item.taskId),
         ),
@@ -718,12 +718,12 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     final completedCount = _cacheService.totalCompletedCount;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+        color: context.colors.fill,
         border: Border(
           top: BorderSide(
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerLight,
+            color: context.colors.divider,
             width: 0.5,
           ),
         ),
@@ -733,13 +733,13 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
         child: Row(
           children: [
             Icon(Icons.pie_chart_outline_rounded, size: 16, color: primaryColor),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4.0),
             Expanded(
               child: Text(
                 '已缓存 $completedCount 个视频 · 占用 $formattedSize',
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? AppTheme.textSubDark : AppTheme.textSubLight,
+                  color: context.colors.textSub,
                 ),
               ),
             ),
@@ -747,11 +747,11 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
               InkWell(
                 onTap: _clearAllCompleted,
                 borderRadius: BorderRadius.circular(4),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4),
                   child: Text(
                     '清空全部',
-                    style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                    style: TextStyle(fontSize: 12, color: context.colors.danger),
                   ),
                 ),
               ),
