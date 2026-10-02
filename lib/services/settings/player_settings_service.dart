@@ -7,7 +7,9 @@ class PlayerSettingsService {
   static const String _keyDefaultQuality = 'player_default_quality';
   static const String _keyDefaultSpeed = 'player_default_speed';
   static const String _keyDoubleTapSeek = 'player_double_tap_seek';
+  static const String _keyDoubleTapEdgeRatio = 'player_double_tap_edge_ratio';
   static const String _keyLongPressSpeed = 'player_enable_long_press_speed';
+  static const String _keyLongPressSpeedValue = 'player_long_press_speed_value';
   static const String _keyVerticalPan = 'player_enable_vertical_pan';
   static const String _keyHorizontalPan = 'player_enable_horizontal_pan';
   static const String _keyAutoPlayNext = 'player_auto_play_next_episode';
@@ -19,7 +21,9 @@ class PlayerSettingsService {
   static int _defaultQuality = 80; // 80 = 1080P（需登录；登录后走 DASH 双流，未登录自动为 720P 单流）
   static double _defaultPlaybackSpeed = 1.0;
   static int _doubleTapSeekSeconds = 10;
+  static int _doubleTapEdgeRatioPercent = 10;
   static bool _enableLongPressSpeed = true;
+  static double _longPressSpeedValue = 2.0;
   static bool _enableVerticalPanVolumeBrightness = true;
   static bool _enableHorizontalPanSeek = true;
   static bool _autoPlayNextEpisode = true;
@@ -32,7 +36,12 @@ class PlayerSettingsService {
   static int get defaultQuality => _defaultQuality;
   static double get defaultPlaybackSpeed => _defaultPlaybackSpeed;
   static int get doubleTapSeekSeconds => _doubleTapSeekSeconds;
+
+  /// 双击快进/快退的边缘命中区占播放器宽度的百分比（左右对称，中间其余区域双击为播放/暂停）
+  static int get doubleTapEdgeRatioPercent => _doubleTapEdgeRatioPercent;
+  static double get doubleTapEdgeRatio => _doubleTapEdgeRatioPercent / 100.0;
   static bool get enableLongPressSpeed => _enableLongPressSpeed;
+  static double get longPressSpeedValue => _longPressSpeedValue;
   static bool get enableVerticalPanVolumeBrightness => _enableVerticalPanVolumeBrightness;
   static bool get enableHorizontalPanSeek => _enableHorizontalPanSeek;
   static bool get autoPlayNextEpisode => _autoPlayNextEpisode;
@@ -54,7 +63,9 @@ class PlayerSettingsService {
       _defaultQuality = prefs.getInt(_keyDefaultQuality) ?? 80;
       _defaultPlaybackSpeed = prefs.getDouble(_keyDefaultSpeed) ?? 1.0;
       _doubleTapSeekSeconds = prefs.getInt(_keyDoubleTapSeek) ?? 10;
+      _doubleTapEdgeRatioPercent = prefs.getInt(_keyDoubleTapEdgeRatio) ?? 10;
       _enableLongPressSpeed = prefs.getBool(_keyLongPressSpeed) ?? true;
+      _longPressSpeedValue = prefs.getDouble(_keyLongPressSpeedValue) ?? 2.0;
       _enableVerticalPanVolumeBrightness = prefs.getBool(_keyVerticalPan) ?? true;
       _enableHorizontalPanSeek = prefs.getBool(_keyHorizontalPan) ?? true;
       _autoPlayNextEpisode = prefs.getBool(_keyAutoPlayNext) ?? true;
@@ -117,6 +128,22 @@ class PlayerSettingsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyDoubleTapSeek, _doubleTapSeekSeconds);
+    } catch (_) {}
+  }
+
+  static Future<void> setDoubleTapEdgeRatioPercent(int val) async {
+    _doubleTapEdgeRatioPercent = val.clamp(5, 35);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyDoubleTapEdgeRatio, _doubleTapEdgeRatioPercent);
+    } catch (_) {}
+  }
+
+  static Future<void> setLongPressSpeedValue(double val) async {
+    _longPressSpeedValue = val.clamp(1.5, 4.0);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_keyLongPressSpeedValue, _longPressSpeedValue);
     } catch (_) {}
   }
 

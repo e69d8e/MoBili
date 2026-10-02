@@ -74,7 +74,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     with TickerProviderStateMixin, RouteAware {
   late TabController _tabController;
   late final AnimationController _tripleComboAnimController;
-  final GlobalKey<_VideoInfoTabState> _infoTabKey = GlobalKey<_VideoInfoTabState>();
+  final GlobalKey<_VideoInfoTabState> _infoTabKey =
+      GlobalKey<_VideoInfoTabState>();
   // 评论数用于 Tab 标签展示，由评论子组件回报
   int _commentCountForLabel = 0;
   VideoDetail? _detail;
@@ -256,7 +257,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
 
     // 1. Fetch Online Video Detail（命中预取缓存时可跳过网络等待）
     try {
-      final detail = await VideoPrefetchService.instance.getDetail(_currentBvid);
+      final detail = await VideoPrefetchService.instance.getDetail(
+        _currentBvid,
+      );
       if (detail != null && mounted && _detailLoadToken == detailToken) {
         setState(() {
           _detail = detail;
@@ -274,10 +277,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
 
         // 多 P 视频预取下一 P 的播放地址，切集时秒开
         if (detail.pages.length > _selectedPageIndex + 1) {
-          unawaited(VideoPrefetchService.instance.getPlayStream(
-            _currentBvid,
-            detail.pages[_selectedPageIndex + 1].cid,
-          ));
+          unawaited(
+            VideoPrefetchService.instance.getPlayStream(
+              _currentBvid,
+              detail.pages[_selectedPageIndex + 1].cid,
+            ),
+          );
         }
 
         // 4. Fetch Related Videos
@@ -401,7 +406,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       }
     } else {
       // 优先命中预取缓存（相关视频 / 下一 P 提前拿到的播放地址）
-      final result = await VideoPrefetchService.instance.getPlayStream(_currentBvid, cid);
+      final result = await VideoPrefetchService.instance.getPlayStream(
+        _currentBvid,
+        cid,
+      );
       if (result != null) {
         playUrl = result.info;
       } else {
@@ -510,13 +518,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         final theme = Theme.of(context);
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
-            return Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
-                ),
+            return Material(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
               ),
+              clipBehavior: Clip.antiAlias,
               child: SafeArea(
                 top: false,
                 child: Column(
@@ -727,9 +734,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
 
     final playUrl = result.info!;
     // DASH 下响应体的 quality 不可信，以实际授权的视频轨画质为准
-    final granted = playUrl.grantedQuality > 0 ? playUrl.grantedQuality : playUrl.currentQuality;
+    final granted = playUrl.grantedQuality > 0
+        ? playUrl.grantedQuality
+        : playUrl.currentQuality;
     // 记住用户的画质选择；被降级时记住实际能用的画质，避免下次继续请求拿不到的画质
-    unawaited(PlayerSettingsService.setDefaultQuality(granted == qn ? qn : granted));
+    unawaited(
+      PlayerSettingsService.setDefaultQuality(granted == qn ? qn : granted),
+    );
     setState(() {
       _playUrlInfo = playUrl;
       _playUrlError = null;
@@ -884,7 +895,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           VideoPrefetchService.instance.prefetchVideos(list);
         }
       });
-
     }
 
     if (mounted) {
@@ -1428,7 +1438,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       const SizedBox(height: 8.0),
                       OutlinedButton.icon(
                         onPressed: () {
-                          final cid = _detail != null && _detail!.pages.isNotEmpty
+                          final cid =
+                              _detail != null && _detail!.pages.isNotEmpty
                               ? _detail!.pages[_selectedPageIndex].cid
                               : (_detail?.videoItem.cid ?? 0);
                           if (cid > 0) {
@@ -1584,7 +1595,4 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       onSelectItem: (item, idx) => _switchWatchLaterItem(item, idx),
     );
   }
-
 }
-
-

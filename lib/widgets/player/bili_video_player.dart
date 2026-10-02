@@ -129,8 +129,9 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   // Long Press 2.0X Speed (长按二倍速)
   bool _isLongPressSpeeding = false;
-  double get _effectivePlaybackSpeed =>
-      _isLongPressSpeeding ? 2.0 : _playbackSpeed;
+  double get _effectivePlaybackSpeed => _isLongPressSpeeding
+      ? PlayerSettingsService.longPressSpeedValue
+      : _playbackSpeed;
   double _speedBeforeLongPress = 1.0;
 
   // Pan Progress Seek & Vertical Pan Gestures (左右滑动快进快退 / 屏幕两侧滑动调亮度与音量)
@@ -1259,18 +1260,19 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         },
         onDoubleTap: () {
           if (_isScreenLocked || !hasController) return;
-          // 以播放器自身宽度划分区域；横屏/全屏时两侧命中区扩大到 20%
-          // （便于盲操作），中间 60% 双击切换播放/暂停；竖屏小窗保持 35%。
+          // 以播放器自身宽度划分区域：左右边缘为快进/快退命中区（默认各
+          // 10%，宽度可在设置中调整），中间其余区域双击切换播放/暂停。
           final playerWidth =
               context.size?.width ?? MediaQuery.of(context).size.width;
           final x = _lastTapDownPosition.dx;
-          final edgeRatio = isFull ? 0.20 : 0.35;
+          final edgeRatio = PlayerSettingsService.doubleTapEdgeRatio;
+          final seekSeconds = PlayerSettingsService.doubleTapSeekSeconds;
           if (x < playerWidth * edgeRatio) {
-            _seekRelative(-10);
-            _showSeekHud(isForward: false, seconds: 10);
+            _seekRelative(-seekSeconds);
+            _showSeekHud(isForward: false, seconds: seekSeconds);
           } else if (x > playerWidth * (1 - edgeRatio)) {
-            _seekRelative(10);
-            _showSeekHud(isForward: true, seconds: 10);
+            _seekRelative(seekSeconds);
+            _showSeekHud(isForward: true, seconds: seekSeconds);
           } else {
             _togglePlayPause();
             _showPlayPauseHud();
@@ -1278,10 +1280,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         },
         onLongPressStart: (details) {
           if (_isScreenLocked || !hasController) return;
+          final speedValue = PlayerSettingsService.longPressSpeedValue;
           _speedBeforeLongPress = _playbackSpeed;
           _isLongPressSpeeding = true;
-          unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(2.0)));
-          _danmakuController.setPlaybackSpeed(2.0);
+          unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(speedValue)));
+          _danmakuController.setPlaybackSpeed(speedValue);
           HapticFeedback.selectionClick();
           setState(() {});
         },
@@ -1790,9 +1793,9 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                           size: 15,
                         ),
                         const SizedBox(width: 4.0),
-                        const Text(
-                          '2.0X',
-                          style: TextStyle(
+                        Text(
+                          '${PlayerSettingsService.longPressSpeedValue.toStringAsFixed(1)}X',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

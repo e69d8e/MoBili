@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/theme_provider.dart';
 import '../../services/settings/player_settings_service.dart';
 import '../../services/player/sleep_timer_service.dart';
@@ -38,9 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('外观与设置'),
-      ),
+      appBar: AppBar(title: const Text('外观与设置')),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
         children: [
@@ -110,9 +109,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildPresetTile(
                     context: context,
                     preset: AppThemePreset.values[i],
-                    isSelected: themeProvider.themePreset == AppThemePreset.values[i],
+                    isSelected:
+                        themeProvider.themePreset == AppThemePreset.values[i],
                     isDark: isDark,
-                    onTap: () => themeProvider.setThemePreset(AppThemePreset.values[i]),
+                    onTap: () =>
+                        themeProvider.setThemePreset(AppThemePreset.values[i]),
                   ),
                 ],
               ],
@@ -170,7 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('AMOLED 纯黑模式', style: TextStyle(fontSize: 14)),
+                  title: const Text(
+                    'AMOLED 纯黑模式',
+                    style: TextStyle(fontSize: 14),
+                  ),
                   subtitle: Text(
                     '深色模式下使用极致纯黑背景，更沉浸省电',
                     style: TextStyle(
@@ -201,7 +205,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   builder: (context, autoRotate, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('感应自动横屏', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '感应自动横屏',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         '竖屏播放时，旋转手机自动进入横屏全屏播放',
                         style: TextStyle(
@@ -219,18 +226,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                 ),
-                 Divider(
+                Divider(
                   height: 1,
                   thickness: 0.5,
                   indent: 16,
                   color: context.colors.divider,
                 ),
                 ValueListenableBuilder<bool>(
-                  valueListenable: PlayerSettingsService.subtitleEnabledListenable,
+                  valueListenable:
+                      PlayerSettingsService.subtitleEnabledListenable,
                   builder: (context, subtitleEnabled, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('默认开启字幕', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '默认开启字幕',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         '视频含字幕时自动开启，并记忆播放器中的开关状态',
                         style: TextStyle(
@@ -259,7 +270,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   builder: (context, currentQuality, _) {
                     return ListTile(
                       dense: true,
-                      title: const Text('默认首选画质', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '默认首选画质',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         _getQualityLabel(currentQuality),
                         style: TextStyle(
@@ -267,7 +281,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: context.colors.textHint,
                         ),
                       ),
-                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 12,
+                      ),
                       onTap: () => _showQualityPicker(context),
                     );
                   },
@@ -288,27 +305,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: context.colors.textHint,
                     ),
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
-                  onTap: () => _showSpeedPicker(context),
-                ),
-                Divider(
-                  height: 1,
-                  thickness: 0.5,
-                  indent: 16,
-                  color: context.colors.divider,
-                ),
-                ListTile(
-                  dense: true,
-                  title: const Text('双击快进步长', style: TextStyle(fontSize: 14)),
-                  subtitle: Text(
-                    '${PlayerSettingsService.doubleTapSeekSeconds} 秒',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: context.colors.textHint,
-                    ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
-                  onTap: () => _showSeekSecondsPicker(context),
+                  onTap: () => _showSpeedPicker(context),
                 ),
                 Divider(
                   height: 1,
@@ -346,8 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     final sleepService = SleepTimerService();
                     final statusText = sleepService.isActive
                         ? (sleepService.isEndOfVideoMode
-                            ? '播完本视频后停止'
-                            : '倒计时中: ${sleepService.formatRemaining()}')
+                              ? '播完本视频后停止'
+                              : '倒计时中: ${sleepService.formatRemaining()}')
                         : '已关闭';
 
                     return ListTile(
@@ -355,14 +356,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       leading: Icon(
                         Icons.bedtime_outlined,
                         size: 20,
-                        color: sleepService.isActive ? primaryColor : (context.colors.textSub),
+                        color: sleepService.isActive
+                            ? primaryColor
+                            : (context.colors.textSub),
                       ),
-                      title: const Text('睡眠定时器', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '睡眠定时器',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         statusText,
                         style: TextStyle(
                           fontSize: 11,
-                          color: sleepService.isActive ? primaryColor : (context.colors.textHint),
+                          color: sleepService.isActive
+                              ? primaryColor
+                              : (context.colors.textHint),
                         ),
                       ),
                       trailing: Row(
@@ -370,14 +378,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           if (sleepService.isActive)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: primaryColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 sleepService.formatRemaining(),
-                                style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           const SizedBox(width: 4),
@@ -399,12 +414,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   builder: (context, incognito, _) {
                     return SwitchListTile(
                       dense: true,
-                      title: const Text('无痕浏览模式 (隐私)', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '无痕浏览模式 (隐私)',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         '开启后不上报播放进度至哔哩哔哩，本地亦不记录播放历史',
                         style: TextStyle(
                           fontSize: 11,
-                          color: incognito ? context.colors.warning : (context.colors.textHint),
+                          color: incognito
+                              ? context.colors.warning
+                              : (context.colors.textHint),
                         ),
                       ),
                       value: incognito,
@@ -416,7 +436,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         AppToast.show(
                           context,
                           val ? '已开启无痕浏览模式' : '已关闭无痕浏览模式',
-                          icon: val ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          icon: val
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                         );
                       },
                     );
@@ -436,11 +458,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
+                ListTile(
+                  dense: true,
+                  title: const Text(
+                    '双击快进/快退区域',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    '画面左右各 ${PlayerSettingsService.doubleTapEdgeRatioPercent}% 双击快进/快退，'
+                    '中间 ${100 - 2 * PlayerSettingsService.doubleTapEdgeRatioPercent}% 双击播放/暂停',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.colors.textHint,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
+                  ),
+                  onTap: () => _showTapZonePicker(context),
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: context.colors.divider,
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('双击快进步长', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    '${PlayerSettingsService.doubleTapSeekSeconds} 秒',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.colors.textHint,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
+                  ),
+                  onTap: () => _showSeekSecondsPicker(context),
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: context.colors.divider,
+                ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('长按 2.0x 倍速播放', style: TextStyle(fontSize: 14)),
+                  title: const Text('长按倍速播放', style: TextStyle(fontSize: 14)),
                   subtitle: Text(
-                    '在播放器上长按手指即可触发 2.0x 高速播放，松手恢复',
+                    '在播放器上长按手指即可触发 ${PlayerSettingsService.longPressSpeedValue.toStringAsFixed(1)}x 高速播放，松手恢复',
                     style: TextStyle(
                       fontSize: 11,
                       color: context.colors.textHint,
@@ -460,9 +530,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   indent: 16,
                   color: context.colors.divider,
                 ),
+                ListTile(
+                  dense: true,
+                  enabled: PlayerSettingsService.enableLongPressSpeed,
+                  title: const Text('长按倍速值', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    PlayerSettingsService.enableLongPressSpeed
+                        ? '长按播放时使用的倍速：${PlayerSettingsService.longPressSpeedValue.toStringAsFixed(1)}x'
+                        : '长按倍速播放已关闭',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.colors.textHint,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
+                  ),
+                  onTap: PlayerSettingsService.enableLongPressSpeed
+                      ? () => _showLongPressSpeedPicker(context)
+                      : null,
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: context.colors.divider,
+                ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('屏幕两侧滑动调节 (亮度/音量)', style: TextStyle(fontSize: 14)),
+                  title: const Text(
+                    '屏幕两侧滑动调节 (亮度/音量)',
+                    style: TextStyle(fontSize: 14),
+                  ),
                   subtitle: Text(
                     '左侧上下滑动调节屏幕亮度，右侧上下滑动调节音量',
                     style: TextStyle(
@@ -470,7 +570,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: context.colors.textHint,
                     ),
                   ),
-                  value: PlayerSettingsService.enableVerticalPanVolumeBrightness,
+                  value:
+                      PlayerSettingsService.enableVerticalPanVolumeBrightness,
                   activeTrackColor: primaryColor,
                   onChanged: (val) {
                     setState(() {
@@ -486,7 +587,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('水平滑动手势快进快退', style: TextStyle(fontSize: 14)),
+                  title: const Text(
+                    '水平滑动手势快进快退',
+                    style: TextStyle(fontSize: 14),
+                  ),
                   subtitle: Text(
                     '在画面上左右平移拖动即可精确快进或快退',
                     style: TextStyle(
@@ -510,7 +614,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   dense: true,
-                  title: const Text('手势预返回 (Predictive Back)', style: TextStyle(fontSize: 14)),
+                  title: const Text(
+                    '手势预返回 (Predictive Back)',
+                    style: TextStyle(fontSize: 14),
+                  ),
                   subtitle: Text(
                     '侧滑返回时实时预览上一级页面（默认关闭，开启需系统与设备支持）',
                     style: TextStyle(
@@ -538,13 +645,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               animation: _cacheService,
               builder: (context, _) {
                 final info = _cacheService.cacheInfo;
-                final cleanableStr = AppCacheService.formatBytes(info.cleanableBytes);
+                final cleanableStr = AppCacheService.formatBytes(
+                  info.cleanableBytes,
+                );
 
                 return Column(
                   children: [
                     ListTile(
                       dense: true,
-                      title: const Text('缓存深度管理', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      title: const Text(
+                        '缓存深度管理',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       subtitle: Text(
                         '可视化查看并清理网络图片、播放临时缓冲及记录',
                         style: TextStyle(
@@ -557,7 +672,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           if (info.cleanableBytes > 0)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: primaryColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(12),
@@ -572,12 +690,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                           const SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 12,
+                            color: context.colors.textHint,
+                          ),
                         ],
                       ),
                       onTap: () async {
                         await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (ctx) => const CacheManagementScreen()),
+                          MaterialPageRoute(
+                            builder: (ctx) => const CacheManagementScreen(),
+                          ),
                         );
                         _cacheService.calculateAllCacheSizes();
                       },
@@ -591,12 +715,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     AnimatedBuilder(
                       animation: VideoCacheService(),
                       builder: (context, _) {
-                        final sizeStr = VideoCacheService().getFormattedTotalCacheSize();
+                        final sizeStr = VideoCacheService()
+                            .getFormattedTotalCacheSize();
                         final count = VideoCacheService().totalCompletedCount;
 
                         return ListTile(
                           dense: true,
-                          title: const Text('视频离线缓存', style: TextStyle(fontSize: 14)),
+                          title: const Text(
+                            '视频离线缓存',
+                            style: TextStyle(fontSize: 14),
+                          ),
                           subtitle: Text(
                             count > 0 ? '已缓存 $count 个视频，占用 $sizeStr' : '暂无缓存视频',
                             style: TextStyle(
@@ -615,12 +743,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 12,
+                                color: context.colors.textHint,
+                              ),
                             ],
                           ),
                           onTap: () async {
                             await Navigator.of(context).push(
-                              MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
+                              MaterialPageRoute(
+                                builder: (ctx) => const VideoCacheScreen(),
+                              ),
                             );
                             _cacheService.calculateAllCacheSizes();
                           },
@@ -635,7 +769,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     ListTile(
                       dense: true,
-                      title: const Text('快速清理图片缓存', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '快速清理图片缓存',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         info.imageCacheBytes > 0
                             ? '当前图片缓存占用 ${AppCacheService.formatBytes(info.imageCacheBytes)}'
@@ -645,7 +782,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: context.colors.textHint,
                         ),
                       ),
-                      trailing: const Icon(Icons.cleaning_services_rounded, size: 18),
+                      trailing: const Icon(
+                        Icons.cleaning_services_rounded,
+                        size: 18,
+                      ),
                       onTap: () async {
                         final freed = await _cacheService.clearImageCache();
                         if (context.mounted) {
@@ -665,7 +805,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     ListTile(
                       dense: true,
-                      title: const Text('清空播放历史记录', style: TextStyle(fontSize: 14)),
+                      title: const Text(
+                        '清空播放历史记录',
+                        style: TextStyle(fontSize: 14),
+                      ),
                       subtitle: Text(
                         info.historyCount > 0
                             ? '已记录 ${info.historyCount} 条本地视频播放进度'
@@ -675,18 +818,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: context.colors.textHint,
                         ),
                       ),
-                      trailing: Icon(Icons.delete_outline_rounded, size: 18, color: context.colors.danger),
+                      trailing: Icon(
+                        Icons.delete_outline_rounded,
+                        size: 18,
+                        color: context.colors.danger,
+                      ),
                       onTap: () async {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
-                            title: const Text('清空播放历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                            title: const Text(
+                              '清空播放历史',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             content: const Text('确定要清空本地保存的所有播放历史记录吗？'),
                             actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消'),
+                              ),
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, true),
-                                child: Text('清空', style: TextStyle(color: context.colors.danger)),
+                                child: Text(
+                                  '清空',
+                                  style: TextStyle(
+                                    color: context.colors.danger,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -785,10 +946,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              preset.previewColors[0],
-              preset.previewColors[1],
-            ],
+            colors: [preset.previewColors[0], preset.previewColors[1]],
           ),
           border: Border.all(
             color: isSelected
@@ -822,9 +980,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (preset == AppThemePreset.ink) ...[
             const SizedBox(width: 4.0),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.5),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 4.0,
+                vertical: 1.5,
+              ),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
+                color: isDark
+                    ? Colors.white12
+                    : Colors.black.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -841,10 +1004,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       subtitle: Text(
         preset.description,
-        style: TextStyle(
-          fontSize: 11,
-          color: context.colors.textHint,
-        ),
+        style: TextStyle(fontSize: 11, color: context.colors.textHint),
       ),
       trailing: isSelected
           ? Icon(Icons.check_circle_rounded, color: activePrimary, size: 20)
@@ -911,47 +1071,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: context.colors.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).padding.bottom + 16,
-            top: 14,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(4),
+        return Material(
+          color: context.colors.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12.0),
-              const Text('选择默认首选画质', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8.0),
-              for (final q in qualities) ...[
-                ListTile(
-                  dense: true,
-                  title: Text(q['label'] as String, style: const TextStyle(fontSize: 14)),
-                  trailing: PlayerSettingsService.defaultQuality == q['val']
-                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      PlayerSettingsService.setDefaultQuality(q['val'] as int);
-                    });
-                    Navigator.pop(ctx);
-                  },
+                const SizedBox(height: 12.0),
+                const Text(
+                  '选择默认首选画质',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 8.0),
+                for (final q in qualities) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      q['label'] as String,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    trailing: PlayerSettingsService.defaultQuality == q['val']
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        PlayerSettingsService.setDefaultQuality(
+                          q['val'] as int,
+                        );
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
@@ -968,47 +1141,200 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: context.colors.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).padding.bottom + 16,
-            top: 14,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(4),
+        return Material(
+          color: context.colors.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12.0),
-              const Text('选择默认播放倍速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8.0),
-              for (final sp in speeds) ...[
-                ListTile(
-                  dense: true,
-                  title: Text('${sp}x', style: const TextStyle(fontSize: 14)),
-                  trailing: PlayerSettingsService.defaultPlaybackSpeed == sp
-                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      PlayerSettingsService.setDefaultPlaybackSpeed(sp);
-                    });
-                    Navigator.pop(ctx);
-                  },
+                const SizedBox(height: 12.0),
+                const Text(
+                  '选择默认播放倍速',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 8.0),
+                for (final sp in speeds) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text('${sp}x', style: const TextStyle(fontSize: 14)),
+                    trailing: PlayerSettingsService.defaultPlaybackSpeed == sp
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        PlayerSettingsService.setDefaultPlaybackSpeed(sp);
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showTapZonePicker(BuildContext context) {
+    final percents = [5, 10, 15, 20, 25, 30];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primaryColor = Theme.of(ctx).colorScheme.primary;
+
+        return Material(
+          color: context.colors.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12.0),
+                const Text(
+                  '双击快进/快退区域宽度',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4.0),
+                Text(
+                  '画面左右两侧各占的百分比，中间区域双击播放/暂停',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.colors.textHint,
+                  ),
+                ),
+                const SizedBox(height: 8.0),
+                for (final p in percents) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      '左右各 $p%（中间 ${100 - 2 * p}%）',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    trailing:
+                        PlayerSettingsService.doubleTapEdgeRatioPercent == p
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        PlayerSettingsService.setDoubleTapEdgeRatioPercent(p);
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showLongPressSpeedPicker(BuildContext context) {
+    final speeds = [2.0, 2.5, 3.0];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        final primaryColor = Theme.of(ctx).colorScheme.primary;
+
+        return Material(
+          color: context.colors.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12.0),
+                const Text(
+                  '选择长按倍速值',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8.0),
+                for (final sp in speeds) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      '${sp.toStringAsFixed(1)}x',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    trailing: PlayerSettingsService.longPressSpeedValue == sp
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        PlayerSettingsService.setLongPressSpeedValue(sp);
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },
@@ -1025,47 +1351,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: context.colors.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).padding.bottom + 16,
-            top: 14,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(4),
+        return Material(
+          color: context.colors.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              top: 14,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12.0),
-              const Text('双击快进步长', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8.0),
-              for (final s in secs) ...[
-                ListTile(
-                  dense: true,
-                  title: Text('$s 秒', style: const TextStyle(fontSize: 14)),
-                  trailing: PlayerSettingsService.doubleTapSeekSeconds == s
-                      ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      PlayerSettingsService.setDoubleTapSeekSeconds(s);
-                    });
-                    Navigator.pop(ctx);
-                  },
+                const SizedBox(height: 12.0),
+                const Text(
+                  '双击快进步长',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 8.0),
+                for (final s in secs) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text('$s 秒', style: const TextStyle(fontSize: 14)),
+                    trailing: PlayerSettingsService.doubleTapSeekSeconds == s
+                        ? Icon(
+                            Icons.check_circle_rounded,
+                            color: primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        PlayerSettingsService.setDoubleTapSeekSeconds(s);
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
