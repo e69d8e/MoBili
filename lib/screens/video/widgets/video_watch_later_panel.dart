@@ -9,8 +9,6 @@ class VideoWatchLaterSection extends StatelessWidget {
   final List<WatchLaterItem> items;
   final int currentIndex;
   final String currentBvid;
-  final bool isDark;
-  final Color primaryColor;
   final void Function(WatchLaterItem item, int index) onSelectItem;
   final VoidCallback onTapMore;
 
@@ -19,8 +17,6 @@ class VideoWatchLaterSection extends StatelessWidget {
     required this.items,
     required this.currentIndex,
     required this.currentBvid,
-    required this.isDark,
-    required this.primaryColor,
     required this.onSelectItem,
     required this.onTapMore,
   });
@@ -28,63 +24,58 @@ class VideoWatchLaterSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12.0),
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: context.colors.fill.withValues(alpha: isDark ? 0.5 : 0.6),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(Icons.watch_later_rounded, size: 16, color: primaryColor),
-                    const SizedBox(width: 4.0),
-                    Expanded(
-                      child: Text(
-                        '稍后看列表 · 第 ${currentIndex + 1}/${items.length} 个视频',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Text(
+                  '稍后看',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
-              ),
-              InkWell(
-                onTap: onTapMore,
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    children: [
-                      Text(
-                        '共 ${items.length} 个',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.colors.textHint,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        size: 16,
-                        color: context.colors.textHint,
-                      ),
-                    ],
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '第 ${currentIndex + 1}/${items.length} 个',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.colors.textHint,
+                    ),
                   ),
                 ),
-              ),
-            ],
+                InkWell(
+                  onTap: onTapMore,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 2, 0, 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '全部',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.colors.textHint,
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: context.colors.textHint,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8.0),
           SizedBox(
             height: 74,
             child: ListView.separated(
@@ -106,10 +97,6 @@ class VideoWatchLaterSection extends StatelessWidget {
                           ? primaryColor.withValues(alpha: 0.12)
                           : (context.colors.fill),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isPlaying ? primaryColor : Colors.transparent,
-                        width: 1,
-                      ),
                     ),
                     child: Row(
                       children: [
@@ -118,7 +105,7 @@ class VideoWatchLaterSection extends StatelessWidget {
                           child: AspectRatio(
                             aspectRatio: 16 / 10,
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [

@@ -215,7 +215,7 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
     }
   }
 
-  Widget _buildInfoTab(bool isDark) {
+  Widget _buildInfoTab() {
     if (state._detail == null && state.widget.initialVideo == null) {
       if (state._detailError) {
         return ErrorView(
@@ -228,6 +228,15 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
     final item = state._detail?.videoItem ?? state.widget.initialVideo!;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
+    // 元信息合并为一行：播放 / 弹幕 / 发布时间（离线缓存等缺省项自动略过）
+    final metaParts = <String>[
+      if (item.stat.view > 0) '${Formatters.formatCount(item.stat.view)} 播放',
+      if (item.stat.danmaku > 0)
+        '${Formatters.formatCount(item.stat.danmaku)} 弹幕',
+      if (Formatters.formatTime(item.pubdate).isNotEmpty)
+        Formatters.formatTime(item.pubdate),
+    ];
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -236,35 +245,109 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // UP Profile Row
+                // 标题 + 元信息（点击展开简介）
+                InkWell(
+                  onTap: () => setState(() => _descExpanded = !_descExpanded),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.title,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.4,
+                                  color: context.colors.textMain,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              _descExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: 20,
+                              color: context.colors.textHint,
+                            ),
+                          ],
+                        ),
+                        if (metaParts.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            metaParts.join(' · '),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.colors.textHint,
+                            ),
+                          ),
+                        ],
+                        if (_descExpanded && item.desc.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: context.colors.fill,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              item.desc,
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.45,
+                                color: context.colors.textSub,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // UP 主行：头像 / 昵称 / 粉丝数 + 关注
                 Row(
                   children: [
                     GestureDetector(
                       onTap: () => state._navigateToUpSpace(item.owner.mid),
-                      child: UserAvatar(url: item.owner.face, size: 38),
+                      child: UserAvatar(url: item.owner.face, size: 36),
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: () => state._navigateToUpSpace(item.owner.mid),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               item.owner.name,
-                              style: const TextStyle(
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
+                                color: context.colors.textMain,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${_upFans > 0 ? "${Formatters.formatCount(_upFans)}粉丝 · " : ""}${Formatters.formatTime(item.pubdate)} · ${item.bvid}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.colors.textHint,
+                            if (_upFans > 0) ...[
+                              const SizedBox(height: 1),
+                              Text(
+                                '${Formatters.formatCount(_upFans)} 粉丝',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: context.colors.textHint,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
@@ -300,98 +383,7 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                   ],
                 ),
 
-                const SizedBox(height: 12.0),
-
-                // Video Title & Description
-                InkWell(
-                  onTap: () => setState(() => _descExpanded = !_descExpanded),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.title,
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.35,
-                                  color: context.colors.textMain,
-                                ),
-                              ),
-                            ),
-                            Icon(
-                              _descExpanded
-                                  ? Icons.keyboard_arrow_up_rounded
-                                  : Icons.keyboard_arrow_down_rounded,
-                              size: 20,
-                              color: context.colors.textHint,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4.0),
-                        // Stats Row
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.play_arrow_rounded,
-                              size: 14,
-                              color: context.colors.textHint,
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${Formatters.formatCount(item.stat.view)} 播放',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.colors.textHint,
-                              ),
-                            ),
-                            const SizedBox(width: 12.0),
-                            Icon(
-                              Icons.subtitles_outlined,
-                              size: 12,
-                              color: context.colors.textHint,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${Formatters.formatCount(item.stat.danmaku)} 弹幕',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.colors.textHint,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (_descExpanded && item.desc.isNotEmpty) ...[
-                          const SizedBox(height: 8.0),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(8.0),
-                            decoration: BoxDecoration(
-                              color: context.colors.fill,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              item.desc,
-                              style: TextStyle(
-                                fontSize: 12,
-                                height: 1.45,
-                                color: context.colors.textSub,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 12.0),
+                const SizedBox(height: 4),
 
                 // Action Buttons Bar (Like, Coin, Fav, Cache, Listen Video, Watch Later, Triple)
                 AnimatedBuilder(
@@ -452,16 +444,12 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                   },
                 ),
 
-                const SizedBox(height: 16.0),
-
                 // Watch Later Playlist (稍后看播放列表)
                 if (state._watchLaterList != null && state._watchLaterList!.isNotEmpty)
                   VideoWatchLaterSection(
                     items: state._watchLaterList!,
                     currentIndex: state._currentWatchLaterIndex,
                     currentBvid: state._currentBvid,
-                    isDark: isDark,
-                    primaryColor: primaryColor,
                     onSelectItem: (item, idx) =>
                         state._switchWatchLaterItem(item, idx),
                     onTapMore: state._showWatchLaterBottomSheet,
@@ -478,137 +466,32 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                           .toList();
                       if (episodes.isEmpty) return const SizedBox.shrink();
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12.0),
-                        padding: const EdgeInsets.all(12.0),
-                        decoration: BoxDecoration(
-                          color: context.colors.fill.withValues(alpha: isDark ? 0.5 : 0.6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.video_library_rounded,
-                                        size: 16,
-                                        color: primaryColor,
-                                      ),
-                                      const SizedBox(width: 4.0),
-                                      Expanded(
-                                        child: Text(
-                                          '合集 · ${season.title}',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                InkWell(
-                                  onTap: () =>
-                                      state._showUgcSeasonBottomSheet(season),
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 2,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          '共 ${season.epCount} 集',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: context.colors.textHint,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Icon(
-                                          Icons.chevron_right_rounded,
-                                          size: 16,
-                                          color: context.colors.textHint,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionHeader(
+                            '合集 · ${season.title}',
+                            onMore: () => state._showUgcSeasonBottomSheet(season),
+                            moreLabel: '共 ${season.epCount} 集',
+                          ),
+                          SizedBox(
+                            height: 34,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: episodes.length,
+                              separatorBuilder: (c, _) =>
+                                  const SizedBox(width: 8.0),
+                              itemBuilder: (c, idx) {
+                                final ep = episodes[idx];
+                                return _infoChip(
+                                  label: '${idx + 1}. ${ep.title}',
+                                  selected: ep.bvid == state._currentBvid,
+                                  onTap: () => state._switchEpisode(ep),
+                                );
+                              },
                             ),
-                            const SizedBox(height: 8.0),
-                            SizedBox(
-                              height: 38,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: episodes.length,
-                                separatorBuilder: (c, _) =>
-                                    const SizedBox(width: 8.0),
-                                itemBuilder: (c, idx) {
-                                  final ep = episodes[idx];
-                                  final isPlaying = ep.bvid == state._currentBvid;
-                                  return InkWell(
-                                    onTap: () => state._switchEpisode(ep),
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12.0,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isPlaying
-                                            ? primaryColor.withValues(
-                                                alpha: 0.12,
-                                              )
-                                            : (context.colors.fill),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: isPlaying
-                                              ? primaryColor
-                                              : Colors.transparent,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (isPlaying) ...[
-                                            Icon(
-                                              Icons.play_arrow_rounded,
-                                              size: 14,
-                                              color: primaryColor,
-                                            ),
-                                            const SizedBox(width: 4),
-                                          ],
-                                          Text(
-                                            '${idx + 1}. ${ep.title}',
-                                            style: TextStyle(
-                                              color: isPlaying
-                                                  ? primaryColor
-                                                  : (context.colors.textMain),
-                                              fontSize: 12,
-                                              fontWeight: isPlaying
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -616,34 +499,12 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
 
                 // Video Chapters (视频章节)
                 if (state._detail != null && state._detail!.chapters.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.bookmark_outline_rounded,
-                        size: 15,
-                        color: primaryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        '视频章节',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        '共 ${state._detail!.chapters.length} 节',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.colors.textHint,
-                        ),
-                      ),
-                    ],
+                  _sectionHeader(
+                    '章节',
+                    count: '共 ${state._detail!.chapters.length} 节',
                   ),
-                  const SizedBox(height: 8.0),
                   SizedBox(
-                    height: 38,
+                    height: 34,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: state._detail!.chapters.length,
@@ -651,7 +512,10 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                       itemBuilder: (ctx, idx) {
                         final ch = state._detail!.chapters[idx];
                         final timeStr = Formatters.formatDuration(ch.from);
-                        return InkWell(
+                        return _infoChip(
+                          badge: timeStr,
+                          label: ch.title,
+                          selected: false,
                           onTap: () {
                             state._playerKey.currentState?.controller?.seekTo(
                               Duration(seconds: ch.from),
@@ -659,124 +523,34 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                             state._playerKey.currentState?.play();
                             AppToast.show(context, '已跳转至 $timeStr ${ch.title}');
                           },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                            decoration: BoxDecoration(
-                              color: context.colors.fill,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isDark ? Colors.white10 : Colors.black12,
-                                width: 0.8,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4.0,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: primaryColor.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    timeStr,
-                                    style: TextStyle(
-                                      color: primaryColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4.0),
-                                Text(
-                                  ch.title,
-                                  style: TextStyle(
-                                    color: context.colors.textMain,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         );
                       },
                     ),
                   ),
-                  const SizedBox(height: 16.0),
                 ],
 
                 // Multi-part Selector (分P选集)
                 if (state._detail != null && state._detail!.pages.length > 1) ...[
-                  Row(
-                    children: [
-                      const Text(
-                        '分P选集',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        '共 ${state._detail!.pages.length} 集',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.colors.textHint,
-                        ),
-                      ),
-                    ],
+                  _sectionHeader(
+                    '选集',
+                    count: '共 ${state._detail!.pages.length} 集',
                   ),
-                  const SizedBox(height: 8.0),
                   SizedBox(
-                    height: 38,
+                    height: 34,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: state._detail!.pages.length,
                       separatorBuilder: (ctx, _) => const SizedBox(width: 8.0),
                       itemBuilder: (ctx, idx) {
                         final page = state._detail!.pages[idx];
-                        final isSelected = state._selectedPageIndex == idx;
-                        return InkWell(
+                        return _infoChip(
+                          label: 'P${page.page} ${page.part}',
+                          selected: state._selectedPageIndex == idx,
                           onTap: () => state._switchPart(idx),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? primaryColor.withValues(alpha: 0.12)
-                                  : (context.colors.fill),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isSelected
-                                    ? primaryColor
-                                    : Colors.transparent,
-                                width: 1,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'P${page.page} ${page.part}',
-                              style: TextStyle(
-                                color: isSelected
-                                    ? primaryColor
-                                    : (context.colors.textMain),
-                                fontSize: 12,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                          ),
                         );
                       },
                     ),
                   ),
-                  const SizedBox(height: 16.0),
                 ],
               ],
             ),
@@ -831,14 +605,122 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
     );
   }
 
+  /// 统一区块头：左侧标题（可带计数），右侧可选“更多”入口。
+  Widget _sectionHeader(
+    String title, {
+    String? count,
+    String? moreLabel,
+    VoidCallback? onMore,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 14, 0, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (count != null) ...[
+            const SizedBox(width: 6),
+            Text(
+              count,
+              style: TextStyle(fontSize: 12, color: context.colors.textHint),
+            ),
+          ],
+          if (onMore != null)
+            InkWell(
+              onTap: onMore,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 2, 0, 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      moreLabel ?? '全部',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.colors.textHint,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: context.colors.textHint,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 统一信息胶囊：选中 = 主题色浅底，未选中 = 中性底，无边框。
+  Widget _infoChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    String? badge,
+  }) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? primaryColor.withValues(alpha: 0.12)
+              : context.colors.fill,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (badge != null) ...[
+              Text(
+                badge,
+                style: TextStyle(
+                  color: primaryColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? primaryColor : context.colors.textMain,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _buildInfoTab(isDark);
+    return _buildInfoTab();
   }
 }
 
