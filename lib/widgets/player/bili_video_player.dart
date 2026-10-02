@@ -4,8 +4,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../../theme/overlay_colors.dart';
 import '../../theme/app_theme.dart';
+
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -95,8 +97,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   /// B 站 CDN 要求 Referer/UA，直连时由播放器携带
   static const Map<String, String> _biliHeaders = {
     'Referer': 'https://www.bilibili.com',
-    'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   };
 
   /// DASH 双流：独立音轨控制器（渐进式单流时为 null，音轨已内嵌在视频流中）
@@ -133,6 +134,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       ? PlayerSettingsService.longPressSpeedValue
       : _playbackSpeed;
   double _speedBeforeLongPress = 1.0;
+
+  // 播放状态边沿跟踪：缓冲结束的自动续播不经过 play()，而 video_player 的
+  // setPlaybackSpeed 在非播放态（含缓冲中）会跳过平台调用，倍速的设置/恢复
+  // 若恰好落在缓冲窗口就会停留在平台侧旧值，需在恢复播放时补发（见
+  // _reassertPlaybackSpeeds）。
+  bool _wasVideoPlaying = false;
+  bool _wasAudioPlaying = false;
 
   // Pan Progress Seek & Vertical Pan Gestures (左右滑动快进快退 / 屏幕两侧滑动调亮度与音量)
   bool _isDraggingProgress = false;
@@ -335,7 +343,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     String? cacheKey,
   }) async {
     try {
-      return await resolvePlayableUrl(url, isAudio: isAudio, cacheKey: cacheKey);
+      return await resolvePlayableUrl(
+        url,
+        isAudio: isAudio,
+        cacheKey: cacheKey,
+      );
     } catch (_) {
       return url;
     }
@@ -354,7 +366,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     String audioUrl,
     VideoPlayerOptions options,
   ) async {
-    final isLocal = !audioUrl.startsWith('http://') && !audioUrl.startsWith('https://');
+    final isLocal =
+        !audioUrl.startsWith('http://') && !audioUrl.startsWith('https://');
     if (!kIsWeb && isLocal) {
       final path = audioUrl.startsWith('file:')
           ? (Uri.tryParse(audioUrl)?.toFilePath() ?? audioUrl)
@@ -366,7 +379,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
           videoPlayerOptions: options,
         );
       }
-      return VideoPlayerController.file(File(path), videoPlayerOptions: options);
+      return VideoPlayerController.file(
+        File(path),
+        videoPlayerOptions: options,
+      );
     }
 
     final playable = await _resolveRemoteUrl(
@@ -453,6 +469,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }
     if (oldAudioController != null) {
       oldAudioController.removeListener(_onPlayerUpdate);
+      oldAudioController.removeListener(_onAudioPlayerUpdate);
       try {
         await oldAudioController.pause();
         await oldAudioController.dispose();
@@ -599,8 +616,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       _pendingController = null;
       _controller = controller;
       controller.addListener(_onPlayerUpdate);
+      _wasVideoPlaying = false;
       if (audioController != null) {
         _audioController = audioController;
+        audioController.addListener(_onAudioPlayerUpdate);
+        _wasAudioPlaying = false;
         _lastAudioSyncAt = null;
       }
 
@@ -676,7 +696,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (!video.value.isInitialized || !audio.value.isInitialized) return;
 
     final now = DateTime.now();
-    final recentSeek = _lastSeekAt != null &&
+    final recentSeek =
+        _lastSeekAt != null &&
         now.difference(_lastSeekAt!) < const Duration(milliseconds: 300);
 
     if (!shouldCorrectDrift(
@@ -696,6 +717,25 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         await audio.seekTo(target);
       } catch (_) {}
     }());
+  }
+
+  /// 播放状态恢复时把 Dart 侧期望倍速补发到平台（视频轨/伴音轨各自以
+  /// value.playbackSpeed 为准）。同值重复下发不会触发监听回调。
+  void _reassertPlaybackSpeeds() {
+    final video = _controller;
+    if (video != null && video.value.isInitialized && video.value.isPlaying) {
+      unawaited(_setPlatformSpeed(video));
+    }
+    final audio = _audioController;
+    if (audio != null && audio.value.isInitialized && audio.value.isPlaying) {
+      unawaited(_setPlatformSpeed(audio));
+    }
+  }
+
+  Future<void> _setPlatformSpeed(VideoPlayerController c) async {
+    try {
+      await c.setPlaybackSpeed(c.value.playbackSpeed);
+    } catch (_) {}
   }
 
   void _enableWakelock() {
@@ -720,6 +760,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (!mounted || _controller == null) return;
 
     final val = _controller!.value;
+    if (val.isPlaying && !_wasVideoPlaying) {
+      _reassertPlaybackSpeeds();
+    }
+    _wasVideoPlaying = val.isPlaying;
     if (val.isPlaying) {
       _enableWakelock();
     } else {
@@ -739,6 +783,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }
 
     widget.onProgressUpdate?.call(val.position, val.duration);
+  }
+
+  /// 伴音轨状态监听：仅用于缓冲恢复时补发平台倍速（与视频轨同理）。
+  void _onAudioPlayerUpdate() {
+    final audio = _audioController;
+    if (audio == null) return;
+    if (audio.value.isPlaying && !_wasAudioPlaying) {
+      _reassertPlaybackSpeeds();
+    }
+    _wasAudioPlaying = audio.value.isPlaying;
   }
 
   void _startHideTimer() {
@@ -1083,6 +1137,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }
     if (_audioController != null) {
       _audioController!.removeListener(_onPlayerUpdate);
+      _audioController!.removeListener(_onAudioPlayerUpdate);
       try {
         _audioController!.pause();
         _audioController!.dispose();
@@ -1279,7 +1334,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
           }
         },
         onLongPressStart: (details) {
-          if (_isScreenLocked || !hasController) return;
+          if (_isScreenLocked ||
+              !hasController ||
+              !PlayerSettingsService.enableLongPressSpeed) {
+            return;
+          }
           final speedValue = PlayerSettingsService.longPressSpeedValue;
           _speedBeforeLongPress = _playbackSpeed;
           _isLongPressSpeeding = true;
@@ -1291,14 +1350,18 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         onLongPressEnd: (details) {
           if (!_isLongPressSpeeding) return;
           _isLongPressSpeeding = false;
-          unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)));
+          unawaited(
+            _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
+          );
           _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
           setState(() {});
         },
         onLongPressCancel: () {
           if (!_isLongPressSpeeding) return;
           _isLongPressSpeeding = false;
-          unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)));
+          unawaited(
+            _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
+          );
           _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
           setState(() {});
         },
@@ -1327,6 +1390,24 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
               details.localPosition.dy < topExclusion) {
             _isPanGestureIgnored = true;
             return;
+          }
+
+          // Bottom Edge Exclusion: 全屏/横屏时播放器铺满整屏，底部边缘是
+          // 系统上滑返回/回主屏的手势区。起手于此的滑动交给系统处理，
+          // 不再判定为亮度/音量/进度手势，避免上滑返回时误触 HUD。
+          if (isFull) {
+            final bottomSafe = math.max(
+              mediaQuery.viewPadding.bottom,
+              mediaQuery.padding.bottom,
+            );
+            final playerHeight = context.size?.height ?? mediaQuery.size.height;
+            final bottomExclusionY =
+                playerHeight - math.max(bottomSafe + 40.0, 60.0);
+            if (downLocalY > bottomExclusionY ||
+                details.localPosition.dy > bottomExclusionY) {
+              _isPanGestureIgnored = true;
+              return;
+            }
           }
 
           _isPanGestureIgnored = false;
@@ -1930,7 +2011,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     return AspectRatio(aspectRatio: effectiveRatio, child: playerBody);
   }
 
-  List<({int quality, String description, bool locked})> _getAvailableQualities() {
+  List<({int quality, String description, bool locked})>
+  _getAvailableQualities() {
     // 只列视频真实提供的画质；此前无条件补"1080P 60帧"等档位，
     // 大会员点了必被降级并误报"需大会员"。
     return buildQualityPanelItems(
@@ -2264,9 +2346,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                         },
                                         onChangeEnd: (v) {
                                           final ms = v.toInt();
-                                          unawaited(_seekBothPlayers(
-                                            Duration(milliseconds: ms),
-                                          ));
+                                          unawaited(
+                                            _seekBothPlayers(
+                                              Duration(milliseconds: ms),
+                                            ),
+                                          );
                                           _danmakuController.updatePosition(
                                             ms / 1000.0,
                                           );

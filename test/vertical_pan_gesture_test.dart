@@ -38,95 +38,102 @@ void main() {
       await SystemMediaControlService.instance.setVolume(1.0);
     });
 
-    testWidgets('Swiping down on left half of screen decreases brightness and shows brightness HUD', (tester) async {
-      final playerKey = GlobalKey<BiliVideoPlayerState>();
+    testWidgets(
+      'Swiping down on left half of screen decreases brightness and shows brightness HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-
-      expect(playerKey.currentState, isNotNull);
-      expect(playerKey.currentState!.screenBrightness, equals(1.0));
-
-      // Left half drag: start at (200, 200)
-      final gesture = await tester.startGesture(const Offset(200, 200));
-      await tester.pump();
-
-      // Drag downwards across several move events to simulate real finger movement
-      for (int i = 0; i < 8; i++) {
-        await gesture.moveBy(const Offset(0, 20));
+        );
         await tester.pump();
-      }
 
-      // Brightness should have decreased
-      expect(playerKey.currentState!.screenBrightness, lessThan(1.0));
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
 
-      // HUD with percentage should be displayed
-      final percent = (playerKey.currentState!.screenBrightness * 100).round();
-      expect(find.text('$percent%'), findsOneWidget);
-      expect(find.byType(LinearProgressIndicator), findsWidgets);
+        // Left half drag: start at (200, 200)
+        final gesture = await tester.startGesture(const Offset(200, 200));
+        await tester.pump();
 
-      await gesture.up();
-      // Pump past HUD dismiss timer and double tap timer
-      await tester.pump(const Duration(milliseconds: 1000));
-    });
+        // Drag downwards across several move events to simulate real finger movement
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 20));
+          await tester.pump();
+        }
 
-    testWidgets('Swiping down on right half of screen decreases volume and shows volume HUD', (tester) async {
-      final playerKey = GlobalKey<BiliVideoPlayerState>();
+        // Brightness should have decreased
+        expect(playerKey.currentState!.screenBrightness, lessThan(1.0));
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
+        // HUD with percentage should be displayed
+        final percent = (playerKey.currentState!.screenBrightness * 100)
+            .round();
+        expect(find.text('$percent%'), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsWidgets);
+
+        await gesture.up();
+        // Pump past HUD dismiss timer and double tap timer
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
+
+    testWidgets(
+      'Swiping down on right half of screen decreases volume and shows volume HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-
-      expect(playerKey.currentState, isNotNull);
-      expect(playerKey.currentState!.currentVolume, equals(1.0));
-
-      // Right half drag: start at (600, 200)
-      final gesture = await tester.startGesture(const Offset(600, 200));
-      await tester.pump();
-
-      // Drag downwards across several move events
-      for (int i = 0; i < 8; i++) {
-        await gesture.moveBy(const Offset(0, 20));
+        );
         await tester.pump();
-      }
 
-      // Volume should have decreased
-      expect(playerKey.currentState!.currentVolume, lessThan(1.0));
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.currentVolume, equals(1.0));
 
-      // HUD with percentage should be displayed
-      final percent = (playerKey.currentState!.currentVolume * 100).round();
-      expect(find.text('$percent%'), findsOneWidget);
-      expect(find.byType(LinearProgressIndicator), findsWidgets);
+        // Right half drag: start at (600, 200)
+        final gesture = await tester.startGesture(const Offset(600, 200));
+        await tester.pump();
 
-      await gesture.up();
-      // Pump past HUD dismiss timer and double tap timer
-      await tester.pump(const Duration(milliseconds: 1000));
-    });
+        // Drag downwards across several move events
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 20));
+          await tester.pump();
+        }
+
+        // Volume should have decreased
+        expect(playerKey.currentState!.currentVolume, lessThan(1.0));
+
+        // HUD with percentage should be displayed
+        final percent = (playerKey.currentState!.currentVolume * 100).round();
+        expect(find.text('$percent%'), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsWidgets);
+
+        await gesture.up();
+        // Pump past HUD dismiss timer and double tap timer
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
 
     testWidgets('Swiping up on left half increases brightness', (tester) async {
       final playerKey = GlobalKey<BiliVideoPlayerState>();
@@ -137,10 +144,7 @@ void main() {
             body: SizedBox(
               width: 800,
               height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
-              ),
+              child: BiliVideoPlayer(key: playerKey, playUrlInfo: dummyPlayUrl),
             ),
           ),
         ),
@@ -173,10 +177,7 @@ void main() {
             body: SizedBox(
               width: 800,
               height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
-              ),
+              child: BiliVideoPlayer(key: playerKey, playUrlInfo: dummyPlayUrl),
             ),
           ),
         ),
@@ -200,118 +201,214 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1000));
     });
 
-    testWidgets('Vertical pan is ignored when PlayerSettingsService.enableVerticalPanVolumeBrightness is false', (tester) async {
-      await PlayerSettingsService.setEnableVerticalPan(false);
-      final playerKey = GlobalKey<BiliVideoPlayerState>();
+    testWidgets(
+      'Vertical pan is ignored when PlayerSettingsService.enableVerticalPanVolumeBrightness is false',
+      (tester) async {
+        await PlayerSettingsService.setEnableVerticalPan(false);
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-
-      final gesture = await tester.startGesture(const Offset(200, 200));
-      await tester.pump();
-      for (int i = 0; i < 8; i++) {
-        await gesture.moveBy(const Offset(0, 20));
+        );
         await tester.pump();
-      }
 
-      // Brightness remains unchanged
-      expect(playerKey.currentState!.screenBrightness, equals(1.0));
+        final gesture = await tester.startGesture(const Offset(200, 200));
+        await tester.pump();
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 20));
+          await tester.pump();
+        }
 
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 1000));
-    });
+        // Brightness remains unchanged
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
 
-    testWidgets('Swiping down starting in top exclusion area (status bar region) does NOT change brightness or show HUD', (tester) async {
-      final playerKey = GlobalKey<BiliVideoPlayerState>();
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
+    testWidgets(
+      'Swiping down starting in top exclusion area (status bar region) does NOT change brightness or show HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-
-      expect(playerKey.currentState, isNotNull);
-      expect(playerKey.currentState!.screenBrightness, equals(1.0));
-
-      // Drag starting near top edge (status bar / top bar pull down zone: y = 20)
-      final gesture = await tester.startGesture(const Offset(200, 20));
-      await tester.pump();
-
-      for (int i = 0; i < 8; i++) {
-        await gesture.moveBy(const Offset(0, 20));
+        );
         await tester.pump();
-      }
 
-      // Brightness must remain 1.0 (unaffected)
-      expect(playerKey.currentState!.screenBrightness, equals(1.0));
-      // No HUD should be displayed
-      expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
 
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 1000));
-    });
+        // Drag starting near top edge (status bar / top bar pull down zone: y = 20)
+        final gesture = await tester.startGesture(const Offset(200, 20));
+        await tester.pump();
 
-    testWidgets('Swiping down starting in top exclusion area on right side does NOT change volume or show HUD', (tester) async {
-      final playerKey = GlobalKey<BiliVideoPlayerState>();
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 20));
+          await tester.pump();
+        }
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 450,
-              child: BiliVideoPlayer(
-                key: playerKey,
-                playUrlInfo: dummyPlayUrl,
+        // Brightness must remain 1.0 (unaffected)
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
+        // No HUD should be displayed
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
+
+    testWidgets(
+      'Swiping down starting in top exclusion area on right side does NOT change volume or show HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-
-      expect(playerKey.currentState, isNotNull);
-      expect(playerKey.currentState!.currentVolume, equals(1.0));
-
-      // Drag starting near top edge on right side (y = 30)
-      final gesture = await tester.startGesture(const Offset(600, 30));
-      await tester.pump();
-
-      for (int i = 0; i < 8; i++) {
-        await gesture.moveBy(const Offset(0, 20));
+        );
         await tester.pump();
-      }
 
-      // Volume must remain 1.0 (unaffected)
-      expect(playerKey.currentState!.currentVolume, equals(1.0));
-      // No HUD should be displayed
-      expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.currentVolume, equals(1.0));
 
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 1000));
-    });
+        // Drag starting near top edge on right side (y = 30)
+        final gesture = await tester.startGesture(const Offset(600, 30));
+        await tester.pump();
+
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 20));
+          await tester.pump();
+        }
+
+        // Volume must remain 1.0 (unaffected)
+        expect(playerKey.currentState!.currentVolume, equals(1.0));
+        // No HUD should be displayed
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
+
+    testWidgets(
+      'Swiping up starting in bottom exclusion area on left side does NOT change brightness or show HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
+
+        // Bottom edge exclusion zone (system swipe-up back gesture area):
+        // player height is 450, exclusion starts at y > 450 - 60 = 390
+        final gesture = await tester.startGesture(const Offset(200, 430));
+        await tester.pump();
+
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, -20));
+          await tester.pump();
+        }
+
+        // Brightness must remain 1.0 (unaffected)
+        expect(playerKey.currentState!.screenBrightness, equals(1.0));
+        // No HUD should be displayed
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
+
+    testWidgets(
+      'Swiping up starting in bottom exclusion area on right side does NOT change volume or show HUD',
+      (tester) async {
+        final playerKey = GlobalKey<BiliVideoPlayerState>();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 800,
+                height: 450,
+                child: BiliVideoPlayer(
+                  key: playerKey,
+                  playUrlInfo: dummyPlayUrl,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(playerKey.currentState, isNotNull);
+        expect(playerKey.currentState!.currentVolume, equals(1.0));
+
+        // Bottom edge exclusion zone on right half (volume side)
+        final gesture = await tester.startGesture(const Offset(600, 440));
+        await tester.pump();
+
+        for (int i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, -20));
+          await tester.pump();
+        }
+
+        // Volume must remain 1.0 (unaffected)
+        expect(playerKey.currentState!.currentVolume, equals(1.0));
+        // No HUD should be displayed
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1000));
+      },
+    );
   });
 }
