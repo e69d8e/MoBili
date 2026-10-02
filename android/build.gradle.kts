@@ -1,5 +1,8 @@
 allprojects {
     repositories {
+        // 国内镜像优先：dl.google.com / maven central 直连 TLS 握手经常被重置
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
     }
