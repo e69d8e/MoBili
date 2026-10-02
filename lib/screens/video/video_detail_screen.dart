@@ -21,6 +21,7 @@ import '../../services/api/subtitle_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../services/api/video_api_service.dart';
 import '../../services/player/play_stream_planner.dart';
+import '../../services/player/quality_panel_policy.dart';
 import '../../services/player/video_prefetch_service.dart';
 import '../../services/settings/player_settings_service.dart';
 import '../../services/player/sleep_timer_service.dart';
@@ -735,25 +736,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     });
     if (granted == qn) {
       AppToast.show(context, '已切换至 ${_getQualityName(qn)}');
-    } else if (granted < qn) {
-      if (!isLogin) {
-        AppToast.show(
-          context,
-          '${_getQualityName(qn)}需登录，已切换至 ${_getQualityName(granted)}',
-          icon: Icons.info_outline_rounded,
-        );
-      } else if (qn >= 112) {
-        AppToast.show(
-          context,
-          '${_getQualityName(qn)}需大会员，已切换至 ${_getQualityName(granted)}',
-          icon: Icons.info_outline_rounded,
-        );
-      } else {
-        AppToast.show(
-          context,
-          '已为当前流适配最高可用画质 ${_getQualityName(granted)}',
-          icon: Icons.info_outline_rounded,
-        );
+    } else {
+      // 降级提示必须区分"视频没有该画质"与"账号权限不足"，
+      // 不能对没有 60 帧轨的视频误报"需大会员"
+      final message = qualityDowngradeMessage(
+        requested: qn,
+        granted: granted,
+        isLogin: isLogin,
+        videoOffersQuality: declaredQualities(playUrl).contains(qn),
+        labelOf: _getQualityName,
+      );
+      if (message != null) {
+        AppToast.show(context, message, icon: Icons.info_outline_rounded);
       }
     }
   }

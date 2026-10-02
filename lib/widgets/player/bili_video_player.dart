@@ -16,6 +16,7 @@ import '../../models/subtitle_model.dart';
 import '../../models/video_model.dart';
 import '../../services/api/bili_http_client.dart';
 import '../../services/player/play_stream_planner.dart';
+import '../../services/player/quality_panel_policy.dart';
 import '../../services/settings/player_settings_service.dart';
 import '../../services/player/system_media_control_service.dart';
 import '../../services/player/sleep_timer_service.dart';
@@ -1927,63 +1928,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   }
 
   List<({int quality, String description, bool locked})> _getAvailableQualities() {
-    final List<({int quality, String description, bool locked})> list = [];
-    final seen = <int>{};
-    // 1080P 及以上需要登录（未登录时服务端最高只给 720P 渐进 / 480P DASH）
-    final isLoggedIn = BiliHttpClient().isLoggedIn;
-    bool isLocked(int quality) => quality >= 80 && !isLoggedIn;
-
-    // 1. First add from support_formats
-    for (final sf in widget.playUrlInfo.supportFormats) {
-      if (sf.quality > 0 && !seen.contains(sf.quality)) {
-        seen.add(sf.quality);
-        final desc = sf.newDescription.isNotEmpty
-            ? sf.newDescription
-            : (sf.displayDesc.isNotEmpty
-                  ? sf.displayDesc
-                  : _getQualityLabel(sf.quality));
-        list.add((
-          quality: sf.quality,
-          description: desc,
-          locked: isLocked(sf.quality),
-        ));
-      }
-    }
-
-    // 2. Merge with acceptQuality & acceptDescription
-    for (int i = 0; i < widget.playUrlInfo.acceptQuality.length; i++) {
-      final q = widget.playUrlInfo.acceptQuality[i];
-      if (q > 0 && !seen.contains(q)) {
-        seen.add(q);
-        final desc = i < widget.playUrlInfo.acceptDescription.length
-            ? widget.playUrlInfo.acceptDescription[i]
-            : _getQualityLabel(q);
-        list.add((quality: q, description: desc, locked: isLocked(q)));
-      }
-    }
-
-    // 3. Fallback: Always ensure standard quality tiers (1080P 60, 1080P, 720P, 480P, 360P) are selectable
-    const standardTiers = [
-      (quality: 116, description: '1080P 60帧'),
-      (quality: 80, description: '1080P 高清'),
-      (quality: 64, description: '720P 准高清'),
-      (quality: 32, description: '480P 标清'),
-      (quality: 16, description: '360P 流畅'),
-    ];
-    for (final tier in standardTiers) {
-      if (!seen.contains(tier.quality)) {
-        seen.add(tier.quality);
-        list.add((
-          quality: tier.quality,
-          description: tier.description,
-          locked: isLocked(tier.quality),
-        ));
-      }
-    }
-
-    // Sort descending (4K -> 1080P60 -> 1080P -> 720P -> 480P -> 360P)
-    list.sort((a, b) => b.quality.compareTo(a.quality));
-    return list;
+    // 只列视频真实提供的画质；此前无条件补"1080P 60帧"等档位，
+    // 大会员点了必被降级并误报"需大会员"。
+    return buildQualityPanelItems(
+      widget.playUrlInfo,
+      isLoggedIn: BiliHttpClient().isLoggedIn,
+      labelOf: _getQualityLabel,
+    );
   }
 
   Widget _buildFloatingQualityPanel(bool isFull) {
