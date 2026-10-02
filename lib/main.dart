@@ -14,6 +14,7 @@ import 'services/settings/player_settings_service.dart';
 import 'services/storage/app_cache_service.dart';
 import 'services/storage/history_storage_service.dart';
 import 'services/storage/video_cache_service.dart';
+import 'services/update/update_check_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -41,6 +42,7 @@ void main() async {
     _initSafely('history', HistoryStorageService().init()),
     _initSafely('videoCache', VideoCacheService().init()),
     _initSafely('appCache', AppCacheService().init()),
+    _initSafely('updateCheck', UpdateCheckService.init()),
   ]);
 
   runApp(
@@ -61,6 +63,9 @@ void main() async {
 
   // 深度链接（B 站视频/UP 主/搜索链接唤起 App）
   unawaited(DeepLinkService.instance.start(appNavigatorKey));
+
+  // 启动后延迟检查应用更新（设置中可关闭），仅在发现新版本时提示
+  unawaited(UpdateCheckService.autoCheckOnLaunch(appNavigatorKey));
 }
 
 /// 全局 NavigatorKey，供深度链接等服务路由使用

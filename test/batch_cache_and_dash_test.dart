@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobili/models/danmaku_model.dart';
@@ -17,9 +19,23 @@ void main() {
 
   group('AppConstants Tests', () {
     test('Version display reflects dynamic version constant', () {
-      expect(AppConstants.appVersion, equals('v1.0.6'));
-      expect(AppConstants.appBuildNumber, equals(7));
-      expect(AppConstants.versionDisplay, equals('v1.0.6 (Build 7)'));
+      // AppConstants 的版本是 package_info_plus 读取失败时的兜底，
+      // 必须与 pubspec.yaml 的 version 保持一致
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final match = RegExp(
+        r'^version:\s*(\d+)\.(\d+)\.(\d+)\+(\d+)\s*$',
+        multiLine: true,
+      ).firstMatch(pubspec);
+      expect(match, isNotNull, reason: 'pubspec.yaml 缺少 version 字段');
+      final expectedVersion =
+          'v${match!.group(1)}.${match.group(2)}.${match.group(3)}';
+      final expectedBuild = int.parse(match.group(4)!);
+      expect(AppConstants.appVersion, equals(expectedVersion));
+      expect(AppConstants.appBuildNumber, equals(expectedBuild));
+      expect(
+        AppConstants.versionDisplay,
+        equals('$expectedVersion (Build $expectedBuild)'),
+      );
     });
   });
 

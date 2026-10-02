@@ -6,10 +6,12 @@ import '../../services/settings/player_settings_service.dart';
 import '../../services/player/sleep_timer_service.dart';
 import '../../services/storage/app_cache_service.dart';
 import '../../services/storage/video_cache_service.dart';
+import '../../services/update/update_check_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_constants.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/app_update_dialog.dart';
 import '../../widgets/player/sleep_timer_bottom_sheet.dart';
 import 'cache_management_screen.dart';
 import 'video_cache_screen.dart';
@@ -23,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final AppCacheService _cacheService = AppCacheService();
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
@@ -878,9 +881,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 ListTile(
                   dense: true,
+                  title: const Text('检查更新', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    '当前版本 ${UpdateCheckService.installedVersionDisplay}，'
+                    '联网检查 GitHub 最新 Release',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.colors.textHint,
+                    ),
+                  ),
+                  trailing: _checkingUpdate
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: primaryColor,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.refresh_rounded,
+                          size: 18,
+                        ),
+                  onTap: _checkingUpdate ? null : _manualCheckUpdate,
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: context.colors.divider,
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: UpdateCheckService.autoCheckListenable,
+                  builder: (context, autoCheck, _) {
+                    return SwitchListTile(
+                      dense: true,
+                      title: const Text(
+                        '自动检查更新',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        '启动后联网检查 GitHub 是否发布新版本，仅在发现更新时提示',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.colors.textHint,
+                        ),
+                      ),
+                      value: autoCheck,
+                      activeTrackColor: primaryColor,
+                      onChanged: (val) {
+                        setState(() {
+                          UpdateCheckService.setAutoCheckEnabled(val);
+                        });
+                      },
+                    );
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  indent: 16,
+                  color: context.colors.divider,
+                ),
+                ListTile(
+                  dense: true,
                   title: const Text('软件版本', style: TextStyle(fontSize: 14)),
                   trailing: Text(
-                    AppConstants.versionDisplay,
+                    UpdateCheckService.installedVersionDisplay,
                     style: TextStyle(
                       fontSize: 13,
                       color: context.colors.textHint,
@@ -910,6 +977,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _manualCheckUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      final info = await UpdateCheckService.checkForUpdate();
+      if (!mounted) return;
+      if (info != null) {
+        AppUpdateDialog.show(context, info);
+      } else {
+        AppToast.show(
+          context,
+          '已是最新版本 ${UpdateCheckService.installedVersionDisplay}',
+          icon: Icons.check_circle_outline_rounded,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          '检查更新失败，请检查网络后重试',
+          icon: Icons.wifi_off_rounded,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
   }
 
   Widget _buildSectionHeader(String title) {
