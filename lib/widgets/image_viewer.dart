@@ -7,6 +7,7 @@ import '../theme/overlay_colors.dart';
 import 'package:flutter/services.dart';
 import '../models/dynamic_model.dart';
 import 'app_toast.dart';
+import 'zoomable_image.dart';
 
 class ImageViewer extends StatefulWidget {
   final List<DynamicPicture> pictures;
@@ -59,7 +60,7 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
   bool _showUi = true;
   bool _isZoomed = false;
 
-  // Drag-to-dismiss state
+  // Drag-to-dismiss state（位移由 ZoomableImage 的下滑手势回调驱动）
   Offset _dragOffset = Offset.zero;
   bool _isDragging = false;
   double _bgOpacity = 1.0;
@@ -105,51 +106,58 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
     });
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    if (_isZoomed) return;
+  void _handleDismissStart() {
     _resetController.stop();
     setState(() {
       _isDragging = true;
     });
   }
 
-  void _handleDragUpdate(DragUpdateDetails details) {
+  void _handleDismissUpdate(Offset delta) {
     if (_isZoomed) return;
     setState(() {
-      _dragOffset += details.delta;
+      _dragOffset += delta;
       final dragDistance = _dragOffset.dy.abs();
       _bgOpacity = (1.0 - (dragDistance / 350)).clamp(0.15, 1.0);
     });
   }
 
-  void _handleDragEnd(DragEndDetails details) {
+  void _handleDismissEnd(double verticalVelocity) {
     if (_isZoomed) return;
-    final velocity = details.primaryVelocity ?? 0;
     final dragDist = _dragOffset.dy.abs();
 
-    if (dragDist > 90 || velocity.abs() > 500) {
-      // Dismiss
+    if (dragDist > 90 || verticalVelocity.abs() > 500) {
       Navigator.of(context).pop();
     } else {
-      // Animate back to original position
-      _offsetAnimation = Tween<Offset>(
-        begin: _dragOffset,
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: _resetController, curve: Curves.easeOut));
-
-      _opacityAnimation = Tween<double>(
-        begin: _bgOpacity,
-        end: 1.0,
-      ).animate(CurvedAnimation(parent: _resetController, curve: Curves.easeOut));
-
-      _resetController.forward(from: 0.0).then((_) {
-        setState(() {
-          _isDragging = false;
-          _dragOffset = Offset.zero;
-          _bgOpacity = 1.0;
-        });
-      });
+      _animateDragBack();
     }
+  }
+
+  /// 下滑途中转为双指缩放：取消关闭手势，位移回弹。
+  void _handleDismissCancel() {
+    if (!_isDragging && _dragOffset == Offset.zero) return;
+    _animateDragBack();
+  }
+
+  void _animateDragBack() {
+    _offsetAnimation = Tween<Offset>(
+      begin: _dragOffset,
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _resetController, curve: Curves.easeOut));
+
+    _opacityAnimation = Tween<double>(
+      begin: _bgOpacity,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _resetController, curve: Curves.easeOut));
+
+    _resetController.forward(from: 0.0).then((_) {
+      if (!mounted) return;
+      setState(() {
+        _isDragging = false;
+        _dragOffset = Offset.zero;
+        _bgOpacity = 1.0;
+      });
+    });
   }
 
   void _showActionSheet() {
@@ -207,40 +215,39 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
             color: Colors.black.withValues(alpha: _bgOpacity),
           ),
 
-          // Images PageView with Gestures
-          GestureDetector(
-            onVerticalDragStart: _handleDragStart,
-            onVerticalDragUpdate: _handleDragUpdate,
-            onVerticalDragEnd: _handleDragEnd,
-            child: Transform.translate(
-              offset: _dragOffset,
-              child: Transform.scale(
-                scale: dragScale,
-                child: PageView.builder(
-                  controller: _pageController,
-                  physics: _isZoomed
-                      ? const NeverScrollableScrollPhysics()
-                      : const BouncingScrollPhysics(),
-                  itemCount: total,
-                  onPageChanged: _onPageChanged,
-                  itemBuilder: (ctx, idx) {
-                    final pic = widget.pictures[idx];
-                    final heroTag = widget.heroPrefix != null
-                        ? '${widget.heroPrefix}_$idx'
-                        : null;
+          // Images PageView
+          Transform.translate(
+            offset: _dragOffset,
+            child: Transform.scale(
+              scale: dragScale,
+              child: PageView.builder(
+                controller: _pageController,
+                physics: _isZoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
+                itemCount: total,
+                onPageChanged: _onPageChanged,
+                itemBuilder: (ctx, idx) {
+                  final pic = widget.pictures[idx];
+                  final heroTag = widget.heroPrefix != null
+                      ? '${widget.heroPrefix}_$idx'
+                      : null;
 
-                    return _ZoomableImage(
-                      picture: pic,
-                      heroTag: heroTag,
-                      onTap: _toggleUi,
-                      onZoomChanged: (zoomed) {
-                        if (_isZoomed != zoomed) {
-                          setState(() => _isZoomed = zoomed);
-                        }
-                      },
-                    );
-                  },
-                ),
+                  return _ViewerImage(
+                    picture: pic,
+                    heroTag: heroTag,
+                    onTap: _toggleUi,
+                    onZoomChanged: (zoomed) {
+                      if (_isZoomed != zoomed) {
+                        setState(() => _isZoomed = zoomed);
+                      }
+                    },
+                    onDismissStart: _handleDismissStart,
+                    onDismissUpdate: _handleDismissUpdate,
+                    onDismissEnd: _handleDismissEnd,
+                    onDismissCancel: _handleDismissCancel,
+                  );
+                },
               ),
             ),
           ),
@@ -358,82 +365,34 @@ class _ImageViewerState extends State<ImageViewer> with SingleTickerProviderStat
   }
 }
 
-class _ZoomableImage extends StatefulWidget {
+/// 查看器里的单张图片：负责 URL 规范化、解码预算与 Hero，
+/// 手势与变换交给 [ZoomableImage]。
+class _ViewerImage extends StatefulWidget {
   final DynamicPicture picture;
   final String? heroTag;
   final VoidCallback onTap;
   final ValueChanged<bool> onZoomChanged;
+  final VoidCallback onDismissStart;
+  final ValueChanged<Offset> onDismissUpdate;
+  final ValueChanged<double> onDismissEnd;
+  final VoidCallback onDismissCancel;
 
-  const _ZoomableImage({
+  const _ViewerImage({
     required this.picture,
-    this.heroTag,
     required this.onTap,
     required this.onZoomChanged,
+    required this.onDismissStart,
+    required this.onDismissUpdate,
+    required this.onDismissEnd,
+    required this.onDismissCancel,
+    this.heroTag,
   });
 
   @override
-  State<_ZoomableImage> createState() => _ZoomableImageState();
+  State<_ViewerImage> createState() => _ViewerImageState();
 }
 
-class _ZoomableImageState extends State<_ZoomableImage> with SingleTickerProviderStateMixin {
-  late final TransformationController _transformationController;
-  late final AnimationController _animController;
-  Animation<Matrix4>? _matrixAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _transformationController = TransformationController();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 240),
-    )..addListener(() {
-        if (_matrixAnimation != null) {
-          _transformationController.value = _matrixAnimation!.value;
-        }
-      });
-
-    _transformationController.addListener(_onTransformationChanged);
-  }
-
-  @override
-  void dispose() {
-    _transformationController.removeListener(_onTransformationChanged);
-    _transformationController.dispose();
-    _animController.dispose();
-    super.dispose();
-  }
-
-  void _onTransformationChanged() {
-    final scale = _transformationController.value.getMaxScaleOnAxis();
-    final isZoomed = scale > 1.05;
-    widget.onZoomChanged(isZoomed);
-  }
-
-  void _handleDoubleTap(TapDownDetails details) {
-    final currentScale = _transformationController.value.getMaxScaleOnAxis();
-    final Matrix4 targetMatrix;
-
-    if (currentScale > 1.1) {
-      // Zoom out to normal
-      targetMatrix = Matrix4.identity();
-    } else {
-      // Zoom in to 2.5x centered at tap position
-      final position = details.localPosition;
-      final x = -position.dx * (2.5 - 1.0);
-      final y = -position.dy * (2.5 - 1.0);
-      targetMatrix = Matrix4.diagonal3Values(2.5, 2.5, 1.0)
-        ..setTranslationRaw(x, y, 0.0);
-    }
-
-    _matrixAnimation = Matrix4Tween(
-      begin: _transformationController.value,
-      end: targetMatrix,
-    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
-
-    _animController.forward(from: 0.0);
-  }
-
+class _ViewerImageState extends State<_ViewerImage> {
   String _formatUrl(String url) {
     String formatted = url.trim();
     if (formatted.startsWith('//')) {
@@ -529,19 +488,14 @@ class _ZoomableImageState extends State<_ZoomableImage> with SingleTickerProvide
       );
     }
 
-    return GestureDetector(
+    return ZoomableImage(
       onTap: widget.onTap,
-      onDoubleTapDown: _handleDoubleTap,
-      onDoubleTap: () {},
-      child: Center(
-        child: InteractiveViewer(
-          transformationController: _transformationController,
-          minScale: 1.0,
-          maxScale: 4.5,
-          clipBehavior: Clip.none,
-          child: imageWidget,
-        ),
-      ),
+      onZoomChanged: widget.onZoomChanged,
+      onDismissStart: widget.onDismissStart,
+      onDismissUpdate: widget.onDismissUpdate,
+      onDismissEnd: widget.onDismissEnd,
+      onDismissCancel: widget.onDismissCancel,
+      child: imageWidget,
     );
   }
 }
