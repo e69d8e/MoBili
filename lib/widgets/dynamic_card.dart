@@ -12,6 +12,7 @@ import '../screens/up/up_space_screen.dart';
 import '../screens/video/video_detail_screen.dart';
 import '../services/api/bili_http_client.dart';
 import '../services/api/dynamic_api_service.dart';
+import '../services/api/user_api_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/formatters.dart';
 import 'app_toast.dart';
@@ -84,6 +85,21 @@ class _DynamicCardState extends State<DynamicCard> {
         _likeCount += targetLike ? -1 : 1;
       });
       AppToast.show(context, '点赞操作失败，请重试', icon: Icons.info_outline_rounded);
+    }
+  }
+
+  void _addToWatchLater(DynamicVideo video) async {
+    HapticFeedback.lightImpact();
+    final ok = await UserApiService().addToWatchLater(
+      aid: video.aid,
+      bvid: video.bvid,
+    );
+    if (mounted) {
+      AppToast.show(
+        context,
+        ok ? '已添加稍后看' : '添加失败，请先登录',
+        icon: ok ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+      );
     }
   }
 
@@ -405,7 +421,7 @@ class _DynamicCardState extends State<DynamicCard> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 4.0, 8.0, 4.0),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
@@ -452,6 +468,8 @@ class _DynamicCardState extends State<DynamicCard> {
                             ),
                           ),
                         ],
+                        const Spacer(),
+                        _buildWatchLaterButton(video),
                       ],
                     ),
                   ],
@@ -459,6 +477,25 @@ class _DynamicCardState extends State<DynamicCard> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // 添加至稍后观看入口，与通用视频卡（video_card.dart）保持一致的交互
+  Widget _buildWatchLaterButton(DynamicVideo video) {
+    return InkWell(
+      onTap: () => _addToWatchLater(video),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(2.0),
+        child: Tooltip(
+          message: '添加至稍后观看',
+          child: Icon(
+            Icons.watch_later_outlined,
+            size: 14.5,
+            color: context.colors.textHint,
+          ),
         ),
       ),
     );
