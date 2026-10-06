@@ -4,8 +4,8 @@ class AppConstants {
   static const String appShortName = '墨哩';
   // 运行时真实版本号由 package_info_plus 读取（见 UpdateCheckService），
   // 此处仅作读取失败时的兜底，注意与 pubspec.yaml 的 version 保持一致
-  static const String appVersion = 'v1.0.9';
-  static const int appBuildNumber = 10;
+  static const String appVersion = 'v1.0.10';
+  static const int appBuildNumber = 11;
   static const String appSlogan = '极简水墨 · 沉浸哔哩';
   static const String techStack = 'Flutter + Bili WBI API';
 
