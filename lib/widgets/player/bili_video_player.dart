@@ -203,11 +203,21 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     null,
   );
 
+  /// 本地文件是否真实存在（「已离线」徽标用）。existsSync 是磁盘系统调用，
+  /// 不能放在 build 里随控制栏反复执行，仅在 init / localFilePath 变化时重算。
+  bool _isLocalFileAvailable = false;
+
+  bool _computeLocalFileAvailable() {
+    final p = widget.localFilePath;
+    return p != null && p.isNotEmpty && !kIsWeb && File(p).existsSync();
+  }
+
   @override
   void initState() {
     super.initState();
     _danmakuController = DanmakuController();
     _danmakuController.setDanmakus(widget.danmakus);
+    _isLocalFileAvailable = _computeLocalFileAvailable();
     SleepTimerService().registerPauseCallback(_onSleepTimerPause);
     _initSystemBrightnessAndVolume();
     _initPlayer(initialPosition: widget.initialPosition);
@@ -305,6 +315,9 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     super.didUpdateWidget(oldWidget);
     if (widget.danmakus != oldWidget.danmakus) {
       _danmakuController.setDanmakus(widget.danmakus);
+    }
+    if (widget.localFilePath != oldWidget.localFilePath) {
+      _isLocalFileAvailable = _computeLocalFileAvailable();
     }
 
     final isSameVideo = (widget.videoKey != null && oldWidget.videoKey != null)
@@ -527,6 +540,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       audioInitFuture = _initAudioTrack(separateAudioUrl, playerOptions, token);
     }
 
+    // 提升到 try 外：视频轨任一步失败时，在此统一释放已就绪的音轨，
+    // 否则并行初始化产出的音轨控制器无人持有，平台播放器句柄泄漏
+    VideoPlayerController? audioController;
+    bool audioFailed = false;
     try {
       await controller.initialize();
       await controller.setVolume(1.0);
@@ -540,11 +557,18 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         return;
       }
 
-      VideoPlayerController? audioController;
-      bool audioFailed = false;
       if (audioInitFuture != null) {
         final audio = await audioInitFuture;
-        if (!mounted || _initToken != token) return;
+        if (!mounted || _initToken != token) {
+          // 音轨已就绪但本次初始化已被作废：产出物未被任何字段接管，就地释放
+          if (audio != null) {
+            try {
+              await audio.pause();
+              await audio.dispose();
+            } catch (_) {}
+          }
+          return;
+        }
         if (audio == null) {
           audioFailed = true;
         } else {
@@ -649,6 +673,19 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         }
       }
     } catch (_) {
+      // 视频轨失败时音轨可能已就绪或仍在途：等它落地并释放，
+      // 已成功转交给 _audioController 的除外（所有权不在此处）
+      if (audioInitFuture != null) {
+        try {
+          final audio = await audioInitFuture;
+          if (audio != null && audio != _audioController) {
+            try {
+              await audio.pause();
+              await audio.dispose();
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
       if (_initToken == token) {
         _pendingController = null;
         _pendingAudioController = null;
@@ -2131,10 +2168,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                   Expanded(
                     child: Row(
                       children: [
-                        if (widget.localFilePath != null &&
-                            widget.localFilePath!.isNotEmpty &&
-                            !kIsWeb &&
-                            File(widget.localFilePath!).existsSync()) ...[
+                        if (_isLocalFileAvailable) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 4.0,
