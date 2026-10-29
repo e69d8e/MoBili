@@ -74,3 +74,4 @@ mobili_architecture.*
 
 # zcode
 .zcode/
+.zcodeignore
