@@ -251,8 +251,8 @@ class SearchProvider extends ChangeNotifier {
           page: nextPage,
           order: _currentOrder,
         );
-        // 翻页在途时发起了新搜索：本次追加作废
-        if (_searchToken != token) return false;
+        // 翻页在途时发起了新搜索：本次追加作废（非失败，勿误报错误）
+        if (_searchToken != token) return true;
         _videoPage = nextPage;
         if (results.isEmpty) _hasMore = false;
         _searchResults.addAll(results);
@@ -262,7 +262,7 @@ class SearchProvider extends ChangeNotifier {
           keyword: _currentKeyword,
           page: nextPage,
         );
-        if (_searchToken != token) return false;
+        if (_searchToken != token) return true;
         _userPage = nextPage;
         if (results.isEmpty) _hasMore = false;
         _searchUsers.addAll(results);
@@ -272,7 +272,7 @@ class SearchProvider extends ChangeNotifier {
           keyword: _currentKeyword,
           page: nextPage,
         );
-        if (_searchToken != token) return false;
+        if (_searchToken != token) return true;
         _articlePage = nextPage;
         if (results.isEmpty) _hasMore = false;
         _searchArticles.addAll(results);
