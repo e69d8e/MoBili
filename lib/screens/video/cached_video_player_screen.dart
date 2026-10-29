@@ -401,7 +401,6 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
     final onPrimary = theme.colorScheme.onPrimary;
 
@@ -538,7 +537,6 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             context,
                             icon: Icons.headphones_rounded,
                             label: '听视频',
-                            isDark: isDark,
                             primaryColor: primaryColor,
                             onTap: _startListenMode,
                           ),
@@ -549,7 +547,6 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             context,
                             icon: Icons.public_rounded,
                             label: '联网看详情',
-                            isDark: isDark,
                             primaryColor: primaryColor,
                             onTap: _openOnlineDetail,
                           ),
@@ -560,7 +557,6 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             context,
                             icon: Icons.delete_outline_rounded,
                             label: '删除此集',
-                            isDark: isDark,
                             primaryColor: Colors.redAccent,
                             isDestructive: true,
                             onTap: _deleteCurrentCache,
@@ -625,7 +621,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                   border: Border.all(
                                     color: isPlaying
                                         ? primaryColor
-                                        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                                        : context.colors.divider,
                                     width: isPlaying ? 1.2 : 0.8,
                                   ),
                                   borderRadius: BorderRadius.circular(12),
@@ -641,7 +637,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                                         height: 22,
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                                          color: context.colors.fill,
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
@@ -721,7 +717,6 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
     BuildContext context, {
     required IconData icon,
     required String label,
-    required bool isDark,
     required Color primaryColor,
     required VoidCallback onTap,
     bool isDestructive = false,
@@ -739,7 +734,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           decoration: BoxDecoration(
             border: Border.all(
-              color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
+              color: context.colors.divider,
               width: 0.8,
             ),
             borderRadius: BorderRadius.circular(12),

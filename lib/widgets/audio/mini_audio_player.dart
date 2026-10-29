@@ -115,7 +115,7 @@ class MiniAudioPlayer extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Top mini progress line (isolated high-frequency redraw)
-                _MiniAudioProgressBar(primary: primary, isDark: isDark),
+                _MiniAudioProgressBar(primary: primary),
                 InkWell(
                   onTap: () {
                     Navigator.of(context).push(
@@ -253,11 +253,9 @@ class MiniAudioPlayer extends StatelessWidget {
 
 class _MiniAudioProgressBar extends StatelessWidget {
   final Color primary;
-  final bool isDark;
 
   const _MiniAudioProgressBar({
     required this.primary,
-    required this.isDark,
   });
 
   @override
@@ -268,11 +266,11 @@ class _MiniAudioProgressBar extends StatelessWidget {
         final dur = provider.duration.inMilliseconds;
         return dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
       },
-      builder: (_, progress, _) {
+      builder: (context, progress, _) {
         return LinearProgressIndicator(
           value: progress,
           minHeight: 2.0,
-          backgroundColor: isDark ? Colors.white10 : Colors.black12,
+          backgroundColor: context.colors.divider,
           valueColor: AlwaysStoppedAnimation<Color>(primary),
         );
       },

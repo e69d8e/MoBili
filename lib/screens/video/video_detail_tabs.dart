@@ -125,14 +125,12 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
     final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
     if (aid <= 0) return;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     VideoFavoriteFolderSheet.show(
       context,
       aid: aid,
       mid: auth.userInfo.mid,
-      isDark: isDark,
       primaryColor: primaryColor,
       onFavStatusChanged: (isFav) {
         setState(() {

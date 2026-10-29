@@ -10,7 +10,6 @@ import '../../../widgets/state_views.dart';
 class VideoFavoriteFolderSheet extends StatefulWidget {
   final int aid;
   final int mid;
-  final bool isDark;
   final Color primaryColor;
   final void Function(bool isFav) onFavStatusChanged;
 
@@ -18,7 +17,6 @@ class VideoFavoriteFolderSheet extends StatefulWidget {
     super.key,
     required this.aid,
     required this.mid,
-    required this.isDark,
     required this.primaryColor,
     required this.onFavStatusChanged,
   });
@@ -27,7 +25,6 @@ class VideoFavoriteFolderSheet extends StatefulWidget {
     BuildContext context, {
     required int aid,
     required int mid,
-    required bool isDark,
     required Color primaryColor,
     required void Function(bool isFav) onFavStatusChanged,
   }) {
@@ -39,7 +36,6 @@ class VideoFavoriteFolderSheet extends StatefulWidget {
         return VideoFavoriteFolderSheet(
           aid: aid,
           mid: mid,
-          isDark: isDark,
           primaryColor: primaryColor,
           onFavStatusChanged: onFavStatusChanged,
         );
