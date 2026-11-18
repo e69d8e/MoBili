@@ -22,6 +22,10 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
   int _coinCount = 0;
   int _upFans = 0;
   bool _isInWatchLater = false;
+  // 接口返回的 stat 计数已包含本人的点赞/收藏；记录加载瞬间的状态，
+  // 展示时用「当前状态 - 加载时状态」算增量，避免历史状态被重复 +1
+  bool _likedAtLoad = false;
+  bool _favedAtLoad = false;
   bool _descExpanded = false;
   int _loadedAid = 0;
 
@@ -67,6 +71,8 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
         _isLiked = relation.like;
         _isFav = relation.favorite;
         _coinCount = relation.coin;
+        _likedAtLoad = relation.like;
+        _favedAtLoad = relation.favorite;
       });
     }
     if (watchLaterFuture != null) {
@@ -138,6 +144,78 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
         });
       },
     );
+  }
+
+  /// 一键收藏：单击立即切换收藏状态并乐观更新，后台提交到默认收藏夹。
+  /// 长按收藏按钮仍走 _showFavoriteBottomSheet 进行多收藏夹管理。
+  Future<void> _quickToggleFavorite() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLogin || auth.userInfo.mid <= 0) {
+      showDialog(context: context, builder: (ctx) => const LoginDialog());
+      return;
+    }
+    final aid =
+        state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
+    if (aid <= 0) return;
+
+    final target = !_isFav;
+    // 先反馈再请求，避免网络往返期间按钮看起来没反应
+    setState(() => _isFav = target);
+    HapticFeedback.lightImpact();
+
+    List<FavFolder> folders;
+    try {
+      folders = await UserApiService().getUserFavFolders(
+        auth.userInfo.mid,
+        rid: aid,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isFav = !target);
+        AppToast.show(context, '收藏夹获取失败，请检查网络',
+            icon: Icons.info_outline_rounded);
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final plan = VideoFavoriteFolderSheet.planQuickToggle(
+      folders,
+      targetFav: target,
+    );
+    if (!plan.hasChange) {
+      if (plan.alreadySatisfied) {
+        // 收藏夹列表与关系接口状态不一致时以收藏夹为准，无需再发请求
+        AppToast.show(
+          context,
+          target ? '已在收藏夹中' : '已取消收藏',
+          icon: Icons.star_rounded,
+        );
+        return;
+      }
+      // 账号没有可用收藏夹，回退到面板让用户自行处理
+      setState(() => _isFav = !target);
+      _showFavoriteBottomSheet();
+      return;
+    }
+
+    final ok = await UserApiService().dealVideoFavorite(
+      aid: aid,
+      addMediaIds: plan.addIds,
+      delMediaIds: plan.delIds,
+    );
+    if (!mounted) return;
+    if (ok) {
+      AppToast.show(
+        context,
+        target ? '已收藏到默认收藏夹' : '已取消收藏',
+        icon: target ? Icons.star_rounded : Icons.info_outline_rounded,
+      );
+    } else {
+      setState(() => _isFav = !target);
+      AppToast.show(context, '操作失败，请先登录或重试',
+          icon: Icons.info_outline_rounded);
+    }
   }
 
   Future<void> _executeAddCoin(int selectedCoins, bool selectLike) async {
@@ -400,7 +478,9 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                         .isDownloadingOrPending(state._currentBvid, cid);
 
                     return VideoActionBar(
-                      likeCount: item.stat.like + (_isLiked ? 1 : 0),
+                      likeCount: item.stat.like +
+                          (_isLiked ? 1 : 0) -
+                          (_likedAtLoad ? 1 : 0),
                       isLiked: _isLiked,
                       tripleComboAnimation: state._tripleComboAnimController,
                       onLikeTap: _toggleLike,
@@ -430,8 +510,19 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                       totalCoins: item.stat.coin,
                       onCoinTap: _showCoinDialog,
                       isFav: _isFav,
-                      favCount: item.stat.favorite + (_isFav ? 1 : 0),
-                      onFavTap: _showFavoriteBottomSheet,
+                      favCount: item.stat.favorite +
+                          (_isFav ? 1 : 0) -
+                          (_favedAtLoad ? 1 : 0),
+                      onFavTap: _quickToggleFavorite,
+                      onFavLongPress: _showFavoriteBottomSheet,
+                      shareCount: item.stat.share,
+                      onShareTap: () {
+                        VideoShareSheet.show(
+                          context,
+                          bvid: state._currentBvid,
+                          title: item.title,
+                        );
+                      },
                       isCached: isCached,
                       isDownloading: isDownloading,
                       onCacheTap: state._showCacheBottomSheet,
@@ -527,27 +618,27 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
                   ),
                 ],
 
-                // Multi-part Selector (分P选集)
+                // Multi-part Selector (分P选集宫格)：内联两行预览 + 「全部」展开
                 if (state._detail != null && state._detail!.pages.length > 1) ...[
                   _sectionHeader(
                     '选集',
                     count: '共 ${state._detail!.pages.length} 集',
-                  ),
-                  SizedBox(
-                    height: 34,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: state._detail!.pages.length,
-                      separatorBuilder: (ctx, _) => const SizedBox(width: 8.0),
-                      itemBuilder: (ctx, idx) {
-                        final page = state._detail!.pages[idx];
-                        return _infoChip(
-                          label: 'P${page.page} ${page.part}',
-                          selected: state._selectedPageIndex == idx,
-                          onTap: () => state._switchPart(idx),
-                        );
-                      },
+                    moreLabel: '全部',
+                    onMore: () => VideoPartGridSheet.show(
+                      context,
+                      pages: state._detail!.pages,
+                      selectedIndex: state._selectedPageIndex,
+                      bvid: state._currentBvid,
+                      onSelect: (idx) => state._switchPart(idx),
                     ),
+                  ),
+                  VideoPartGrid(
+                    pages: state._detail!.pages,
+                    selectedIndex: state._selectedPageIndex,
+                    bvid: state._currentBvid,
+                    maxItems: 6,
+                    shrinkWrap: true,
+                    onSelect: (idx) => state._switchPart(idx),
                   ),
                 ],
               ],
@@ -578,17 +669,21 @@ class _VideoInfoTabState extends State<_VideoInfoTab>
               ),
               itemCount: state._relatedVideos.length,
               itemBuilder: (ctx, idx) {
+                final related = state._relatedVideos[idx];
+                final heroTag = 'related_${related.bvid}_$idx';
                 return RepaintBoundary(
                   child: VideoCard(
-                    video: state._relatedVideos[idx],
+                    video: related,
+                    heroTag: heroTag,
                     onTap: () async {
                       await state._playerKey.currentState?.pause();
                       if (!ctx.mounted) return;
                       Navigator.of(ctx).push(
                         MaterialPageRoute(
                           builder: (c) => VideoDetailScreen(
-                            bvid: state._relatedVideos[idx].bvid,
-                            initialVideo: state._relatedVideos[idx],
+                            bvid: related.bvid,
+                            initialVideo: related,
+                            heroTag: heroTag,
                           ),
                         ),
                       );
@@ -918,7 +1013,6 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
   }
 
   void _showSubRepliesBottomSheet(CommentItem rootComment) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
     final aid = state._detail?.videoItem.aid ?? state.widget.initialVideo?.aid ?? 0;
 
@@ -926,7 +1020,6 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
       context,
       oid: aid,
       rootComment: rootComment,
-      isDark: isDark,
       primaryColor: primaryColor,
     );
   }
@@ -1075,7 +1168,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
     }
   }
 
-  Widget _buildCommentsTab(bool isDark) {
+  Widget _buildCommentsTab() {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     if (_commentLoading && _comments.isEmpty) {
@@ -1094,7 +1187,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
                   : null,
             ),
           ),
-          _buildBottomCommentBar(isDark, primaryColor),
+          _buildBottomCommentBar(primaryColor),
         ],
       );
     }
@@ -1190,8 +1283,11 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
                           children: [
                             CommentItemWidget(
                               comment: comment,
-                              onReplyTap: () =>
-                                  _showSubRepliesBottomSheet(comment),
+                              onReplyTap: () => _showCommentInputDialog(
+                                root: comment.rpid,
+                                parent: comment.rpid,
+                                replyToUname: comment.member.uname,
+                              ),
                               onSubRepliesTap: () =>
                                   _showSubRepliesBottomSheet(comment),
                             ),
@@ -1238,12 +1334,12 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
             ),
           ),
         ),
-        _buildBottomCommentBar(isDark, primaryColor),
+        _buildBottomCommentBar(primaryColor),
       ],
     );
   }
 
-  Widget _buildBottomCommentBar(bool isDark, Color primaryColor) {
+  Widget _buildBottomCommentBar(Color primaryColor) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       decoration: BoxDecoration(
@@ -1266,9 +1362,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
               color: context.colors.card,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.06),
+                color: context.colors.divider,
                 width: 0.8,
               ),
             ),
@@ -1303,8 +1397,7 @@ class _VideoCommentsTabState extends State<_VideoCommentsTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _buildCommentsTab(isDark);
+    return _buildCommentsTab();
   }
 }
 

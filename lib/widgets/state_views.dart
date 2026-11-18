@@ -57,37 +57,28 @@ class EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 32.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Zen-ink circular soft badge
+            // 圆形柔和小徽章，颜色全部走语义色以兼容 AMOLED
             Container(
               width: 72,
               height: 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.04)
-                    : primaryColor.withValues(alpha: 0.06),
+                color: context.colors.fill,
                 border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : primaryColor.withValues(alpha: 0.12),
+                  color: context.colors.divider,
                   width: 1,
                 ),
               ),
               child: Icon(
                 icon,
                 size: 32,
-                color: isDark
-                    ? context.colors.textSub
-                    : primaryColor.withValues(alpha: 0.75),
+                color: context.colors.textSub,
               ),
             ),
             const SizedBox(height: 12.0),

@@ -51,7 +51,8 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
               transform: _SlidingGradientTransform(_controller.value),
             ).createShader(bounds);
           },
-          child: widget.child,
+          // 复用 AnimatedBuilder 传入的缓存子树，避免 60fps 每帧重建整棵骨架网格
+          child: child,
         );
       },
       child: widget.child,
@@ -79,19 +80,16 @@ class VideoCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = context.colors.card;
 
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: isDark
-            ? Border.all(
-                color: Colors.white.withValues(alpha: 0.04),
-                width: 0.8,
-              )
-            : null,
+        border: Border.all(
+          color: context.colors.divider,
+          width: 0.8,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

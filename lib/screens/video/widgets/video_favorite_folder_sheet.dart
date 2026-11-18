@@ -6,6 +6,26 @@ import '../../../theme/app_colors.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/state_views.dart';
 
+/// 一键收藏的提交计划：把「目标收藏状态」翻译成接口的增删收藏夹列表。
+///
+/// 抽成纯数据结构是为了让这段决策可以脱离网络单独测试，
+/// 也让单击收藏与长按面板共用同一套收藏夹判定规则。
+class QuickFavoritePlan {
+  const QuickFavoritePlan({
+    required this.addIds,
+    required this.delIds,
+    required this.alreadySatisfied,
+  });
+
+  final List<int> addIds;
+  final List<int> delIds;
+
+  /// 目标状态已由现有收藏夹满足，无需再向接口发请求。
+  final bool alreadySatisfied;
+
+  bool get hasChange => addIds.isNotEmpty || delIds.isNotEmpty;
+}
+
 /// Bottom sheet for adding/removing video to/from user favorite folders.
 class VideoFavoriteFolderSheet extends StatefulWidget {
   final int aid;
@@ -20,6 +40,39 @@ class VideoFavoriteFolderSheet extends StatefulWidget {
     required this.primaryColor,
     required this.onFavStatusChanged,
   });
+
+  /// 计算一键收藏（单击）需要提交的收藏夹增量。
+  ///
+  /// 默认收藏夹取列表首个：B 站按创建时间返回，账号最早的「默认收藏夹」排第一。
+  /// 取消收藏时把视频从所有已收藏的收藏夹中移除，避免只清掉一个仍显示已收藏。
+  /// 返回 hasChange=false 时表示无收藏夹可用，调用方应回退到收藏夹面板。
+  static QuickFavoritePlan planQuickToggle(
+    List<FavFolder> folders, {
+    required bool targetFav,
+  }) {
+    if (folders.isEmpty) {
+      return const QuickFavoritePlan(
+        addIds: [],
+        delIds: [],
+        alreadySatisfied: false,
+      );
+    }
+    final alreadyIn =
+        folders.where((f) => f.isFav).map((f) => f.id).toList();
+    if (targetFav) {
+      // 关系接口可能落后于收藏夹列表，已在任意收藏夹中就不再重复添加
+      return QuickFavoritePlan(
+        addIds: alreadyIn.isEmpty ? [folders.first.id] : <int>[],
+        delIds: const [],
+        alreadySatisfied: alreadyIn.isNotEmpty,
+      );
+    }
+    return QuickFavoritePlan(
+      addIds: const [],
+      delIds: alreadyIn,
+      alreadySatisfied: alreadyIn.isEmpty,
+    );
+  }
 
   static void show(
     BuildContext context, {
@@ -147,11 +200,26 @@ class _VideoFavoriteFolderSheetState extends State<VideoFavoriteFolderSheet> {
             padding: const EdgeInsets.fromLTRB(16.0, 12.0, 12.0, 8.0),
             child: Row(
               children: [
-                const Text(
-                  '添加到收藏夹',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '添加到收藏夹',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '单击收藏按钮可一键收藏到默认收藏夹',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.colors.textHint,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const Spacer(),
                 if (!_isLoading)
                   TextButton(
                     onPressed: _isSubmitting ? null : _saveFavorites,

@@ -49,6 +49,11 @@ class AppColors {
   /// 成功 / 已完成
   final Color success;
 
+  /// 热搜榜前三名装饰色（朱砂 / 琥珀 / 霁蓝，明暗各用对比度足够的变体）
+  final Color rankFirst;
+  final Color rankSecond;
+  final Color rankThird;
+
   const AppColors({
     required this.bg,
     required this.card,
@@ -64,6 +69,9 @@ class AppColors {
     required this.warning,
     required this.danger,
     required this.success,
+    required this.rankFirst,
+    required this.rankSecond,
+    required this.rankThird,
   });
 
   factory AppColors.of(BuildContext context) {
@@ -85,6 +93,9 @@ class AppColors {
       warning: AppTheme.warning,
       danger: dark ? AppTheme.dangerDark : AppTheme.dangerLight,
       success: dark ? AppTheme.successDark : AppTheme.successLight,
+      rankFirst: dark ? const Color(0xFFE57373) : const Color(0xFFC0483E),
+      rankSecond: dark ? const Color(0xFFFFB74D) : const Color(0xFFE67E22),
+      rankThird: dark ? const Color(0xFF64B5F6) : const Color(0xFF2A6F97),
     );
   }
 }

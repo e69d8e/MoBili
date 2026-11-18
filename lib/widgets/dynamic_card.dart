@@ -106,28 +106,21 @@ class _DynamicCardState extends State<DynamicCard> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
         color: context.colors.card,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.03),
-          width: 0.8,
-        ),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        border: Border.all(color: context.colors.divider, width: 0.8),
+        // 卡片投影统一为极淡黑，暗色主题下自然隐去，无需按明暗分支
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -238,7 +231,7 @@ class _DynamicCardState extends State<DynamicCard> {
               if (item.video != null && item.video!.bvid.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 8.0),
-                  child: _buildVideoCard(context, item.video!, isDark),
+                  child: _buildVideoCard(context, item.video!),
                 ),
 
               // Images (if any)
@@ -249,7 +242,6 @@ class _DynamicCardState extends State<DynamicCard> {
                     context,
                     item.pictures,
                     heroPrefix: 'dyn_${item.id}',
-                    isDark: isDark,
                   ),
                 ),
 
@@ -290,7 +282,7 @@ class _DynamicCardState extends State<DynamicCard> {
                           if (item.orig!.video != null &&
                               item.orig!.video!.bvid.isNotEmpty) ...[
                             const SizedBox(height: 4.0),
-                            _buildVideoCard(context, item.orig!.video!, isDark),
+                            _buildVideoCard(context, item.orig!.video!),
                           ],
                           if (item.orig!.pictures.isNotEmpty) ...[
                             const SizedBox(height: 4.0),
@@ -298,7 +290,6 @@ class _DynamicCardState extends State<DynamicCard> {
                               context,
                               item.orig!.pictures,
                               heroPrefix: 'orig_${item.orig!.id}',
-                              isDark: isDark,
                             ),
                           ],
                         ],
@@ -326,7 +317,6 @@ class _DynamicCardState extends State<DynamicCard> {
                           ? Formatters.formatCount(item.stat.commentCount)
                           : '评论',
                       active: false,
-                      isDark: isDark,
                       onTap: _navigateToDetail,
                     ),
                     _buildActionButton(
@@ -337,7 +327,6 @@ class _DynamicCardState extends State<DynamicCard> {
                           ? Formatters.formatCount(_likeCount)
                           : '赞',
                       active: _isLiked,
-                      isDark: isDark,
                       onTap: _toggleLike,
                     ),
                   ],
@@ -353,7 +342,6 @@ class _DynamicCardState extends State<DynamicCard> {
   Widget _buildVideoCard(
     BuildContext context,
     DynamicVideo video,
-    bool isDark,
   ) {
     return InkWell(
       onTap: () {
@@ -368,12 +356,7 @@ class _DynamicCardState extends State<DynamicCard> {
         decoration: BoxDecoration(
           color: context.colors.fill,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDark
-                ? Colors.white10
-                : Colors.black.withValues(alpha: 0.05),
-            width: 0.6,
-          ),
+          border: Border.all(color: context.colors.divider, width: 0.6),
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(
@@ -505,7 +488,6 @@ class _DynamicCardState extends State<DynamicCard> {
     BuildContext context,
     List<DynamicPicture> pictures, {
     required String heroPrefix,
-    required bool isDark,
   }) {
     if (pictures.isEmpty) return const SizedBox.shrink();
 
@@ -514,7 +496,6 @@ class _DynamicCardState extends State<DynamicCard> {
         context,
         pictures.first,
         heroPrefix: heroPrefix,
-        isDark: isDark,
       );
     }
 
@@ -522,7 +503,6 @@ class _DynamicCardState extends State<DynamicCard> {
       context,
       pictures,
       heroPrefix: heroPrefix,
-      isDark: isDark,
     );
   }
 
@@ -530,7 +510,6 @@ class _DynamicCardState extends State<DynamicCard> {
     BuildContext context,
     DynamicPicture pic, {
     required String heroPrefix,
-    required bool isDark,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -612,7 +591,6 @@ class _DynamicCardState extends State<DynamicCard> {
     BuildContext context,
     List<DynamicPicture> pictures, {
     required String heroPrefix,
-    required bool isDark,
   }) {
     final totalCount = pictures.length;
     final displayCount = totalCount.clamp(1, 9);
@@ -750,7 +728,6 @@ class _DynamicCardState extends State<DynamicCard> {
     required IconData icon,
     required String label,
     required bool active,
-    required bool isDark,
     required VoidCallback onTap,
   }) {
     final color = active

@@ -126,7 +126,6 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return AnimatedBuilder(
@@ -239,14 +238,14 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                   controller: _tabController,
                   children: [
                     // Tab 1: Completed
-                    _buildCompletedTab(completed, isDark, primaryColor),
+                    _buildCompletedTab(completed, primaryColor),
                     // Tab 2: Downloading
-                    _buildDownloadingTab(downloading, isDark, primaryColor),
+                    _buildDownloadingTab(downloading, primaryColor),
                   ],
                 ),
               ),
               // Bottom Storage Info Banner
-              _buildStorageBanner(isDark, primaryColor),
+              _buildStorageBanner(primaryColor),
             ],
           ),
         );
@@ -256,7 +255,6 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
 
   Widget _buildCompletedTab(
     List<VideoCacheItem> items,
-    bool isDark,
     Color primaryColor,
   ) {
     if (items.isEmpty) {
@@ -356,7 +354,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                               memCacheHeight: 136,
                             )
                           else
-                            Container(color: isDark ? Colors.white10 : Colors.black26),
+                            Container(color: context.colors.fill),
                           // Duration badge
                           if (item.duration > 0)
                             Positioned(
@@ -490,7 +488,6 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
 
   Widget _buildDownloadingTab(
     List<VideoCacheItem> items,
-    bool isDark,
     Color primaryColor,
   ) {
     if (items.isEmpty) {
@@ -549,7 +546,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                                 memCacheWidth: 144,
                                 memCacheHeight: 96,
                               )
-                            : Container(color: isDark ? Colors.white10 : Colors.black26),
+                            : Container(color: context.colors.fill),
                       ),
                     ),
                     const SizedBox(width: 8.0),
@@ -569,7 +566,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              _buildStatusTag(item, primaryColor, isDark),
+                              _buildStatusTag(item, primaryColor),
                               const SizedBox(width: 4.0),
                               Text(
                                 item.qualityDesc,
@@ -584,7 +581,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                       ),
                     ),
                     // Controls (Pause, Resume, Retry, Cancel)
-                    _buildTaskControls(item, primaryColor, isDark),
+                    _buildTaskControls(item, primaryColor),
                   ],
                 ),
 
@@ -598,7 +595,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
                         ? null
                         : item.progress,
                     minHeight: 4,
-                    backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                    backgroundColor: context.colors.fill,
                     valueColor: AlwaysStoppedAnimation<Color>(
                       item.status == VideoCacheStatus.failed ? context.colors.danger : primaryColor,
                     ),
@@ -642,7 +639,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     );
   }
 
-  Widget _buildStatusTag(VideoCacheItem item, Color primaryColor, bool isDark) {
+  Widget _buildStatusTag(VideoCacheItem item, Color primaryColor) {
     String label;
     Color color;
 
@@ -682,7 +679,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     );
   }
 
-  Widget _buildTaskControls(VideoCacheItem item, Color primaryColor, bool isDark) {
+  Widget _buildTaskControls(VideoCacheItem item, Color primaryColor) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -713,7 +710,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     );
   }
 
-  Widget _buildStorageBanner(bool isDark, Color primaryColor) {
+  Widget _buildStorageBanner(Color primaryColor) {
     final formattedSize = _cacheService.getFormattedTotalCacheSize();
     final completedCount = _cacheService.totalCompletedCount;
 

@@ -95,7 +95,6 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -139,9 +138,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                         color: context.colors.card,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.06)
-                              : Colors.black.withValues(alpha: 0.05),
+                          color: context.colors.divider,
                           width: 0.8,
                         ),
                       ),
@@ -277,7 +274,10 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (ctx, idx) => RepaintBoundary(
-                            child: VideoCard(video: _videos[idx]),
+                            child: VideoCard(
+                              video: _videos[idx],
+                              heroTag: 'up_${_videos[idx].bvid}_$idx',
+                            ),
                           ),
                           childCount: _videos.length,
                         ),

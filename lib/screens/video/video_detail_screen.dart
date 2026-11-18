@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -38,12 +39,14 @@ import '../../widgets/player/video_cache_bottom_sheet.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/user_avatar.dart';
 import '../../widgets/video_card.dart';
+import '../../widgets/video_share_sheet.dart';
 import '../profile/login_dialog.dart';
 import '../up/up_space_screen.dart';
 import 'listen_video_screen.dart';
 import 'widgets/video_action_bar.dart';
 import 'widgets/video_coin_dialog.dart';
 import 'widgets/video_favorite_folder_sheet.dart';
+import 'widgets/video_part_grid.dart';
 import 'widgets/video_season_sheet.dart';
 import 'widgets/video_sub_replies_sheet.dart';
 import 'widgets/video_watch_later_panel.dart';
@@ -57,6 +60,9 @@ class VideoDetailScreen extends StatefulWidget {
   final List<WatchLaterItem>? watchLaterList;
   final int initialWatchLaterIndex;
 
+  /// 共享元素转场 tag：由入口卡片生成，详情页封面用同一 tag 承接飞入动画
+  final String? heroTag;
+
   const VideoDetailScreen({
     super.key,
     required this.bvid,
@@ -64,6 +70,7 @@ class VideoDetailScreen extends StatefulWidget {
     this.initialPosition,
     this.watchLaterList,
     this.initialWatchLaterIndex = 0,
+    this.heroTag,
   });
 
   @override
@@ -224,26 +231,46 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         _selectedPageIndex = pageIdx;
       }
 
-      _detail = VideoDetail(
-        videoItem: VideoItem(
-          aid: primaryTask.aid,
-          bvid: _currentBvid,
-          cid: primaryTask.cid,
-          title: primaryTask.title,
-          pic: primaryTask.cover,
-          desc: '',
-          duration: primaryTask.duration,
-          pubdate: 0,
-          ctime: 0,
-          owner: Owner(
-            mid: 0,
-            name: primaryTask.ownerName,
-            face: primaryTask.ownerFace,
-          ),
-          stat: Stat(),
-        ),
-        pages: localPages,
-      );
+      // 优先还原下载时保存的完整详情快照；老缓存没有快照时退化为最小信息，
+      // 并尽量用 initialVideo 补全 UP 主 mid / 简介 / 统计，避免详情页变成空壳
+      VideoDetail? cachedDetail;
+      if (primaryTask.detailJsonRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(primaryTask.detailJsonRaw);
+          if (decoded is Map<String, dynamic>) {
+            cachedDetail = VideoDetail.fromJson(decoded);
+          }
+        } catch (_) {
+          // 快照损坏时按老缓存处理，不影响离线播放
+        }
+      }
+      final fallback = widget.initialVideo;
+      _detail =
+          cachedDetail?.copyWith(pages: localPages) ??
+          VideoDetail(
+            videoItem: VideoItem(
+              aid: primaryTask.aid,
+              bvid: _currentBvid,
+              cid: primaryTask.cid,
+              title: primaryTask.title,
+              pic: primaryTask.cover,
+              desc: fallback?.desc ?? '',
+              duration: primaryTask.duration,
+              pubdate: fallback?.pubdate ?? 0,
+              ctime: fallback?.ctime ?? 0,
+              owner: Owner(
+                mid: fallback?.owner.mid ?? 0,
+                name: fallback != null && fallback.owner.name.isNotEmpty
+                    ? fallback.owner.name
+                    : primaryTask.ownerName,
+                face: fallback != null && fallback.owner.face.isNotEmpty
+                    ? fallback.owner.face
+                    : primaryTask.ownerFace,
+              ),
+              stat: fallback?.stat ?? Stat(),
+            ),
+            pages: localPages,
+          );
 
       // Start playing local video immediately
       await _loadPlayUrlAndDanmaku(primaryTask.cid);
@@ -763,15 +790,33 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
   }
 
-  /// DASH 伴音轨初始化失败：保持进度回退到渐进式单流，避免"有画面没声音"
-  Future<void> _fallbackToProgressiveStream() async {
+  /// 播放器卡顿/报错恢复时直接拉取最新播放地址（跳过预取缓存避免旧签失效）
+  Future<PlayUrlInfo?> _refreshPlayStreamForRecovery(int quality) async {
+    final cid = _detail != null && _detail!.pages.isNotEmpty
+        ? _detail!.pages[_selectedPageIndex].cid
+        : (_detail?.videoItem.cid ?? 0);
+    if (cid <= 0) return null;
+    final targetQn = quality > 0 ? quality : PlayerSettingsService.defaultQuality;
+    final result = await VideoApiService().fetchPlayStream(
+      bvid: _currentBvid,
+      cid: cid,
+      qn: targetQn,
+    );
+    if (!mounted) return null;
+    return result.ok ? result.info : null;
+  }
+
+  /// DASH 伴音轨失败或双流异常：保持进度回退到渐进式单流，避免"有画面没声音"或卡死
+  Future<void> _fallbackToProgressiveStream({
+    String reasonPrefix = '伴音轨加载失败',
+  }) async {
     final token = ++_videoLoadToken;
     final cid = _detail != null && _detail!.pages.isNotEmpty
         ? _detail!.pages[_selectedPageIndex].cid
         : (_detail?.videoItem.cid ?? 0);
     if (cid <= 0) return;
 
-    final position = _playerKey.currentState?.controller?.value.position;
+    final position = _playerKey.currentState?.currentPosition;
     final result = await VideoApiService().requestPlayUrl(
       bvid: _currentBvid,
       cid: cid,
@@ -785,7 +830,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     if (!result.ok || result.info == null) {
       AppToast.show(
         context,
-        '伴音轨加载失败，且回退播放地址失败，请重试',
+        '$reasonPrefix，且回退播放地址失败，请重试',
         icon: Icons.error_outline_rounded,
       );
       return;
@@ -798,7 +843,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     });
     AppToast.show(
       context,
-      '伴音轨加载失败，已切换至 ${_getQualityName(result.grantedQuality)} 单流播放',
+      '$reasonPrefix，已切换至 ${_getQualityName(result.grantedQuality)} 单流播放',
       icon: Icons.info_outline_rounded,
     );
   }
@@ -981,7 +1026,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         final wasPlaying = listenProvider.isPlaying;
         await listenProvider.stopAndClear();
         if (mounted && playerState != null && playerState.controller != null) {
-          await playerState.controller!.seekTo(curAudioPos);
+          await playerState.seekTo(curAudioPos);
           if (wasPlaying) {
             await playerState.play();
           }
@@ -1117,8 +1162,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   void _reportFinalProgress() {
     if (PlayerSettingsService.incognitoMode) return;
     final playerState = _playerKey.currentState;
-    final pos =
-        playerState?.controller?.value.position ?? _lastReportedPosition;
+    final pos = playerState?.currentPosition ?? _lastReportedPosition;
     final dur = playerState?.controller?.value.duration ?? Duration.zero;
     final currentSec = pos.inSeconds;
     if (currentSec <= 0) return;
@@ -1201,8 +1245,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
     final url = _localVideoPath ?? _playUrlInfo?.primaryAudioUrl;
 
-    final pos =
-        _playerKey.currentState?.controller?.value.position ?? Duration.zero;
+    final pos = _playerKey.currentState?.currentPosition ?? Duration.zero;
     final speed = _playerKey.currentState?.playbackSpeed ?? 1.0;
 
     // Explicitly pause the video and danmaku
@@ -1301,7 +1344,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
             }
           },
           onSwitchToVideo: (curPos) async {
-            await _playerKey.currentState?.controller?.seekTo(curPos);
+            await _playerKey.currentState?.seekTo(curPos);
             await _playerKey.currentState?.play();
             if (mounted && wasFullScreen) {
               final isLandscapeNow =
@@ -1321,13 +1364,46 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         final curAudioPos = listenProvider.position;
         if (curAudioPos > Duration.zero &&
             _playerKey.currentState?.controller != null) {
-          await _playerKey.currentState?.controller?.seekTo(curAudioPos);
+          await _playerKey.currentState?.seekTo(curAudioPos);
         }
       }
     }
   }
 
   Widget _buildPlayer(VideoItem? video, Color primaryColor) {
+    final content = _buildPlayerContent(video, primaryColor);
+    if (widget.heroTag == null || video == null || video.pic.isEmpty) {
+      return content;
+    }
+    // 详情侧 Hero 常驻（不可见但在树里）：push 时承接卡片封面的飞入，
+    // pop 时即便播放器已就绪也能反向飞回卡片位置。全屏时保持同一 Stack 骨架，
+    // 仅隐藏 Hero 层，避免切换全屏时外层容器结构跳变。
+    return Stack(
+      children: [
+        content,
+        if (!_isPlayerFullScreen)
+          Positioned.fill(
+            // 不可见的 Hero 层不能吞掉播放器的点击/拖动/双击手势
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.0,
+                child: Hero(
+                  tag: widget.heroTag!,
+                  child: NetworkImageView(
+                    url: video.pic,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 640,
+                    memCacheHeight: 360,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPlayerContent(VideoItem? video, Color primaryColor) {
     if (_playUrlInfo != null) {
       final cid =
           (_detail != null &&
@@ -1393,6 +1469,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         onSubtitleTrackChanged: _onSubtitleTrackChanged,
         onSubtitleTap: _showSubtitleSelector,
         onAudioTrackFailed: _fallbackToProgressiveStream,
+        onRefreshPlayStream: _refreshPlayStreamForRecovery,
+        onDashPlaybackFailed: () => _fallbackToProgressiveStream(
+          reasonPrefix: '当前高清双流播放异常',
+        ),
       );
     }
 

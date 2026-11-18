@@ -14,7 +14,6 @@ class VideoCoinDialog {
       return;
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
     int selectedCoins = 1;
     final maxAvailable = 2 - coinCount;
@@ -57,7 +56,7 @@ class VideoCoinDialog {
                         labelStyle: TextStyle(
                           color: selectedCoins == 1
                               ? Theme.of(context).colorScheme.onPrimary
-                              : (isDark ? Colors.white70 : Colors.black87),
+                              : context.colors.textSub,
                           fontWeight: selectedCoins == 1 ? FontWeight.w600 : FontWeight.normal,
                         ),
                         showCheckmark: false,
@@ -72,7 +71,7 @@ class VideoCoinDialog {
                           labelStyle: TextStyle(
                             color: selectedCoins == 2
                                 ? Theme.of(context).colorScheme.onPrimary
-                                : (isDark ? Colors.white70 : Colors.black87),
+                                : context.colors.textSub,
                             fontWeight: selectedCoins == 2 ? FontWeight.w600 : FontWeight.normal,
                           ),
                           showCheckmark: false,

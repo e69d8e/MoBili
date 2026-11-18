@@ -149,8 +149,6 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(title: const Text('我的收藏')),
       body: _isLoading
@@ -189,7 +187,7 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                         labelStyle: TextStyle(
                           color: isSelected
                               ? onPrimary
-                              : (isDark ? Colors.white70 : Colors.black87),
+                              : context.colors.textSub,
                           fontSize: 12,
                           fontWeight: isSelected
                               ? FontWeight.w600
@@ -282,6 +280,8 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
                                         child: VideoCard(
                                           video: _folderVideos[idx],
                                           showViewCount: false,
+                                          heroTag:
+                                              'fav_${_folderVideos[idx].bvid}_$idx',
                                         ),
                                       );
                                     },

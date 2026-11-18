@@ -333,7 +333,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -373,11 +372,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                         child: CustomScrollView(
                           slivers: [
                             // Dynamic Main Content Card（正文分段懒加载）
-                            ..._buildContentSlivers(context, _item!, isDark, primaryColor),
+                            ..._buildContentSlivers(context, _item!, primaryColor),
 
                             // Divider & Comments Header
                             SliverToBoxAdapter(
-                              child: _buildCommentsHeader(isDark, primaryColor),
+                              child: _buildCommentsHeader(primaryColor),
                             ),
 
                           // Comments List
@@ -451,7 +450,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   ),
 
                   // Bottom Comment Input Bar
-                  _buildBottomInputBar(isDark, primaryColor),
+                  _buildBottomInputBar(primaryColor),
                 ],
               ),
     );
@@ -465,7 +464,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   List<Widget> _buildContentSlivers(
     BuildContext context,
     DynamicItem item,
-    bool isDark,
     Color primaryColor,
   ) {
     final cardColor = context.colors.card;
@@ -474,7 +472,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
     return [
       SliverToBoxAdapter(
-        child: _buildAuthorHeader(context, item, isDark, primaryColor, cardColor),
+        child: _buildAuthorHeader(context, item, primaryColor, cardColor),
       ),
       if (item.paragraphs.isNotEmpty)
         SliverList(
@@ -485,7 +483,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   color: cardColor,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0),
-                    child: _buildVideoCard(ctx, video!, isDark),
+                    child: _buildVideoCard(ctx, video!),
                   ),
                 );
               }
@@ -493,7 +491,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 color: cardColor,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(16.0, index == 0 ? 12.0 : 0, 16.0, 0),
-                  child: _buildParagraph(ctx, item.paragraphs[index], item.pictures, isDark),
+                  child: _buildParagraph(ctx, item.paragraphs[index], item.pictures),
                 ),
               );
             },
@@ -504,10 +502,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
         )
       else
         SliverToBoxAdapter(
-          child: _buildPlainContent(context, item, isDark, cardColor),
+          child: _buildPlainContent(context, item, cardColor),
         ),
       SliverToBoxAdapter(
-        child: _buildStatsFooter(context, item, isDark, primaryColor, cardColor),
+        child: _buildStatsFooter(context, item, primaryColor, cardColor),
       ),
     ];
   }
@@ -515,7 +513,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   Widget _buildAuthorHeader(
     BuildContext context,
     DynamicItem item,
-    bool isDark,
     Color primaryColor,
     Color cardColor,
   ) {
@@ -635,7 +632,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   Widget _buildPlainContent(
     BuildContext context,
     DynamicItem item,
-    bool isDark,
     Color cardColor,
   ) {
     final video = item.video;
@@ -663,13 +659,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           // Video Card (if any)
           if (hasVideo) ...[
             if (hasText) const SizedBox(height: 12.0),
-            _buildVideoCard(context, video, isDark),
+            _buildVideoCard(context, video),
           ],
 
           // Pictures (if any)
           if (hasPictures) ...[
             if (hasText || hasVideo) const SizedBox(height: 12.0),
-            _buildImages(context, item.pictures, isDark),
+            _buildImages(context, item.pictures),
           ],
         ],
       ),
@@ -679,7 +675,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   Widget _buildStatsFooter(
     BuildContext context,
     DynamicItem item,
-    bool isDark,
     Color primaryColor,
     Color cardColor,
   ) {
@@ -725,11 +720,11 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                     ),
                     if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
                       const SizedBox(height: 8.0),
-                      _buildVideoCard(context, item.orig!.video!, isDark),
+                      _buildVideoCard(context, item.orig!.video!),
                     ],
                     if (item.orig!.pictures.isNotEmpty) ...[
                       const SizedBox(height: 8.0),
-                      _buildImages(context, item.orig!.pictures, isDark),
+                      _buildImages(context, item.orig!.pictures),
                     ],
                   ],
                 ),
@@ -814,7 +809,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildVideoCard(BuildContext context, DynamicVideo video, bool isDark) {
+  Widget _buildVideoCard(BuildContext context, DynamicVideo video) {
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
@@ -829,7 +824,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           color: context.colors.fill,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+            color: context.colors.divider,
             width: 0.6,
           ),
         ),
@@ -919,7 +914,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     BuildContext context,
     DynamicParagraph p,
     List<DynamicPicture> allPictures,
-    bool isDark,
   ) {
     if (p.isQuote) {
       return Padding(
@@ -1040,7 +1034,6 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   Widget _buildImages(
     BuildContext context,
     List<DynamicPicture> pictures,
-    bool isDark,
   ) {
     final count = pictures.length;
     if (count == 0) return const SizedBox.shrink();
@@ -1154,7 +1147,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildCommentsHeader(bool isDark, Color primaryColor) {
+  Widget _buildCommentsHeader(Color primaryColor) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
       child: Row(
@@ -1204,7 +1197,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildBottomInputBar(bool isDark, Color primaryColor) {
+  Widget _buildBottomInputBar(Color primaryColor) {
     return Container(
       padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
       decoration: BoxDecoration(

@@ -103,7 +103,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
 
     return AnimatedBuilder(
@@ -137,12 +136,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                   children: [
                     // Overview Storage Card
-                    _buildOverviewCard(context, info, primary, isDark),
+                    _buildOverviewCard(context, info, primary),
 
                     const SizedBox(height: 16.0),
 
                     // Section 1: Temporary & Media Caches
-                    _buildSectionHeader('临时与媒体缓存 (安全清理)', isDark),
+                    _buildSectionHeader('临时与媒体缓存 (安全清理)'),
                     Material(
                       color: context.colors.card,
                       borderRadius: BorderRadius.circular(12),
@@ -157,7 +156,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             subtitle: '封面、头像、动态插图及表情包',
                             sizeText: AppCacheService.formatBytes(info.imageCacheBytes),
                             actionText: '清理',
-                            isDark: isDark,
                             onAction: info.imageCacheBytes > 0 ? _handleClearImageCache : null,
                           ),
                           Divider(
@@ -174,7 +172,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             subtitle: '音视频播放缓冲分片、网络传输临时文件',
                             sizeText: AppCacheService.formatBytes(info.tempDirBytes),
                             actionText: '清理',
-                            isDark: isDark,
                             onAction: info.tempDirBytes > 0 ? _handleClearTempFiles : null,
                           ),
                         ],
@@ -184,7 +181,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                     const SizedBox(height: 16.0),
 
                     // Section 2: Video Cache (Offline)
-                    _buildSectionHeader('离线下载与离线视频', isDark),
+                    _buildSectionHeader('离线下载与离线视频'),
                     Material(
                       color: context.colors.card,
                       borderRadius: BorderRadius.circular(12),
@@ -201,7 +198,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                                 : '暂无已下载的离线视频',
                             sizeText: AppCacheService.formatBytes(info.videoCacheBytes),
                             actionText: '管理',
-                            isDark: isDark,
                             onAction: () async {
                               await Navigator.of(context).push(
                                 MaterialPageRoute(builder: (ctx) => const VideoCacheScreen()),
@@ -216,7 +212,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                     const SizedBox(height: 16.0),
 
                     // Section 3: History and records
-                    _buildSectionHeader('本地记录与历史数据', isDark),
+                    _buildSectionHeader('本地记录与历史数据'),
                     Material(
                       color: context.colors.card,
                       borderRadius: BorderRadius.circular(12),
@@ -231,7 +227,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             subtitle: '记录视频精准播放秒数与断点续播位置',
                             sizeText: '${info.historyCount} 条记录',
                             actionText: '清空',
-                            isDark: isDark,
                             isDestructive: true,
                             onAction: info.historyCount > 0 ? _handleClearPlaybackHistory : null,
                           ),
@@ -249,7 +244,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                             subtitle: '搜索框历史搜索关键词记录',
                             sizeText: '${info.searchHistoryCount} 条搜索词',
                             actionText: '清空',
-                            isDark: isDark,
                             isDestructive: true,
                             onAction: info.searchHistoryCount > 0 ? _handleClearSearchHistory : null,
                           ),
@@ -260,8 +254,8 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                     const SizedBox(height: 16.0),
 
                     // Section 4: Auto-Clean Strategy
-                    _buildSectionHeader('自动清理策略', isDark),
-                    _buildAutoCleanSection(context, primary, isDark),
+                    _buildSectionHeader('自动清理策略'),
+                    _buildAutoCleanSection(context, primary),
 
                     const SizedBox(height: 24.0),
                   ],
@@ -269,7 +263,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               ),
 
               // Bottom Sticky Clean Bar
-              _buildBottomBar(context, info, primary, isDark, isBusy),
+              _buildBottomBar(context, info, primary, isBusy),
             ],
           ),
         );
@@ -277,7 +271,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     );
   }
 
-  Widget _buildAutoCleanSection(BuildContext context, Color primary, bool isDark) {
+  Widget _buildAutoCleanSection(BuildContext context, Color primary) {
     final enabled = _cacheService.autoCleanEnabled;
     final interval = _cacheService.autoCleanInterval;
     final targets = _cacheService.autoCleanTargets;
@@ -336,7 +330,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   Icon(Icons.arrow_forward_ios_rounded, size: 12, color: context.colors.textHint),
                 ],
               ),
-              onTap: () => _showIntervalPickerBottomSheet(context, primary, isDark),
+              onTap: () => _showIntervalPickerBottomSheet(context, primary),
             ),
             Divider(
               height: 1,
@@ -397,7 +391,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     );
   }
 
-  void _showIntervalPickerBottomSheet(BuildContext context, Color primary, bool isDark) {
+  void _showIntervalPickerBottomSheet(BuildContext context, Color primary) {
     showModalBottomSheet(
       context: context,
       backgroundColor: context.colors.card,
@@ -460,7 +454,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isDark) {
+  Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8.0),
       child: Text(
@@ -478,7 +472,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     BuildContext context,
     CacheSizeInfo info,
     Color primary,
-    bool isDark,
   ) {
     final cleanableStr = AppCacheService.formatBytes(info.cleanableBytes);
     final totalAppStr = AppCacheService.formatBytes(info.totalAppStorageBytes);
@@ -495,7 +488,8 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            // 卡片投影统一为淡黑，暗色主题下自然隐去
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -550,7 +544,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             child: SizedBox(
               height: 10,
               child: info.totalAppStorageBytes <= 0
-                  ? Container(color: isDark ? Colors.white10 : Colors.black12)
+                  ? Container(color: context.colors.fill)
                   : Row(
                       children: [
                         if (imageRatio > 0)
@@ -578,12 +572,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
           // Legend
           Row(
             children: [
-              _buildLegendDot(primary, '图片缓存 (${AppCacheService.formatBytes(info.imageCacheBytes)})', isDark),
+              _buildLegendDot(primary, '图片缓存 (${AppCacheService.formatBytes(info.imageCacheBytes)})'),
               const SizedBox(width: 12.0),
-              _buildLegendDot(Colors.teal, '临时文件 (${AppCacheService.formatBytes(info.tempDirBytes)})', isDark),
+              _buildLegendDot(Colors.teal, '临时文件 (${AppCacheService.formatBytes(info.tempDirBytes)})'),
               if (info.videoCacheBytes > 0) ...[
                 const SizedBox(width: 12.0),
-                _buildLegendDot(Colors.deepPurpleAccent, '离线视频 (${AppCacheService.formatBytes(info.videoCacheBytes)})', isDark),
+                _buildLegendDot(Colors.deepPurpleAccent, '离线视频 (${AppCacheService.formatBytes(info.videoCacheBytes)})'),
               ],
             ],
           ),
@@ -592,7 +586,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     );
   }
 
-  Widget _buildLegendDot(Color color, String label, bool isDark) {
+  Widget _buildLegendDot(Color color, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -624,7 +618,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     required String subtitle,
     required String sizeText,
     required String actionText,
-    required bool isDark,
     bool isDestructive = false,
     VoidCallback? onAction,
   }) {
@@ -686,7 +679,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                   color: isDestructive
                       ? context.colors.danger.withValues(alpha: 0.4)
                       : (onAction == null
-                          ? (isDark ? Colors.white12 : Colors.black12)
+                          ? context.colors.divider
                           : primary.withValues(alpha: 0.4)),
                   width: 0.8,
                 ),
@@ -706,7 +699,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
     BuildContext context,
     CacheSizeInfo info,
     Color primary,
-    bool isDark,
     bool isBusy,
   ) {
     final cleanableStr = AppCacheService.formatBytes(info.cleanableBytes);

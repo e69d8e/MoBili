@@ -10,14 +10,12 @@ import '../../../widgets/state_views.dart';
 class VideoSubRepliesSheet extends StatefulWidget {
   final int oid;
   final CommentItem rootComment;
-  final bool isDark;
   final Color primaryColor;
 
   const VideoSubRepliesSheet({
     super.key,
     required this.oid,
     required this.rootComment,
-    required this.isDark,
     required this.primaryColor,
   });
 
@@ -25,7 +23,6 @@ class VideoSubRepliesSheet extends StatefulWidget {
     BuildContext context, {
     required int oid,
     required CommentItem rootComment,
-    required bool isDark,
     required Color primaryColor,
   }) {
     showModalBottomSheet(
@@ -36,7 +33,6 @@ class VideoSubRepliesSheet extends StatefulWidget {
         return VideoSubRepliesSheet(
           oid: oid,
           rootComment: rootComment,
-          isDark: isDark,
           primaryColor: primaryColor,
         );
       },
@@ -194,9 +190,7 @@ class _VideoSubRepliesSheetState extends State<VideoSubRepliesSheet> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                color: widget.isDark
-                                    ? Colors.white.withValues(alpha: 0.03)
-                                    : Colors.black.withValues(alpha: 0.02),
+                                color: context.colors.fill,
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                                 child: CommentItemWidget(
                                   comment: root,

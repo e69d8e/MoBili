@@ -7,6 +7,8 @@ import '../../../utils/formatters.dart';
 class VideoActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
+  // 无障碍朗读文案：可携带比单行 label 更完整的信息（例如投币总数与本人已投数）
+  final String? semanticLabel;
   final bool active;
   final Color? color;
   final VoidCallback onTap;
@@ -19,6 +21,7 @@ class VideoActionButton extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    this.semanticLabel,
     required this.active,
     this.color,
     required this.onTap,
@@ -31,12 +34,11 @@ class VideoActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeColor = color ?? Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Expanded(
       child: Semantics(
         button: true,
-        label: label,
+        label: semanticLabel ?? label,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
@@ -66,7 +68,7 @@ class VideoActionButton extends StatelessWidget {
                             value: progress,
                             strokeWidth: 2.2,
                             valueColor: AlwaysStoppedAnimation<Color>(activeColor),
-                            backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                            backgroundColor: context.colors.divider,
                           ),
                         ),
                       Icon(
@@ -142,7 +144,7 @@ class _IconAction extends StatelessWidget {
   }
 }
 
-/// 互动操作（点赞/投币/收藏，带计数）+ 工具操作（缓存/听视频/稍后看，仅图标）分组排列。
+/// 互动操作（点赞/投币/收藏/分享，带计数）+ 工具操作（缓存/听视频/稍后看，仅图标）分组排列。
 class VideoActionBar extends StatelessWidget {
   final int likeCount;
   final bool isLiked;
@@ -158,7 +160,13 @@ class VideoActionBar extends StatelessWidget {
 
   final bool isFav;
   final int favCount;
+  // 单击一键收藏/取消；长按打开收藏夹管理，对齐官方客户端的收藏交互
   final VoidCallback onFavTap;
+  final VoidCallback onFavLongPress;
+
+  // 分享：对齐官方客户端底部「点赞 / 投币 / 收藏 / 分享」四项主操作
+  final int shareCount;
+  final VoidCallback onShareTap;
 
   final bool isCached;
   final bool isDownloading;
@@ -184,6 +192,9 @@ class VideoActionBar extends StatelessWidget {
     required this.isFav,
     required this.favCount,
     required this.onFavTap,
+    required this.onFavLongPress,
+    this.shareCount = 0,
+    required this.onShareTap,
     required this.isCached,
     required this.isDownloading,
     required this.onCacheTap,
@@ -214,16 +225,33 @@ class VideoActionBar extends StatelessWidget {
             },
           ),
           VideoActionButton(
-            icon: coinCount > 0 ? Icons.monetization_on_rounded : Icons.monetization_on_outlined,
-            label: coinCount > 0 ? '已投$coinCount币' : Formatters.formatCount(totalCoins),
+            icon: coinCount > 0
+                ? Icons.monetization_on_rounded
+                : Icons.monetization_on_outlined,
+            // 与点赞/收藏一致始终展示总投币数；本人已投数通过图标高亮与无障碍文案表达
+            label: Formatters.formatCount(totalCoins),
+            semanticLabel: coinCount > 0
+                ? '投币，共${Formatters.formatCount(totalCoins)}，本人已投$coinCount币'
+                : '投币，共${Formatters.formatCount(totalCoins)}',
             active: coinCount > 0,
             onTap: onCoinTap,
           ),
           VideoActionButton(
             icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
             label: Formatters.formatCount(favCount),
+            semanticLabel: isFav
+                ? '已收藏，${Formatters.formatCount(favCount)}，单击取消收藏，长按选择收藏夹'
+                : '收藏，${Formatters.formatCount(favCount)}，单击一键收藏，长按选择收藏夹',
             active: isFav,
             onTap: onFavTap,
+            onLongPressStart: (_) => onFavLongPress(),
+          ),
+          VideoActionButton(
+            icon: Icons.share_outlined,
+            label: shareCount > 0 ? Formatters.formatCount(shareCount) : '分享',
+            semanticLabel: '分享视频',
+            active: false,
+            onTap: onShareTap,
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),

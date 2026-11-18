@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import '../../models/play_url_model.dart';
 import '../../models/video_model.dart';
@@ -218,6 +220,13 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
 
     final cacheService = VideoCacheService();
     int addedCount = 0;
+    // 把在线详情完整快照一并写入缓存索引：离线打开时不再只剩标题空壳
+    String detailJsonRaw = '';
+    try {
+      detailJsonRaw = jsonEncode(widget.detail.toJson());
+    } catch (_) {
+      // 序列化失败不应阻塞缓存任务，退化为最小信息
+    }
 
     for (final idx in _selectedPageIndices) {
       if (idx >= 0 && idx < episodes.length) {
@@ -237,6 +246,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
           quality: _selectedQuality,
           qualityDesc: _isAudioOnly ? '纯音频' : _selectedQualityDesc,
           isAudioOnly: _isAudioOnly,
+          detailJsonRaw: detailJsonRaw,
         );
         addedCount++;
       }
@@ -255,7 +265,6 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
     final onPrimary = theme.colorScheme.onPrimary;
     final episodes = _getEpisodes();
@@ -299,7 +308,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -383,7 +392,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                       ),
                       const SizedBox(width: 12.0),
                       ChoiceChip(
-                        avatar: Icon(Icons.videocam_outlined, size: 15, color: !_isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
+                        avatar: Icon(Icons.videocam_outlined, size: 15, color: !_isAudioOnly ? onPrimary : context.colors.textSub),
                         label: const Text('完整视频'),
                         selected: !_isAudioOnly,
                         selectedColor: primaryColor,
@@ -398,7 +407,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                       ),
                       const SizedBox(width: 8.0),
                       ChoiceChip(
-                        avatar: Icon(Icons.headphones_outlined, size: 15, color: _isAudioOnly ? onPrimary : (isDark ? Colors.white70 : Colors.black87)),
+                        avatar: Icon(Icons.headphones_outlined, size: 15, color: _isAudioOnly ? onPrimary : context.colors.textSub),
                         label: const Text('仅纯音频 (省空间)'),
                         selected: _isAudioOnly,
                         selectedColor: primaryColor,
@@ -487,7 +496,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                       border: Border.all(
                                         color: isSelected
                                             ? primaryColor
-                                            : (isDark ? Colors.white12 : Colors.black12),
+                                            : context.colors.divider,
                                         width: 1,
                                       ),
                                     ),
@@ -626,7 +635,6 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                   _buildSingleEpisodeItem(
                     context,
                     episodes.first,
-                    isDark,
                     primaryColor,
                     onPrimary,
                     cacheService,
@@ -648,7 +656,6 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                           return _buildEpisodeTile(
                             context,
                             ep,
-                            isDark,
                             primaryColor,
                             onPrimary,
                             cacheService,
@@ -713,8 +720,8 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryColor,
                           foregroundColor: onPrimary,
-                          disabledBackgroundColor: isDark ? Colors.white12 : Colors.black12,
-                          disabledForegroundColor: isDark ? Colors.white38 : Colors.black38,
+                          disabledBackgroundColor: context.colors.fill,
+                          disabledForegroundColor: context.colors.textHint,
                           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           elevation: 0,
@@ -734,7 +741,6 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
   Widget _buildSingleEpisodeItem(
     BuildContext context,
     _CacheEpisodeItem ep,
-    bool isDark,
     Color primaryColor,
     Color onPrimary,
     VideoCacheService cacheService,
@@ -769,7 +775,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
               border: Border.all(
                 color: isSelected
                     ? primaryColor.withValues(alpha: 0.5)
-                    : (isDark ? Colors.white12 : Colors.black12),
+                    : context.colors.divider,
                 width: 1,
               ),
             ),
@@ -835,7 +841,6 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
   Widget _buildEpisodeTile(
     BuildContext context,
     _CacheEpisodeItem ep,
-    bool isDark,
     Color primaryColor,
     Color onPrimary,
     VideoCacheService cacheService,
@@ -869,7 +874,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                  color: context.colors.fill,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,

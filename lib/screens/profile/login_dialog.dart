@@ -84,8 +84,6 @@ class _LoginDialogState extends State<LoginDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Center(
       child: Material(
         color: Colors.transparent,
@@ -93,15 +91,16 @@ class _LoginDialogState extends State<LoginDialog> {
           width: 300,
           margin: const EdgeInsets.symmetric(horizontal: 24.0),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xD91E1E24) : const Color(0xF0FFFFFF),
+            color: context.colors.card.withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+              color: context.colors.divider,
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.18),
+                // 浮层投影固定为淡黑，暗色主题下自然隐去
+                color: Colors.black.withValues(alpha: 0.28),
                 blurRadius: 32,
                 spreadRadius: 2,
                 offset: const Offset(0, 12),

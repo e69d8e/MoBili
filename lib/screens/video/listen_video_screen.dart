@@ -452,7 +452,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   Widget _buildVinylArtwork(String coverUrl, double size) {
     final innerPadding = size * 0.13;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return RepaintBoundary(
       child: RotationTransition(
         turns: _rotationController,
@@ -461,12 +460,12 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            // 深色背景下 black87 会与页面背景融没，提亮一档并加描边保持唱片轮廓
-            color: isDark ? AppTheme.surfaceDark : Colors.black87,
-            border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.08)) : null,
+            // 唱片盘面固定为深色，靠描边在深色背景上勾出轮廓
+            color: AppTheme.surfaceDark,
+            border: Border.all(color: context.colors.divider, width: 0.8),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.28),
+                color: Colors.black.withValues(alpha: 0.4),
                 blurRadius: size * 0.1,
                 spreadRadius: 2,
                 offset: Offset(0, size * 0.04),
@@ -490,8 +489,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   Widget _buildControlButtons(
     BuildContext context,
     ListenVideoProvider provider,
-    Color primary,
-    bool isDark, {
+    Color primary, {
     bool isLandscape = false,
   }) {
     final hasPlaylist = _playlist != null && _playlist!.isNotEmpty;
@@ -538,7 +536,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             icon: Icon(
               hasPlaylist ? Icons.skip_previous_rounded : Icons.replay_10_rounded,
               color: (hasPlaylist && !canPrev)
-                  ? (isDark ? Colors.white24 : Colors.black26)
+                  ? context.colors.textHint
                   : null,
             ),
             tooltip: hasPlaylist ? '上一首' : '后退 15 秒',
@@ -599,7 +597,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             icon: Icon(
               hasPlaylist ? Icons.skip_next_rounded : Icons.forward_10_rounded,
               color: (hasPlaylist && !canNext)
-                  ? (isDark ? Colors.white24 : Colors.black26)
+                  ? context.colors.textHint
                   : null,
             ),
             tooltip: hasPlaylist ? '下一首' : '快进 15 秒',
@@ -624,7 +622,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
               constraints: const BoxConstraints(),
               icon: const Icon(Icons.queue_music_rounded),
               tooltip: '播放列表',
-              onPressed: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+              onPressed: () => _showPlaylistBottomSheet(context, provider, primary),
             )
           else
             IconButton(
@@ -651,7 +649,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     BuildContext context,
     ListenVideoProvider provider,
     Color primary,
-    bool isDark,
   ) {
     if (_playlist == null || _playlist!.isEmpty) return;
 
@@ -713,7 +710,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                         decoration: BoxDecoration(
                           color: isPlaying
                               ? primary.withValues(alpha: 0.12)
-                              : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+                              : context.colors.fill,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isPlaying ? primary : Colors.transparent,
@@ -812,7 +809,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     String currentCover,
     String currentUpName,
     Color primary,
-    bool isDark,
   ) {
     return Column(
       children: [
@@ -880,7 +876,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                             if (_playlist != null && _playlist!.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               InkWell(
-                                onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+                                onTap: () => _showPlaylistBottomSheet(context, provider, primary),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
@@ -922,11 +918,10 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                             _ListenProgressSection(
                               fallbackDuration: widget.totalDuration,
                               primary: primary,
-                              isDark: isDark,
                               horizontalPadding: 12,
                             ),
                             const SizedBox(height: 4.0),
-                            _buildControlButtons(context, provider, primary, isDark, isLandscape: true),
+                            _buildControlButtons(context, provider, primary, isLandscape: true),
                           ],
                         ),
                       ),
@@ -948,7 +943,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     String currentCover,
     String currentUpName,
     Color primary,
-    bool isDark,
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1008,7 +1002,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                   if (_playlist != null && _playlist!.isNotEmpty) ...[
                     const SizedBox(height: 8.0),
                     InkWell(
-                      onTap: () => _showPlaylistBottomSheet(context, provider, primary, isDark),
+                      onTap: () => _showPlaylistBottomSheet(context, provider, primary),
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
@@ -1055,13 +1049,12 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             _ListenProgressSection(
               fallbackDuration: widget.totalDuration,
               primary: primary,
-              isDark: isDark,
               horizontalPadding: 24,
             ),
 
             const SizedBox(height: 16.0),
 
-            _buildControlButtons(context, provider, primary, isDark, isLandscape: false),
+            _buildControlButtons(context, provider, primary, isLandscape: false),
 
             const Spacer(flex: 1),
           ],
@@ -1072,7 +1065,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
@@ -1144,7 +1136,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
                       child: Container(
-                        color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.78),
+                        color: context.colors.bg.withValues(alpha: 0.78),
                       ),
                     ),
                   ),
@@ -1153,8 +1145,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                 // 2. Main Content (Landscape vs Portrait adaptive layout)
                 SafeArea(
                   child: isLandscape
-                      ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark)
-                      : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary, isDark),
+                      ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary)
+                      : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary),
                 ),
               ],
             ),
@@ -1168,13 +1160,11 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
 class _ListenProgressSection extends StatefulWidget {
   final Duration? fallbackDuration;
   final Color primary;
-  final bool isDark;
   final double horizontalPadding;
 
   const _ListenProgressSection({
     this.fallbackDuration,
     required this.primary,
-    required this.isDark,
     this.horizontalPadding = 24.0,
   });
 
@@ -1214,7 +1204,7 @@ class _ListenProgressSectionState extends State<_ListenProgressSection> {
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                   overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                   activeTrackColor: widget.primary,
-                  inactiveTrackColor: widget.isDark ? Colors.white12 : Colors.black12,
+                  inactiveTrackColor: context.colors.divider,
                   thumbColor: widget.primary,
                 ),
                 child: Slider(

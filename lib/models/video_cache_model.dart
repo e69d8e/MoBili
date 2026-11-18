@@ -35,6 +35,9 @@ class VideoCacheItem {
   final int completedAt;
   final String? errorMsg;
   final bool isAudioOnly;
+  /// 下载时保存的完整详情快照（VideoDetail.toJson 的 JSON 字符串）。
+  /// 老缓存条目为空字符串，离线打开时回退到最小信息。
+  final String detailJsonRaw;
 
   VideoCacheItem({
     required this.taskId,
@@ -65,6 +68,7 @@ class VideoCacheItem {
     this.completedAt = 0,
     this.errorMsg,
     this.isAudioOnly = false,
+    this.detailJsonRaw = '',
   });
 
   double get progress {
@@ -109,6 +113,7 @@ class VideoCacheItem {
     int? completedAt,
     String? errorMsg,
     bool? isAudioOnly,
+    String? detailJsonRaw,
   }) {
     return VideoCacheItem(
       taskId: taskId ?? this.taskId,
@@ -139,6 +144,7 @@ class VideoCacheItem {
       completedAt: completedAt ?? this.completedAt,
       errorMsg: errorMsg ?? this.errorMsg,
       isAudioOnly: isAudioOnly ?? this.isAudioOnly,
+      detailJsonRaw: detailJsonRaw ?? this.detailJsonRaw,
     );
   }
 
@@ -171,6 +177,7 @@ class VideoCacheItem {
       'completedAt': completedAt,
       'errorMsg': errorMsg,
       'isAudioOnly': isAudioOnly,
+      'detailJsonRaw': detailJsonRaw,
     };
   }
 
@@ -215,6 +222,7 @@ class VideoCacheItem {
       completedAt: json['completedAt'] is int ? json['completedAt'] : 0,
       errorMsg: json['errorMsg']?.toString(),
       isAudioOnly: json['isAudioOnly'] == true,
+      detailJsonRaw: json['detailJsonRaw']?.toString() ?? '',
     );
   }
 }

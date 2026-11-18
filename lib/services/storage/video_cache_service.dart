@@ -177,6 +177,7 @@ class VideoCacheService extends ChangeNotifier {  static final VideoCacheService
     int quality = 80,
     String qualityDesc = '1080P 高清',
     bool isAudioOnly = false,
+    String detailJsonRaw = '',
   }) async {
     await init();
     if (_cacheDir == null) return;
@@ -222,6 +223,7 @@ class VideoCacheService extends ChangeNotifier {  static final VideoCacheService
       status: VideoCacheStatus.pending,
       createdAt: DateTime.now().millisecondsSinceEpoch,
       isAudioOnly: isAudioOnly,
+      detailJsonRaw: detailJsonRaw,
     );
 
     _tasks[taskId] = task;

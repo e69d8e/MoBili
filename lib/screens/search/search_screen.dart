@@ -61,7 +61,6 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final searchProvider = context.watch<SearchProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -144,11 +143,11 @@ class _SearchScreenState extends State<SearchScreen> {
           const SizedBox(width: 4.0),
         ],
       ),
-      body: _buildBody(searchProvider, isDark),
+      body: _buildBody(searchProvider),
     );
   }
 
-  Widget _buildBody(SearchProvider sp, bool isDark) {
+  Widget _buildBody(SearchProvider sp) {
     // 1. If typing and suggestions available
     if (_textController.text.isNotEmpty &&
         sp.suggestions.isNotEmpty &&
@@ -185,14 +184,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
     // 2. If searched, show results
     if (sp.hasSearched) {
-      return _buildSearchResults(sp, isDark);
+      return _buildSearchResults(sp);
     }
 
     // 3. Default: History & Hot Searches
-    return _buildHistoryAndHot(sp, isDark);
+    return _buildHistoryAndHot(sp);
   }
 
-  Widget _buildHistoryAndHot(SearchProvider sp, bool isDark) {
+  Widget _buildHistoryAndHot(SearchProvider sp) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Column(
@@ -285,15 +284,15 @@ class _SearchScreenState extends State<SearchScreen> {
                 Color rankColor = context.colors.textHint;
                 Color? rankBadgeBg;
                 if (rank == 1) {
-                  // 深色下换亮色变体，避免低对比
-                  rankColor = isDark ? const Color(0xFFE57373) : const Color(0xFFC0483E); // 朱砂
-                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
+                  // 前三名装饰色由语义色提供明暗变体，保证对比度
+                  rankColor = context.colors.rankFirst; // 朱砂
+                  rankBadgeBg = rankColor.withValues(alpha: 0.15);
                 } else if (rank == 2) {
-                  rankColor = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE67E22); // 琥珀
-                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
+                  rankColor = context.colors.rankSecond; // 琥珀
+                  rankBadgeBg = rankColor.withValues(alpha: 0.15);
                 } else if (rank == 3) {
-                  rankColor = isDark ? const Color(0xFF64B5F6) : const Color(0xFF2A6F97); // 霁蓝
-                  rankBadgeBg = rankColor.withValues(alpha: isDark ? 0.18 : 0.12);
+                  rankColor = context.colors.rankThird; // 霁蓝
+                  rankBadgeBg = rankColor.withValues(alpha: 0.15);
                 }
 
                 return ListTile(
@@ -344,7 +343,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildSearchResults(SearchProvider sp, bool isDark) {
+  Widget _buildSearchResults(SearchProvider sp) {
     return Column(
       children: [
         // Category Pills (Video / UP / Article)
@@ -353,11 +352,11 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
           child: Row(
             children: [
-              _buildCategoryChip('视频', 'video', sp, isDark),
+              _buildCategoryChip('视频', 'video', sp),
               const SizedBox(width: 8.0),
-              _buildCategoryChip('UP主', 'bili_user', sp, isDark),
+              _buildCategoryChip('UP主', 'bili_user', sp),
               const SizedBox(width: 8.0),
-              _buildCategoryChip('图文', 'article', sp, isDark),
+              _buildCategoryChip('图文', 'article', sp),
             ],
           ),
         ),
@@ -368,13 +367,13 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
             child: Row(
               children: [
-                _buildSortChip('综合排序', 'totalrank', sp, isDark),
+                _buildSortChip('综合排序', 'totalrank', sp),
                 const SizedBox(width: 4.0),
-                _buildSortChip('最多点击', 'click', sp, isDark),
+                _buildSortChip('最多点击', 'click', sp),
                 const SizedBox(width: 4.0),
-                _buildSortChip('最新发布', 'pubdate', sp, isDark),
+                _buildSortChip('最新发布', 'pubdate', sp),
                 const SizedBox(width: 4.0),
-                _buildSortChip('最多弹幕', 'danmaku', sp, isDark),
+                _buildSortChip('最多弹幕', 'danmaku', sp),
               ],
             ),
           ),
@@ -386,7 +385,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
 
         // Main Content Area（加载/错误态由各分类内容自行处理）
-        Expanded(child: _buildCategoryContent(sp, isDark)),
+        Expanded(child: _buildCategoryContent(sp)),
       ],
     );
   }
@@ -395,7 +394,6 @@ class _SearchScreenState extends State<SearchScreen> {
     String label,
     String catKey,
     SearchProvider sp,
-    bool isDark,
   ) {
     final isSelected = sp.currentCategory == catKey;
     final primaryColor = Theme.of(context).colorScheme.primary;
@@ -429,7 +427,6 @@ class _SearchScreenState extends State<SearchScreen> {
     String label,
     String orderKey,
     SearchProvider sp,
-    bool isDark,
   ) {
     final isSelected = sp.currentOrder == orderKey;
     final primaryColor = Theme.of(context).colorScheme.primary;
@@ -458,7 +455,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildCategoryContent(SearchProvider sp, bool isDark) {
+  Widget _buildCategoryContent(SearchProvider sp) {
     if (sp.currentCategory == 'video') {
       if (sp.isLoading && sp.searchResults.isEmpty) {
         return const VideoGridSkeleton(
@@ -529,7 +526,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 );
               }
               return RepaintBoundary(
-                child: VideoCard(video: sp.searchResults[idx]),
+                child: VideoCard(
+                  video: sp.searchResults[idx],
+                  heroTag: 'search_${sp.searchResults[idx].bvid}_$idx',
+                ),
               );
             },
           ),
@@ -599,7 +599,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 );
               }
               return RepaintBoundary(
-                child: _buildUserTile(sp.searchUsers[idx], isDark),
+                child: _buildUserTile(sp.searchUsers[idx]),
               );
             },
           ),
@@ -664,7 +664,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 );
               }
               return RepaintBoundary(
-                child: _buildArticleTile(sp.searchArticles[idx], isDark),
+                child: _buildArticleTile(sp.searchArticles[idx]),
               );
             },
           ),
@@ -690,7 +690,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  Widget _buildUserTile(SearchUserItem user, bool isDark) {
+  Widget _buildUserTile(SearchUserItem user) {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return InkWell(
@@ -779,7 +779,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildArticleTile(SearchArticleItem article, bool isDark) {
+  Widget _buildArticleTile(SearchArticleItem article) {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Container(
@@ -787,15 +787,14 @@ class _SearchScreenState extends State<SearchScreen> {
       decoration: BoxDecoration(
         color: context.colors.card,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        // 卡片投影统一为极淡黑，暗色主题下自然隐去，无需按明暗分支
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

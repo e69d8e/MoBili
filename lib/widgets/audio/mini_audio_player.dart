@@ -89,7 +89,6 @@ class MiniAudioPlayer extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         final primary = Theme.of(context).colorScheme.primary;
 
         return RepaintBoundary(
@@ -100,7 +99,8 @@ class MiniAudioPlayer extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                  // 卡片投影固定为淡黑，暗色主题下自然隐去，无需按明暗分支
+                  color: Colors.black.withValues(alpha: 0.12),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),

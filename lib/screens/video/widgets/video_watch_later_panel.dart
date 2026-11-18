@@ -207,7 +207,6 @@ class VideoWatchLaterSheet {
     required void Function(WatchLaterItem item, int index) onSelectItem,
   }) {
     if (items.isEmpty) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     showModalBottomSheet(
@@ -268,9 +267,7 @@ class VideoWatchLaterSheet {
                         decoration: BoxDecoration(
                           color: isPlaying
                               ? primaryColor.withValues(alpha: 0.12)
-                              : (isDark
-                                  ? Colors.white.withValues(alpha: 0.04)
-                                  : Colors.black.withValues(alpha: 0.03)),
+                              : context.colors.fill,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isPlaying ? primaryColor : Colors.transparent,

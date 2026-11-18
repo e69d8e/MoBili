@@ -73,7 +73,6 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return AnimatedBuilder(
@@ -102,7 +101,7 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
+                    color: context.colors.divider,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

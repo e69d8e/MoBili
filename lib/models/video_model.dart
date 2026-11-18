@@ -59,6 +59,18 @@ class Stat {
       hisRank: json['his_rank'] is int ? json['his_rank'] : 0,
     );
   }
+
+  /// 离线缓存快照：键名与 B 站 view 接口一致，便于 VideoDetail.fromJson 直接还原
+  Map<String, dynamic> toJson() => {
+    'view': view,
+    'danmaku': danmaku,
+    'reply': reply,
+    'favorite': favorite,
+    'coin': coin,
+    'share': share,
+    'like': like,
+    'his_rank': hisRank,
+  };
 }
 
 class VideoPage {
@@ -88,6 +100,16 @@ class VideoPage {
       vid: json['vid']?.toString(),
     );
   }
+
+  /// 离线缓存快照：键名与 VideoPage.fromJson 读取的接口字段保持一致
+  Map<String, dynamic> toJson() => {
+    'cid': cid,
+    'page': page,
+    'from': from,
+    'part': part,
+    'duration': duration,
+    if (vid != null) 'vid': vid,
+  };
 }
 
 class VideoItem {
@@ -205,6 +227,22 @@ class VideoItem {
       rcmdReason: rcmd.isNotEmpty ? rcmd : null,
     );
   }
+
+  /// 离线缓存快照：键名与 VideoItem.fromJson 读取的接口字段保持一致
+  Map<String, dynamic> toJson() => {
+    'aid': aid,
+    'bvid': bvid,
+    'cid': cid,
+    'title': title,
+    'pic': pic,
+    'desc': desc,
+    'duration': duration,
+    'pubdate': pubdate,
+    'ctime': ctime,
+    'owner': owner.toJson(),
+    'stat': stat.toJson(),
+    if (rcmdReason != null) 'rcmd_reason': {'content': rcmdReason},
+  };
 }
 
 class UgcEpisode {
@@ -433,6 +471,24 @@ class VideoDetail {
       chapters: chapters,
     );
   }
+
+  /// 离线缓存快照：合并 videoItem 字段与分 P 列表，能被 VideoDetail.fromJson 还原
+  Map<String, dynamic> toJson() => {
+    ...videoItem.toJson(),
+    'pages': pages.map((p) => p.toJson()).toList(),
+  };
+
+  /// 离线打开时只保留本地已缓存的分 P，其余详情沿用快照
+  VideoDetail copyWith({List<VideoPage>? pages}) => VideoDetail(
+    videoItem: videoItem,
+    pages: pages ?? this.pages,
+    ugcSeason: ugcSeason,
+    chapters: chapters,
+    tags: tags,
+    isLiked: isLiked,
+    isCoin: isCoin,
+    isFav: isFav,
+  );
 }
 
 class VideoRelation {

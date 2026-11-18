@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -302,7 +303,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
             }
           },
           onSwitchToVideo: (curPos) async {
-            await _playerKey.currentState?.controller?.seekTo(curPos);
+            await _playerKey.currentState?.seekTo(curPos);
             await _playerKey.currentState?.play();
           },
         ),
@@ -325,7 +326,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
       if (listenProvider.hasAudio && listenProvider.bvid == _currentItem.bvid) {
         final curAudioPos = listenProvider.position;
         if (curAudioPos > Duration.zero && _playerKey.currentState?.controller != null) {
-          await _playerKey.currentState?.controller?.seekTo(curAudioPos);
+          await _playerKey.currentState?.seekTo(curAudioPos);
         }
       }
     }
@@ -336,21 +337,35 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
 
     if (!mounted) return;
 
-    final videoItem = VideoItem(
-      aid: _currentItem.aid,
-      bvid: _currentItem.bvid,
-      cid: _currentItem.cid,
-      title: _currentItem.title,
-      pic: _currentItem.cover,
-      desc: '',
-      duration: _currentItem.duration,
-      pubdate: 0,
-      ctime: 0,
-      owner: Owner(mid: 0, name: _currentItem.ownerName, face: _currentItem.ownerFace),
-      stat: Stat(),
-    );
+    // 还原下载时保存的完整详情快照；老缓存缺快照时退化为最小信息
+    VideoItem? restored;
+    if (_currentItem.detailJsonRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(_currentItem.detailJsonRaw);
+        if (decoded is Map<String, dynamic>) {
+          restored = VideoDetail.fromJson(decoded).videoItem;
+        }
+      } catch (_) {
+        // 快照损坏时按老缓存处理
+      }
+    }
+    final videoItem = restored ??
+        VideoItem(
+          aid: _currentItem.aid,
+          bvid: _currentItem.bvid,
+          cid: _currentItem.cid,
+          title: _currentItem.title,
+          pic: _currentItem.cover,
+          desc: '',
+          duration: _currentItem.duration,
+          pubdate: 0,
+          ctime: 0,
+          owner: Owner(mid: 0, name: _currentItem.ownerName, face: _currentItem.ownerFace),
+          stat: Stat(),
+        );
 
-    final pos = _playerKey.currentState?.controller?.value.position;
+    final curPos = _playerKey.currentState?.currentPosition;
+    final pos = (curPos != null && curPos > Duration.zero) ? curPos : null;
 
     Navigator.of(context).push(
       MaterialPageRoute(

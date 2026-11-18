@@ -38,7 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -114,7 +113,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     preset: AppThemePreset.values[i],
                     isSelected:
                         themeProvider.themePreset == AppThemePreset.values[i],
-                    isDark: isDark,
                     onTap: () =>
                         themeProvider.setThemePreset(AppThemePreset.values[i]),
                   ),
@@ -1025,10 +1023,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required BuildContext context,
     required AppThemePreset preset,
     required bool isSelected,
-    required bool isDark,
     required VoidCallback onTap,
   }) {
-    final activePrimary = isDark ? preset.darkPrimary : preset.lightPrimary;
+    // 预览的是各预设自己的亮/暗主色，需按当前明暗取对应变体，不是当前 UI 取色
+    final activePrimary = Theme.of(context).brightness == Brightness.dark
+        ? preset.darkPrimary
+        : preset.lightPrimary;
 
     return ListTile(
       dense: true,
@@ -1046,7 +1046,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           border: Border.all(
             color: isSelected
                 ? activePrimary
-                : (isDark ? Colors.white24 : Colors.black12),
+                : context.colors.divider,
             width: isSelected ? 2.0 : 1.0,
           ),
           boxShadow: isSelected
@@ -1068,7 +1068,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               color: isSelected
-                  ? (isDark ? AppTheme.textMainDark : activePrimary)
+                  ? activePrimary
                   : (context.colors.textMain),
             ),
           ),
@@ -1080,9 +1080,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 vertical: 1.5,
               ),
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white12
-                    : Colors.black.withValues(alpha: 0.06),
+                color: context.colors.fill,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -1163,7 +1161,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
         return Material(
@@ -1183,7 +1180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -1233,7 +1230,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
         return Material(
@@ -1253,7 +1249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -1298,7 +1294,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
         return Material(
@@ -1318,7 +1313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -1375,7 +1370,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
         return Material(
@@ -1395,7 +1389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -1443,7 +1437,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
         final primaryColor = Theme.of(ctx).colorScheme.primary;
 
         return Material(
@@ -1463,7 +1456,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
+                      color: context.colors.divider,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),

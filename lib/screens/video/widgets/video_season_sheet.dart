@@ -13,7 +13,6 @@ class VideoSeasonSheet {
     required String currentBvid,
     required void Function(UgcEpisode ep) onSelectEpisode,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final allEpisodes = season.sections.expand((s) => s.episodes).toList();
 
     showGeneralDialog(
@@ -48,15 +47,16 @@ class VideoSeasonSheet {
                 width: dialogWidth,
                 constraints: BoxConstraints(maxHeight: screenHeight * 0.52),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xE6181820) : const Color(0xF2FFFFFF),
+                  color: context.colors.card.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+                    color: context.colors.divider,
                     width: 0.8,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+                      // 浮层投影固定为淡黑，暗色主题下自然隐去
+                      color: Colors.black.withValues(alpha: 0.28),
                       blurRadius: 24,
                       spreadRadius: 1,
                       offset: const Offset(0, 8),
@@ -125,7 +125,6 @@ class VideoSeasonSheet {
                           child: _EpisodeList(
                             episodes: allEpisodes,
                             currentBvid: currentBvid,
-                            isDark: isDark,
                             onSelectEpisode: onSelectEpisode,
                           ),
                         ),
@@ -151,13 +150,11 @@ class _EpisodeList extends StatefulWidget {
   const _EpisodeList({
     required this.episodes,
     required this.currentBvid,
-    required this.isDark,
     required this.onSelectEpisode,
   });
 
   final List<UgcEpisode> episodes;
   final String currentBvid;
-  final bool isDark;
   final void Function(UgcEpisode ep) onSelectEpisode;
 
   @override
@@ -277,9 +274,7 @@ class _EpisodeListState extends State<_EpisodeList> {
             decoration: BoxDecoration(
               color: isPlaying
                   ? primaryColor.withValues(alpha: 0.14)
-                  : (widget.isDark
-                        ? Colors.white.withValues(alpha: 0.04)
-                        : Colors.black.withValues(alpha: 0.03)),
+                  : c.colors.fill,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isPlaying ? primaryColor : Colors.transparent,
