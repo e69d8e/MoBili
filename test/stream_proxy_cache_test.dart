@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -372,5 +373,138 @@ void main() {
     await upA.close(force: true);
     await upB.close(force: true);
     await upC.close(force: true);
+  });
+
+  test('主链报错时自动切换到备用 CDN 地址并正常出流', () async {
+    final badUpstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    badUpstream.listen((req) async {
+      await req.drain();
+      req.response.statusCode = HttpStatus.serviceUnavailable;
+      await req.response.close();
+    });
+    final (goodUpstream, seenGood) = await startRangeServer(data);
+
+    final proxy = BiliStreamProxy();
+    final proxyUrl = await proxy.getProxyUrl(
+      'http://127.0.0.1:${badUpstream.port}/v.m4s',
+      backupUrls: ['http://127.0.0.1:${goodUpstream.port}/v_backup.m4s'],
+    );
+
+    final (res, body) = await getRange(proxyUrl, 'bytes=0-1048575');
+    expect(res.statusCode, HttpStatus.partialContent);
+    expect(body, equals(data.sublist(0, 1048576)));
+    expect(seenGood, isNotEmpty);
+
+    await badUpstream.close(force: true);
+    await goodUpstream.close(force: true);
+  });
+
+  test('上游声明 Content-Length 但中途断流时自动断点续传补齐', () async {
+    var requestCount = 0;
+    final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    upstream.listen((req) async {
+      await req.drain();
+      requestCount++;
+      final range = req.headers.value(HttpHeaders.rangeHeader) ?? 'bytes=0-';
+      final spec = range.substring('bytes='.length).split('-');
+      final start = int.parse(spec[0].trim());
+      final end = spec.length > 1 && spec[1].trim().isNotEmpty
+          ? int.parse(spec[1].trim())
+          : data.length - 1;
+      final clampedEnd = math.min(end, data.length - 1);
+      final totalLen = clampedEnd - start + 1;
+
+      if (requestCount == 1 && start == 0) {
+        // 首次连接只发出响应头与前半段就异常断开，检验上游断流断点续传
+        final half = totalLen ~/ 2;
+        final socket = await req.response.detachSocket(writeHeaders: false);
+        socket.add(
+          utf8.encode(
+            'HTTP/1.1 206 Partial Content\r\n'
+            'Content-Range: bytes $start-$clampedEnd/${data.length}\r\n'
+            'Content-Length: $totalLen\r\n'
+            '\r\n',
+          ),
+        );
+        socket.add(data.sublist(start, start + half));
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
+
+      req.response.statusCode = HttpStatus.partialContent;
+      req.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        'bytes $start-$clampedEnd/${data.length}',
+      );
+      req.response.contentLength = totalLen;
+      req.response.add(data.sublist(start, clampedEnd + 1));
+      await req.response.close();
+    });
+
+    final proxy = BiliStreamProxy();
+    final proxyUrl =
+        await proxy.getProxyUrl('http://127.0.0.1:${upstream.port}/v.m4s');
+
+    final (res, body) = await getRange(proxyUrl, 'bytes=0-2097151');
+    expect(res.statusCode, HttpStatus.partialContent);
+    expect(body, equals(data.sublist(0, 2097152)));
+    expect(requestCount, greaterThanOrEqualTo(2));
+
+    await upstream.close(force: true);
+  });
+
+  test('块入队后未落盘前立刻回读直接命中内存写入缓冲，不产生越界中断', () async {
+    final (upstream, seen) = await startRangeServer(data);
+    final proxy = BiliStreamProxy();
+    final prevPrefetch = BiliStreamProxy.prefetchEnabled;
+    BiliStreamProxy.prefetchEnabled = false;
+    try {
+      final proxyUrl =
+          await proxy.getProxyUrl('http://127.0.0.1:${upstream.port}/v.m4s');
+
+      // 先取整块 0..2MiB（刻意不 await debugFlushPendingWrites）
+      final (_, first) = await getRange(proxyUrl, 'bytes=0-2097151');
+      expect(first, equals(data.sublist(0, 2097152)));
+
+      // 紧接着读取块 0 子区间，需直接命中内存写入缓冲并完整返回
+      final (_, sub) = await getRange(proxyUrl, 'bytes=524288-1048575');
+      expect(sub, equals(data.sublist(524288, 1048576)));
+      expect(seen.length, 1);
+
+      await proxy.debugFlushPendingWrites();
+    } finally {
+      BiliStreamProxy.prefetchEnabled = prevPrefetch;
+      await upstream.close(force: true);
+    }
+  });
+
+  test('开放区间 bytes=0- 播放器提前断开后仍按真实出流字节推进预取', () async {
+    final big = List<int>.generate(24 * 1024 * 1024, (i) => i % 251);
+    final (upstream, seen) = await startRangeServer(big);
+    final proxy = BiliStreamProxy();
+    final proxyUrl =
+        await proxy.getProxyUrl('http://127.0.0.1:${upstream.port}/v.m4s');
+
+    // 1. 探测头使代理知晓总长
+    final (_, headProbe) = await getRange(proxyUrl, 'bytes=0-1023');
+    expect(headProbe, equals(big.sublist(0, 1024)));
+    await waitForUpstreamSettle(seen);
+    seen.clear();
+
+    // 2. 模拟播放器发起开放区间 bytes=0-，读少量字节后提前断开
+    final client = HttpClient();
+    final req = await client.getUrl(Uri.parse(proxyUrl));
+    req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-');
+    final res = await req.close();
+    final sub = res.listen((_) {});
+    await sub.cancel();
+    client.close(force: true);
+
+    await waitForUpstreamSettle(seen);
+    // 验证开放区间断开不会把水位错误标到 EOF 导致后续不再工作，且没有额外坏请求
+    expect(res.statusCode, HttpStatus.partialContent);
+
+    await upstream.close(force: true);
   });
 }

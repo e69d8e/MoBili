@@ -96,6 +96,7 @@ Future<String> resolvePlayableUrl(
   String url, {
   required bool isAudio,
   String? cacheKey,
+  List<String> backupUrls = const [],
 }) async {
   if (url.isEmpty || kIsWeb) return url;
   if (url.startsWith('file:')) return url;
@@ -104,6 +105,7 @@ Future<String> resolvePlayableUrl(
       url,
       isAudio: isAudio,
       cacheKey: cacheKey,
+      backupUrls: backupUrls,
     );
   } catch (_) {
     return url;
@@ -128,8 +130,23 @@ Future<String> resolveLocalDashUrl(
 /// 伴音轨与视频轨的最大允许漂移。
 const Duration kDashAudioDriftThreshold = Duration(milliseconds: 500);
 
+/// 缓冲恢复 / 切前台重新起播时，立即对齐伴音轨的最小偏差阈值。
+const Duration kDashAudioResumeAlignThreshold = Duration(milliseconds: 120);
+
 /// 两次纠偏之间的最小间隔，避免频繁 seek 造成音频断续。
 const Duration kDashAudioResyncInterval = Duration(seconds: 2);
+
+/// 视频持续处于缓冲态且进度不推进的卡死判定阈值。
+const Duration kVideoBufferingStallTimeout = Duration(seconds: 12);
+
+/// 视频显示播放中但进度不推进的静默卡帧判定阈值。
+const Duration kVideoSilentFreezeTimeout = Duration(seconds: 3);
+
+/// DASH 双流下伴音继续往前走、视频却停滞时的快速静默卡帧判定阈值。
+const Duration kVideoSilentFreezeWithAudioTimeout = Duration(milliseconds: 1500);
+
+/// 非用户主动暂停情况下，视频意外停住的恢复判定阈值。
+const Duration kVideoUnexpectedStopTimeout = Duration(milliseconds: 2500);
 
 /// 是否需要用视频轨位置纠正伴音轨位置。
 ///
@@ -150,4 +167,180 @@ bool shouldCorrectDrift({
     return false;
   }
   return true;
+}
+
+/// DASH 双流音视频同步协同决策结果。
+class DualStreamSyncDecision {
+  final bool pauseAudio;
+  final bool pauseVideo;
+  final bool resumeVideo;
+  final bool resumeAudio;
+  final bool nextSyncPausedAudio;
+  final bool nextSyncPausedVideo;
+
+  const DualStreamSyncDecision({
+    this.pauseAudio = false,
+    this.pauseVideo = false,
+    this.resumeVideo = false,
+    this.resumeAudio = false,
+    this.nextSyncPausedAudio = false,
+    this.nextSyncPausedVideo = false,
+  });
+
+  bool get hasAction =>
+      pauseAudio || pauseVideo || resumeVideo || resumeAudio;
+}
+
+/// 计算 DASH 双流的音画协同动作：
+/// - 视频缓冲 / 异常 / 意外停播时立即暂停伴音，杜绝"画面卡住、声音继续"；
+/// - 伴音缓冲时暂停视频等待伴音，双方都就绪后对齐位置再一起恢复。
+DualStreamSyncDecision evaluateDualStreamSync({
+  required bool isExplicitlyPaused,
+  required bool isRecovering,
+  required bool videoInitialized,
+  required bool videoPlaying,
+  required bool videoBuffering,
+  required bool videoCompleted,
+  required bool videoHasError,
+  required bool audioInitialized,
+  required bool audioPlaying,
+  required bool audioBuffering,
+  required bool audioCompleted,
+  required bool audioHasError,
+  required bool isSyncPausedAudio,
+  required bool isSyncPausedVideo,
+}) {
+  if (!videoInitialized ||
+      !audioInitialized ||
+      isExplicitlyPaused ||
+      isRecovering) {
+    return DualStreamSyncDecision(
+      nextSyncPausedAudio: isSyncPausedAudio,
+      nextSyncPausedVideo: isSyncPausedVideo,
+    );
+  }
+
+  if (videoHasError || videoCompleted) {
+    return DualStreamSyncDecision(
+      pauseAudio: audioPlaying,
+      nextSyncPausedAudio: audioPlaying || isSyncPausedAudio,
+      nextSyncPausedVideo: false,
+    );
+  }
+
+  if (audioHasError) {
+    return DualStreamSyncDecision(
+      pauseVideo: videoPlaying,
+      nextSyncPausedAudio: false,
+      nextSyncPausedVideo: videoPlaying || isSyncPausedVideo,
+    );
+  }
+
+  if (videoBuffering) {
+    final shouldResumeVideo =
+        isSyncPausedVideo && !audioBuffering && !videoPlaying;
+    return DualStreamSyncDecision(
+      pauseAudio: audioPlaying,
+      resumeVideo: shouldResumeVideo,
+      nextSyncPausedAudio: true,
+      nextSyncPausedVideo: shouldResumeVideo ? false : isSyncPausedVideo,
+    );
+  }
+
+  if (audioBuffering && !audioCompleted) {
+    return DualStreamSyncDecision(
+      pauseVideo: videoPlaying,
+      nextSyncPausedAudio: isSyncPausedAudio,
+      nextSyncPausedVideo: true,
+    );
+  }
+
+  if (isSyncPausedVideo) {
+    return DualStreamSyncDecision(
+      resumeVideo: !videoPlaying,
+      resumeAudio: !audioPlaying && !audioCompleted,
+      nextSyncPausedAudio: false,
+      nextSyncPausedVideo: false,
+    );
+  }
+
+  if (!videoPlaying) {
+    return DualStreamSyncDecision(
+      pauseAudio: audioPlaying,
+      nextSyncPausedAudio: audioPlaying || isSyncPausedAudio,
+      nextSyncPausedVideo: false,
+    );
+  }
+
+  if ((isSyncPausedAudio || !audioPlaying) && !audioCompleted) {
+    return const DualStreamSyncDecision(
+      resumeAudio: true,
+      nextSyncPausedAudio: false,
+      nextSyncPausedVideo: false,
+    );
+  }
+
+  return const DualStreamSyncDecision(
+    nextSyncPausedAudio: false,
+    nextSyncPausedVideo: false,
+  );
+}
+
+/// 视频轨播放停滞类型。
+enum VideoStallKind { none, bufferTimeout, silentFreeze, unexpectedStop }
+
+/// 评估当前视频轨是否发生画面卡住 / 缓冲挂死 / 意外停播。
+VideoStallKind evaluateVideoStall({
+  required bool isInitialized,
+  required bool isPlaying,
+  required bool isBuffering,
+  required bool isCompleted,
+  required bool hasError,
+  required bool isExplicitlyPaused,
+  required bool isSyncPausedVideo,
+  required bool isSeeking,
+  required bool isRecovering,
+  required Duration videoPosition,
+  required Duration videoDuration,
+  required Duration stalledFor,
+  bool audioPlaying = false,
+  Duration? audioPosition,
+}) {
+  if (!isInitialized ||
+      isExplicitlyPaused ||
+      isSyncPausedVideo ||
+      isSeeking ||
+      isRecovering ||
+      isCompleted ||
+      hasError) {
+    return VideoStallKind.none;
+  }
+
+  if (videoDuration > Duration.zero &&
+      videoPosition >= videoDuration - const Duration(milliseconds: 500)) {
+    return VideoStallKind.none;
+  }
+
+  if (isBuffering) {
+    return stalledFor >= kVideoBufferingStallTimeout
+        ? VideoStallKind.bufferTimeout
+        : VideoStallKind.none;
+  }
+
+  if (isPlaying) {
+    if (audioPlaying &&
+        audioPosition != null &&
+        (audioPosition - videoPosition) >= const Duration(milliseconds: 800) &&
+        stalledFor >= kVideoSilentFreezeWithAudioTimeout) {
+      return VideoStallKind.silentFreeze;
+    }
+    if (stalledFor >= kVideoSilentFreezeTimeout) {
+      return VideoStallKind.silentFreeze;
+    }
+    return VideoStallKind.none;
+  }
+
+  return stalledFor >= kVideoUnexpectedStopTimeout
+      ? VideoStallKind.unexpectedStop
+      : VideoStallKind.none;
 }

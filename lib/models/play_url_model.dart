@@ -30,6 +30,7 @@ class PlayUrlDurl {
     );
   }
   String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(url, backupUrls);
+  List<String> get candidateUrls => PlayUrlInfo.getCandidateUrls(url, backupUrls);
 }
 
 class SupportFormat {
@@ -96,6 +97,8 @@ class DashVideoItem {
   });
 
   String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(baseUrl, backupUrls);
+  List<String> get candidateUrls =>
+      PlayUrlInfo.getCandidateUrls(baseUrl, backupUrls);
 
   factory DashVideoItem.fromJson(Map<String, dynamic> json) {
     final List<String> backups = [];
@@ -143,6 +146,8 @@ class DashAudioItem {
   });
 
   String get effectiveUrl => PlayUrlInfo.getEffectiveUrl(baseUrl, backupUrls);
+  List<String> get candidateUrls =>
+      PlayUrlInfo.getCandidateUrls(baseUrl, backupUrls);
 
   factory DashAudioItem.fromJson(Map<String, dynamic> json) {
     final List<String> backups = [];
@@ -213,28 +218,38 @@ class PlayUrlInfo {
         lower.contains(':8000');
   }
 
+  /// Return all non-empty stream URLs ordered by CDN reliability:
+  /// official UPOS bilivideo.com (non-MCDN) -> other non-MCDN -> MCDN fallback.
+  static List<String> getCandidateUrls(String primary, List<String> backups) {
+    final seen = <String>{};
+    final result = <String>[];
+    void addIfValid(String url) {
+      if (url.isNotEmpty && seen.add(url)) {
+        result.add(url);
+      }
+    }
+
+    final all = <String>[primary, ...backups];
+    for (final u in all) {
+      if (u.isNotEmpty && !isMcdn(u) && u.contains('bilivideo.com')) {
+        addIfValid(u);
+      }
+    }
+    for (final u in all) {
+      if (u.isNotEmpty && !isMcdn(u)) {
+        addIfValid(u);
+      }
+    }
+    for (final u in all) {
+      addIfValid(u);
+    }
+    return result;
+  }
+
   /// Resolve effective stream URL, prioritizing high-speed official UPOS CDN over unreliable P2P MCDN nodes.
   static String getEffectiveUrl(String primary, List<String> backups) {
-    // 1. If primary is official UPOS CDN and not MCDN, use it directly
-    if (primary.isNotEmpty && !isMcdn(primary) && primary.contains('bilivideo.com')) {
-      return primary;
-    }
-    // 2. Look for official upos bilivideo.com backup
-    for (final b in backups) {
-      if (b.isNotEmpty && !isMcdn(b) && b.contains('bilivideo.com')) {
-        return b;
-      }
-    }
-    // 3. Fallback: Any non-MCDN primary or backup
-    if (primary.isNotEmpty && !isMcdn(primary)) {
-      return primary;
-    }
-    for (final b in backups) {
-      if (b.isNotEmpty && !isMcdn(b)) {
-        return b;
-      }
-    }
-    return primary;
+    final candidates = getCandidateUrls(primary, backups);
+    return candidates.isNotEmpty ? candidates.first : primary;
   }
 
   factory PlayUrlInfo.fromJson(
@@ -410,33 +425,31 @@ class PlayUrlInfo {
     return best;
   }
 
-  /// DASH 场景下与视频轨配对的独立音轨地址。
-  /// null 表示音轨已内嵌在视频流中（渐进式单流、或服务端未返回音轨），
-  /// 此时播放器**不得**再创建第二个播放器（否则会重复播放视频流）。
-  String? get separateAudioUrl {
-    if (durls.isNotEmpty) return null;
+  /// DASH 场景下与视频轨配对的独立音轨候选地址列表（主地址 + 备用 CDN）。
+  List<String> get separateAudioCandidateUrls {
+    if (durls.isNotEmpty) return const [];
     final track = bestAudioTrack;
-    if (track == null) return null;
-    final url = track.effectiveUrl;
-    return url.isEmpty ? null : url;
+    if (track == null) return const [];
+    return track.candidateUrls;
   }
 
-  String? getVideoUrlForQuality(int targetQuality) {
+  /// 指定画质下的候选视频流地址列表（主地址 + 备用 CDN）。
+  List<String> getVideoCandidateUrlsForQuality(int targetQuality) {
     if (durls.isNotEmpty) {
-      final u = durls.first.effectiveUrl;
-      if (u.isNotEmpty) return u;
+      final list = durls.first.candidateUrls;
+      if (list.isNotEmpty) return list;
     }
 
     // 1. 目标画质内按编码兼容性选轨
     final exact = _bestTrack(videoTracks.where((t) => t.id == targetQuality));
-    if (exact != null) return exact.effectiveUrl;
+    if (exact != null) return exact.candidateUrls;
 
     // 2. 目标画质缺失时，退到不高于目标的最高可用画质
     final lower = videoTracks.where((t) => t.id < targetQuality).toList()
       ..sort((a, b) => b.id.compareTo(a.id));
     if (lower.isNotEmpty) {
       final best = _bestTrack(lower.where((t) => t.id == lower.first.id));
-      if (best != null) return best.effectiveUrl;
+      if (best != null) return best.candidateUrls;
     }
 
     // 3. 只剩高于目标的画质时，取最接近的一档，避免为低画质请求拉高码率
@@ -444,30 +457,48 @@ class PlayUrlInfo {
       ..sort((a, b) => a.id.compareTo(b.id));
     if (higher.isNotEmpty) {
       final best = _bestTrack(higher.where((t) => t.id == higher.first.id));
-      if (best != null) return best.effectiveUrl;
+      if (best != null) return best.candidateUrls;
     }
 
     // 4. 兜底：任意一轨（编码兼容性优先）
     final any = _bestTrack(videoTracks);
-    if (any != null) return any.effectiveUrl;
+    if (any != null) return any.candidateUrls;
 
-    return null;
+    return const [];
+  }
+
+  /// 当前主视频流对应的候选地址列表（含备用 CDN，供代理层故障切换）。
+  List<String> get primaryVideoCandidateUrls {
+    final candidates = getVideoCandidateUrlsForQuality(
+      grantedQuality > 0 ? grantedQuality : currentQuality,
+    );
+    if (candidates.isNotEmpty) return candidates;
+    if (durls.isNotEmpty) {
+      final list = durls.first.candidateUrls;
+      if (list.isNotEmpty) return list;
+    }
+    if (videoTracks.isNotEmpty) {
+      return videoTracks.first.candidateUrls;
+    }
+    return const [];
+  }
+
+  /// DASH 场景下与视频轨配对的独立音轨地址。
+  /// null 表示音轨已内嵌在视频流中（渐进式单流、或服务端未返回音轨），
+  /// 此时播放器**不得**再创建第二个播放器（否则会重复播放视频流）。
+  String? get separateAudioUrl {
+    final list = separateAudioCandidateUrls;
+    return list.isNotEmpty ? list.first : null;
+  }
+
+  String? getVideoUrlForQuality(int targetQuality) {
+    final list = getVideoCandidateUrlsForQuality(targetQuality);
+    return list.isNotEmpty ? list.first : null;
   }
 
   String? get primaryVideoUrl {
-    final url = getVideoUrlForQuality(
-      grantedQuality > 0 ? grantedQuality : currentQuality,
-    );
-    if (url != null && url.isNotEmpty) return url;
-    if (durls.isNotEmpty) {
-      final u = durls.first.effectiveUrl;
-      if (u.isNotEmpty) return u;
-    }
-    if (videoTracks.isNotEmpty) {
-      final u = videoTracks.first.effectiveUrl;
-      if (u.isNotEmpty) return u;
-    }
-    return null;
+    final list = primaryVideoCandidateUrls;
+    return list.isNotEmpty ? list.first : null;
   }
 
   /// 纯音频播放（听视频模式）使用的最优音轨；无独立音轨时回退视频流本身。

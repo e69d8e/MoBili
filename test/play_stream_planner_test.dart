@@ -162,4 +162,269 @@ void main() {
       );
     });
   });
+
+  group('evaluateDualStreamSync', () {
+    test('video buffering pauses playing audio to prevent frozen picture with continuing sound', () {
+      final decision = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: false,
+        videoBuffering: true,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: true,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: false,
+        isSyncPausedVideo: false,
+      );
+
+      expect(decision.pauseAudio, isTrue);
+      expect(decision.nextSyncPausedAudio, isTrue);
+      expect(decision.pauseVideo, isFalse);
+    });
+
+    test('audio resumes once video buffering finishes', () {
+      final decision = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: true,
+        videoBuffering: false,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: false,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: true,
+        isSyncPausedVideo: false,
+      );
+
+      expect(decision.resumeAudio, isTrue);
+      expect(decision.nextSyncPausedAudio, isFalse);
+    });
+
+    test('audio buffering pauses playing video and resumes both when ready', () {
+      final pauseVideo = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: true,
+        videoBuffering: false,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: false,
+        audioBuffering: true,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: false,
+        isSyncPausedVideo: false,
+      );
+      expect(pauseVideo.pauseVideo, isTrue);
+      expect(pauseVideo.nextSyncPausedVideo, isTrue);
+
+      final resumeBoth = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: false,
+        videoBuffering: false,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: false,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: false,
+        isSyncPausedVideo: true,
+      );
+      expect(resumeBoth.resumeVideo, isTrue);
+      expect(resumeBoth.resumeAudio, isTrue);
+      expect(resumeBoth.nextSyncPausedVideo, isFalse);
+    });
+
+    test('simultaneous buffering clearing audio first unpauses video without deadlock', () {
+      final decision = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: false,
+        videoBuffering: true,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: false,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: true,
+        isSyncPausedVideo: true,
+      );
+
+      expect(decision.resumeVideo, isTrue);
+      expect(decision.nextSyncPausedVideo, isFalse);
+      expect(decision.resumeAudio, isFalse);
+      expect(decision.nextSyncPausedAudio, isTrue);
+    });
+
+    test('explicit pause suppresses all automatic resume/pause actions', () {
+      final decision = evaluateDualStreamSync(
+        isExplicitlyPaused: true,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: false,
+        videoBuffering: false,
+        videoCompleted: false,
+        videoHasError: false,
+        audioInitialized: true,
+        audioPlaying: false,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: true,
+        isSyncPausedVideo: false,
+      );
+
+      expect(decision.hasAction, isFalse);
+    });
+
+    test('video error or completion pauses continuing audio', () {
+      final errDecision = evaluateDualStreamSync(
+        isExplicitlyPaused: false,
+        isRecovering: false,
+        videoInitialized: true,
+        videoPlaying: false,
+        videoBuffering: false,
+        videoCompleted: false,
+        videoHasError: true,
+        audioInitialized: true,
+        audioPlaying: true,
+        audioBuffering: false,
+        audioCompleted: false,
+        audioHasError: false,
+        isSyncPausedAudio: false,
+        isSyncPausedVideo: false,
+      );
+      expect(errDecision.pauseAudio, isTrue);
+    });
+  });
+
+  group('evaluateVideoStall', () {
+    test('detects silent freeze quickly when audio keeps advancing ahead of stuck video', () {
+      final stall = evaluateVideoStall(
+        isInitialized: true,
+        isPlaying: true,
+        isBuffering: false,
+        isCompleted: false,
+        hasError: false,
+        isExplicitlyPaused: false,
+        isSyncPausedVideo: false,
+        isSeeking: false,
+        isRecovering: false,
+        videoPosition: const Duration(seconds: 20),
+        videoDuration: const Duration(minutes: 3),
+        stalledFor: const Duration(milliseconds: 1600),
+        audioPlaying: true,
+        audioPosition: const Duration(seconds: 21),
+      );
+      expect(stall, equals(VideoStallKind.silentFreeze));
+    });
+
+    test('detects silent freeze on single-stream when position stalls past threshold', () {
+      final before = evaluateVideoStall(
+        isInitialized: true,
+        isPlaying: true,
+        isBuffering: false,
+        isCompleted: false,
+        hasError: false,
+        isExplicitlyPaused: false,
+        isSyncPausedVideo: false,
+        isSeeking: false,
+        isRecovering: false,
+        videoPosition: const Duration(seconds: 20),
+        videoDuration: const Duration(minutes: 3),
+        stalledFor: const Duration(seconds: 2),
+      );
+      expect(before, equals(VideoStallKind.none));
+
+      final after = evaluateVideoStall(
+        isInitialized: true,
+        isPlaying: true,
+        isBuffering: false,
+        isCompleted: false,
+        hasError: false,
+        isExplicitlyPaused: false,
+        isSyncPausedVideo: false,
+        isSeeking: false,
+        isRecovering: false,
+        videoPosition: const Duration(seconds: 20),
+        videoDuration: const Duration(minutes: 3),
+        stalledFor: kVideoSilentFreezeTimeout,
+      );
+      expect(after, equals(VideoStallKind.silentFreeze));
+    });
+
+    test('detects buffering timeout and unexpected stop but ignores near-EOF', () {
+      expect(
+        evaluateVideoStall(
+          isInitialized: true,
+          isPlaying: false,
+          isBuffering: true,
+          isCompleted: false,
+          hasError: false,
+          isExplicitlyPaused: false,
+          isSyncPausedVideo: false,
+          isSeeking: false,
+          isRecovering: false,
+          videoPosition: const Duration(seconds: 20),
+          videoDuration: const Duration(minutes: 3),
+          stalledFor: kVideoBufferingStallTimeout,
+        ),
+        equals(VideoStallKind.bufferTimeout),
+      );
+
+      expect(
+        evaluateVideoStall(
+          isInitialized: true,
+          isPlaying: false,
+          isBuffering: false,
+          isCompleted: false,
+          hasError: false,
+          isExplicitlyPaused: false,
+          isSyncPausedVideo: false,
+          isSeeking: false,
+          isRecovering: false,
+          videoPosition: const Duration(seconds: 20),
+          videoDuration: const Duration(minutes: 3),
+          stalledFor: kVideoUnexpectedStopTimeout,
+        ),
+        equals(VideoStallKind.unexpectedStop),
+      );
+
+      expect(
+        evaluateVideoStall(
+          isInitialized: true,
+          isPlaying: true,
+          isBuffering: false,
+          isCompleted: false,
+          hasError: false,
+          isExplicitlyPaused: false,
+          isSyncPausedVideo: false,
+          isSeeking: false,
+          isRecovering: false,
+          videoPosition: const Duration(milliseconds: 179800),
+          videoDuration: const Duration(minutes: 3),
+          stalledFor: const Duration(seconds: 10),
+        ),
+        equals(VideoStallKind.none),
+      );
+    });
+  });
 }

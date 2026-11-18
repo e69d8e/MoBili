@@ -56,6 +56,16 @@ class BiliVideoPlayer extends StatefulWidget {
   /// 避免出现"有画面没声音"却静默播放的情况。
   final VoidCallback? onAudioTrackFailed;
 
+  /// 播放卡死/报错需要刷新最新播放地址时回调（返回新地址后就地恢复进度）。
+  final Future<PlayUrlInfo?> Function(int quality)? onRefreshPlayStream;
+
+  /// DASH 双流多次恢复仍异常时回调（由页面降级到渐进式单流）。
+  final VoidCallback? onDashPlaybackFailed;
+
+  /// 仅供测试注入可控时钟，生产环境默认使用 `DateTime.now`。
+  @visibleForTesting
+  final DateTime Function()? clock;
+
   const BiliVideoPlayer({
     super.key,
     required this.playUrlInfo,
@@ -77,6 +87,9 @@ class BiliVideoPlayer extends StatefulWidget {
     this.onSubtitleTrackChanged,
     this.onSubtitleTap,
     this.onAudioTrackFailed,
+    this.onRefreshPlayStream,
+    this.onDashPlaybackFailed,
+    this.clock,
   });
 
   @override
@@ -90,9 +103,15 @@ enum _PanGestureMode {
   verticalVolume,
 }
 
-class BiliVideoPlayerState extends State<BiliVideoPlayer> {
+class BiliVideoPlayerState extends State<BiliVideoPlayer>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   VideoPlayerController? _pendingController;
+  late PlayUrlInfo _activePlayUrlInfo;
+
+  /// 固定播放器视图主体 Key，切换全屏/竖屏时保持 VideoPlayer(Texture) 与弹幕树不被卸载重建，
+  /// 避免 Android SurfaceProducer 在重建纹理时丢帧卡住。
+  final GlobalKey _playerBodyKey = GlobalKey();
 
   /// B 站 CDN 要求 Referer/UA，直连时由播放器携带
   static const Map<String, String> _biliHeaders = {
@@ -105,6 +124,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   VideoPlayerController? _pendingAudioController;
   DateTime? _lastAudioSyncAt;
   DateTime? _lastSeekAt;
+  bool _isSeekingNow = false;
+  bool _isSyncPausedAudio = false;
+  bool _isSyncPausedVideo = false;
+  bool _isResumingAudio = false;
 
   /// 是否为 DASH 双流播放（视频轨 + 独立音轨）
   bool get hasSeparateAudio => _audioController != null;
@@ -113,7 +136,22 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   bool _wakelockEnabled = false;
   bool _isExplicitlyPaused = false;
 
+  // 卡顿检测与自愈状态
+  static const int _maxRecoveryAttempts = 3;
+  Duration _lastKnownPosition = Duration.zero;
+  Duration _lastWatchdogVideoPos = Duration.zero;
+  DateTime _lastWatchdogProgressAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastRecoveryAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _watchdogTimer;
+  bool _isRecovering = false;
+  int _recoveryAttempts = 0;
+  bool _hasTriedProgressiveFallback = false;
+  String? _playbackErrorMessage;
+
+  DateTime _now() => widget.clock?.call() ?? DateTime.now();
+
   VideoPlayerController? get controller => _controller;
+  Duration get currentPosition => _controller?.value.position ?? _lastKnownPosition;
   double get playbackSpeed => _playbackSpeed;
 
   bool _showControls = true;
@@ -215,6 +253,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lastWatchdogProgressAt = _now();
+    _activePlayUrlInfo = widget.playUrlInfo;
+    _lastKnownPosition = widget.initialPosition ?? Duration.zero;
     _danmakuController = DanmakuController();
     _danmakuController.setDanmakus(widget.danmakus);
     _isLocalFileAvailable = _computeLocalFileAvailable();
@@ -261,8 +303,22 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     );
   }
 
-  // 有意不监听 AppLifecycleState：拉下状态栏/通知栏（inactive）与切后台
-  // （paused）均不自动暂停，保持播放（后台继续出声），由用户手动控制暂停。
+  // 有意不在 inactive/paused 时自动暂停（保留后台继续出声的能力），
+  // 仅在回到前台（resumed）时检查音画同步、重置卡顿计时并恢复期望倍速。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted || state != AppLifecycleState.resumed) return;
+    _lastWatchdogProgressAt = _now();
+    _lastWatchdogVideoPos = currentPosition;
+    if (_controller != null &&
+        _controller!.value.isInitialized &&
+        !_isExplicitlyPaused) {
+      _reconcileDualStreamPlayback();
+      _reassertPlaybackSpeeds();
+      _syncAudioWithVideo(alignThreshold: kDashAudioResumeAlignThreshold);
+      _startWatchdog();
+    }
+  }
 
   int _lastVolumePanEndTime = 0;
 
@@ -331,20 +387,26 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
             oldWidget.playUrlInfo.separateAudioUrl ||
         widget.playUrlInfo.currentQuality !=
             oldWidget.playUrlInfo.currentQuality ||
+        widget.playUrlInfo.grantedQuality !=
+            oldWidget.playUrlInfo.grantedQuality ||
         !isSameVideo) {
+      _activePlayUrlInfo = widget.playUrlInfo;
       _isExplicitlyPaused = false;
+      _recoveryAttempts = 0;
+      if (!isSameVideo) {
+        _hasTriedProgressiveFallback = false;
+        _lastKnownPosition = widget.initialPosition ?? Duration.zero;
+      }
       final Duration? targetPos;
-      if (isSameVideo &&
-          (widget.playUrlInfo.currentQuality !=
-                  oldWidget.playUrlInfo.currentQuality ||
-              widget.playUrlInfo.separateAudioUrl !=
-                  oldWidget.playUrlInfo.separateAudioUrl)) {
-        // 切画质（含渐进式 ↔ DASH 双流切换）时保留当前进度
-        targetPos = _controller?.value.position;
+      if (isSameVideo && currentPosition > Duration.zero) {
+        // 同视频切画质、刷新流或单流回退时尽量延续当前播放位置
+        targetPos = currentPosition;
       } else {
         targetPos = widget.initialPosition;
       }
       _initPlayer(initialPosition: targetPos);
+    } else if (widget.playUrlInfo != oldWidget.playUrlInfo) {
+      _activePlayUrlInfo = widget.playUrlInfo;
     }
   }
 
@@ -354,12 +416,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     String url, {
     required bool isAudio,
     String? cacheKey,
+    List<String> backupUrls = const [],
   }) async {
     try {
       return await resolvePlayableUrl(
         url,
         isAudio: isAudio,
         cacheKey: cacheKey,
+        backupUrls: backupUrls,
       );
     } catch (_) {
       return url;
@@ -370,15 +434,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   String get _streamCacheBaseKey {
     final key = widget.videoKey;
     if (key != null && key.isNotEmpty) return key;
-    return widget.playUrlInfo.primaryVideoUrl ?? widget.title;
+    return _activePlayUrlInfo.primaryVideoUrl ?? widget.title;
   }
 
   /// 本地缓存音轨落地：`.m4s` 扩展名会被 iOS AVPlayer 拒绝，优先走本地文件服务，
   /// 失败时回退 `VideoPlayerController.file`。
   Future<VideoPlayerController> _buildAudioController(
     String audioUrl,
-    VideoPlayerOptions options,
-  ) async {
+    VideoPlayerOptions options, {
+    List<String> backupUrls = const [],
+  }) async {
     final isLocal =
         !audioUrl.startsWith('http://') && !audioUrl.startsWith('https://');
     if (!kIsWeb && isLocal) {
@@ -402,6 +467,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       audioUrl,
       isAudio: true,
       cacheKey: '$_streamCacheBaseKey|a',
+      backupUrls: backupUrls,
     );
     return VideoPlayerController.networkUrl(
       Uri.parse(playable),
@@ -417,11 +483,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   Future<VideoPlayerController?> _initAudioTrack(
     String audioUrl,
     VideoPlayerOptions options,
-    int token,
-  ) async {
+    int token, {
+    List<String> backupUrls = const [],
+  }) async {
     VideoPlayerController? audio;
     try {
-      audio = await _buildAudioController(audioUrl, options);
+      audio = await _buildAudioController(
+        audioUrl,
+        options,
+        backupUrls: backupUrls,
+      );
       if (!mounted || _initToken != token) {
         try {
           await audio.dispose();
@@ -454,6 +525,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   Future<void> _initPlayer({Duration? initialPosition}) async {
     final int token = ++_initToken;
+
+    _stopWatchdog();
+    _isSyncPausedAudio = false;
+    _isSyncPausedVideo = false;
+    _isResumingAudio = false;
+    _isSeekingNow = false;
+    _playbackErrorMessage = null;
 
     final oldController = _controller;
     _controller = null;
@@ -498,7 +576,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (!mounted || _initToken != token) return;
 
     final localPath = widget.localFilePath;
-    final url = widget.playUrlInfo.primaryVideoUrl;
+    final videoCandidates = _activePlayUrlInfo.primaryVideoCandidateUrls;
+    final url = videoCandidates.isNotEmpty
+        ? videoCandidates.first
+        : _activePlayUrlInfo.primaryVideoUrl;
     final hasLocalFile =
         localPath != null &&
         localPath.isNotEmpty &&
@@ -516,11 +597,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         videoPlayerOptions: playerOptions,
       );
     } else {
-      // 远程轨道统一经本地代理（MIME/Referer 修正 + 边播边磁盘缓存）
+      // 远程轨道统一经本地代理（MIME/Referer 修正 + 边播边磁盘缓存 + 备链故障切换）
       final playableVideoUrl = await _resolveRemoteUrl(
         url!,
         isAudio: false,
-        cacheKey: '$_streamCacheBaseKey|v${widget.playUrlInfo.currentQuality}',
+        cacheKey: '$_streamCacheBaseKey|v${_activePlayUrlInfo.currentQuality}',
+        backupUrls: videoCandidates.length > 1
+            ? videoCandidates.sublist(1)
+            : const [],
       );
       if (!mounted || _initToken != token) return;
       controller = VideoPlayerController.networkUrl(
@@ -532,12 +616,22 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     _pendingController = controller;
 
     // DASH 双流：独立音轨（渐进式单流时为 null）
-    final separateAudioUrl = widget.playUrlInfo.separateAudioUrl;
+    final audioCandidates = _activePlayUrlInfo.separateAudioCandidateUrls;
+    final separateAudioUrl = audioCandidates.isNotEmpty
+        ? audioCandidates.first
+        : _activePlayUrlInfo.separateAudioUrl;
 
     // 音轨与视频轨并行初始化：起播等待从「两者之和」降为「两者最大值」
     Future<VideoPlayerController?>? audioInitFuture;
     if (separateAudioUrl != null && separateAudioUrl.isNotEmpty) {
-      audioInitFuture = _initAudioTrack(separateAudioUrl, playerOptions, token);
+      audioInitFuture = _initAudioTrack(
+        separateAudioUrl,
+        playerOptions,
+        token,
+        backupUrls: audioCandidates.length > 1
+            ? audioCandidates.sublist(1)
+            : const [],
+      );
     }
 
     // 提升到 try 外：视频轨任一步失败时，在此统一释放已就绪的音轨，
@@ -578,6 +672,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
       if (initialPosition != null && initialPosition > Duration.zero) {
         await controller.seekTo(initialPosition);
+        _lastKnownPosition = controller.value.position;
         if (widget.initialPosition != null &&
             widget.initialPosition == initialPosition &&
             mounted) {
@@ -599,19 +694,23 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         }
       }
 
-      await controller.setPlaybackSpeed(_playbackSpeed);
+      await controller.setPlaybackSpeed(_effectivePlaybackSpeed);
       if (audioController != null) {
         try {
-          await audioController.setPlaybackSpeed(_playbackSpeed);
+          await audioController.setPlaybackSpeed(_effectivePlaybackSpeed);
         } catch (_) {}
       }
 
       if (!_isExplicitlyPaused) {
         await controller.play();
         if (audioController != null) {
-          try {
-            await audioController.play();
-          } catch (_) {}
+          if (!controller.value.isBuffering) {
+            try {
+              await audioController.play();
+            } catch (_) {}
+          } else {
+            _isSyncPausedAudio = true;
+          }
         }
       } else {
         await controller.pause();
@@ -648,6 +747,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         _lastAudioSyncAt = null;
       }
 
+      _lastWatchdogVideoPos = controller.value.position;
+      _lastWatchdogProgressAt = _now();
+      if (controller.value.position > Duration.zero) {
+        _lastKnownPosition = controller.value.position;
+      }
+      if (!_isExplicitlyPaused) {
+        _startWatchdog();
+        _reconcileDualStreamPlayback();
+      }
+
       _danmakuController.syncPlayerState(
         positionSeconds: initialPosition != null
             ? (initialPosition.inMilliseconds / 1000.0)
@@ -672,7 +781,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
           });
         }
       }
-    } catch (_) {
+    } catch (e) {
       // 视频轨失败时音轨可能已就绪或仍在途：等它落地并释放，
       // 已成功转交给 _audioController 的除外（所有权不在此处）
       if (audioInitFuture != null) {
@@ -692,9 +801,35 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         try {
           await controller.dispose();
         } catch (_) {}
-        if (mounted) {
+
+        // 无原生播放器插件环境（headless widget 测试）不进入错误重试态
+        final isMissingPlugin =
+            e is MissingPluginException || e is UnimplementedError;
+        if (!isMissingPlugin &&
+            !hasLocalFile &&
+            _recoveryAttempts < 1 &&
+            widget.onRefreshPlayStream != null &&
+            mounted) {
+          _recoveryAttempts++;
+          try {
+            final refreshed = await widget.onRefreshPlayStream!(
+              _activePlayUrlInfo.currentQuality,
+            );
+            if (!mounted || _initToken != token) return;
+            if (refreshed != null) {
+              _activePlayUrlInfo = refreshed;
+              await _initPlayer(initialPosition: initialPosition);
+              return;
+            }
+          } catch (_) {}
+        }
+
+        if (mounted && _initToken == token) {
           setState(() {
             _controller = null;
+            if (!isMissingPlugin) {
+              _playbackErrorMessage = '视频加载失败，点击重试';
+            }
           });
         }
       }
@@ -707,40 +842,67 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   ) async {
     final video = _controller;
     final audio = _audioController;
+    final futures = <Future<void>>[];
     if (video != null) {
-      try {
-        await op(video);
-      } catch (_) {}
+      futures.add(op(video).catchError((_) {}));
     }
     if (audio != null) {
-      try {
-        await op(audio);
-      } catch (_) {}
+      futures.add(op(audio).catchError((_) {}));
+    }
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
     }
   }
 
-  /// 成对 seek（并记录时间，避免漂移纠偏与用户拖动抢跑）
+  /// 成对并行 seek（并记录时间，避免漂移纠偏与用户拖动抢跑）
   Future<void> _seekBothPlayers(Duration target) async {
-    _lastSeekAt = DateTime.now();
-    await _applyToPlayers((c) => c.seekTo(target));
+    _isSeekingNow = true;
+    _lastSeekAt = _now();
+    _lastKnownPosition = target;
+    _lastWatchdogVideoPos = target;
+    _lastWatchdogProgressAt = _now();
+    try {
+      await _applyToPlayers((c) => c.seekTo(target));
+    } finally {
+      _lastSeekAt = _now();
+      _isSeekingNow = false;
+    }
+    if (mounted) {
+      _reconcileDualStreamPlayback();
+    }
   }
 
   /// 以视频轨为时钟纠正伴音轨漂移（超过阈值且距上次纠偏超过间隔才执行）
-  void _syncAudioWithVideo() {
+  void _syncAudioWithVideo({
+    Duration alignThreshold = kDashAudioDriftThreshold,
+  }) {
     final video = _controller;
     final audio = _audioController;
     if (video == null || audio == null) return;
     if (!video.value.isInitialized || !audio.value.isInitialized) return;
+    if (_isSyncPausedAudio || _isSyncPausedVideo || _isResumingAudio) return;
 
-    final now = DateTime.now();
+    final now = _now();
     final recentSeek =
         _lastSeekAt != null &&
         now.difference(_lastSeekAt!) < const Duration(milliseconds: 300);
+    final isSeeking =
+        _isSeekingNow ||
+        _isDraggingProgress ||
+        _sliderDragPosition.value != null ||
+        recentSeek;
 
-    if (!shouldCorrectDrift(
+    final drift = (video.value.position - audio.value.position).abs();
+    if (alignThreshold < kDashAudioDriftThreshold) {
+      if (isSeeking || drift < alignThreshold) return;
+      if (_lastAudioSyncAt != null &&
+          now.difference(_lastAudioSyncAt!) < const Duration(milliseconds: 400)) {
+        return;
+      }
+    } else if (!shouldCorrectDrift(
       videoPosition: video.value.position,
       audioPosition: audio.value.position,
-      isSeeking: _isDraggingProgress || recentSeek,
+      isSeeking: isSeeking,
       lastSyncAt: _lastAudioSyncAt,
       now: now,
     )) {
@@ -756,23 +918,351 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     }());
   }
 
-  /// 播放状态恢复时把 Dart 侧期望倍速补发到平台（视频轨/伴音轨各自以
-  /// value.playbackSpeed 为准）。同值重复下发不会触发监听回调。
+  /// 播放状态恢复时把 Dart 侧期望倍速补发到平台（视频轨/伴音轨统一使用
+  /// [_effectivePlaybackSpeed]）。同值重复下发不会触发监听回调。
   void _reassertPlaybackSpeeds() {
+    final targetSpeed = _effectivePlaybackSpeed;
     final video = _controller;
     if (video != null && video.value.isInitialized && video.value.isPlaying) {
-      unawaited(_setPlatformSpeed(video));
+      unawaited(_setPlatformSpeed(video, targetSpeed));
     }
     final audio = _audioController;
     if (audio != null && audio.value.isInitialized && audio.value.isPlaying) {
-      unawaited(_setPlatformSpeed(audio));
+      unawaited(_setPlatformSpeed(audio, targetSpeed));
     }
   }
 
-  Future<void> _setPlatformSpeed(VideoPlayerController c) async {
+  Future<void> _setPlatformSpeed(VideoPlayerController c, double speed) async {
     try {
-      await c.setPlaybackSpeed(c.value.playbackSpeed);
+      await c.setPlaybackSpeed(speed);
     } catch (_) {}
+  }
+
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _lastWatchdogProgressAt = _now();
+    _watchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      _onWatchdogTick();
+    });
+  }
+
+  void _stopWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = null;
+  }
+
+  void _onWatchdogTick() {
+    if (!mounted) return;
+    final video = _controller;
+    if (video == null || !video.value.isInitialized) return;
+
+    final val = video.value;
+    final now = _now();
+
+    if (val.hasError) {
+      if (!_isRecovering && !_isExplicitlyPaused) {
+        unawaited(
+          _attemptPlaybackRecovery(
+            reason: 'watchdogVideoError: ${val.errorDescription ?? 'unknown'}',
+            forceReinit: true,
+          ),
+        );
+      }
+      return;
+    }
+
+    final audio = _audioController;
+    if (audio != null && audio.value.hasError) {
+      if (!_isRecovering && !_isExplicitlyPaused) {
+        unawaited(_handleMidPlaybackAudioError());
+      }
+      return;
+    }
+
+    final isSeeking =
+        _isSeekingNow ||
+        _isDraggingProgress ||
+        _sliderDragPosition.value != null;
+    if (isSeeking || _isExplicitlyPaused || _isRecovering || val.isCompleted) {
+      _lastWatchdogProgressAt = now;
+      _lastWatchdogVideoPos = val.position;
+      return;
+    }
+
+    if (val.position != _lastWatchdogVideoPos) {
+      _lastWatchdogVideoPos = val.position;
+      _lastWatchdogProgressAt = now;
+      _lastKnownPosition = val.position;
+      if (_recoveryAttempts > 0 &&
+          now.difference(_lastRecoveryAt) > const Duration(seconds: 10)) {
+        _recoveryAttempts = 0;
+      }
+      _reconcileDualStreamPlayback();
+      return;
+    }
+
+    _reconcileDualStreamPlayback();
+
+    final stallKind = evaluateVideoStall(
+      isInitialized: val.isInitialized,
+      isPlaying: val.isPlaying,
+      isBuffering: val.isBuffering,
+      isCompleted: val.isCompleted,
+      hasError: val.hasError,
+      isExplicitlyPaused: _isExplicitlyPaused,
+      isSyncPausedVideo: _isSyncPausedVideo,
+      isSeeking: isSeeking,
+      isRecovering: _isRecovering,
+      videoPosition: val.position,
+      videoDuration: val.duration,
+      stalledFor: now.difference(_lastWatchdogProgressAt),
+      audioPlaying: audio?.value.isPlaying ?? false,
+      audioPosition: audio?.value.position,
+    );
+
+    if (stallKind != VideoStallKind.none) {
+      unawaited(
+        _attemptPlaybackRecovery(
+          reason: stallKind.name,
+          forceReinit: stallKind == VideoStallKind.bufferTimeout,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleMidPlaybackAudioError() async {
+    if (!mounted || _isRecovering || _isExplicitlyPaused) return;
+    final video = _controller;
+    if (video != null && video.value.isPlaying) {
+      _isSyncPausedVideo = true;
+      await _pauseQuietly(video);
+    }
+    await _attemptPlaybackRecovery(
+      reason: 'audioError: ${_audioController?.value.errorDescription ?? ''}',
+      forceReinit: true,
+    );
+  }
+
+  Future<void> _attemptPlaybackRecovery({
+    required String reason,
+    bool forceReinit = false,
+  }) async {
+    if (!mounted || _isRecovering || _isExplicitlyPaused) return;
+    _isRecovering = true;
+    final token = _initToken;
+    final resumePos = currentPosition;
+    final isDash = _audioController != null;
+
+    // 恢复期间立即暂停伴音轨，彻底避免"画面卡住、声音还在播"
+    final audio = _audioController;
+    if (audio != null && audio.value.isPlaying) {
+      _isSyncPausedAudio = true;
+      await _pauseQuietly(audio);
+    }
+
+    _recoveryAttempts++;
+    debugPrint(
+      'BiliVideoPlayer: recovery #$_recoveryAttempts ($reason) at $resumePos',
+    );
+
+    if (_recoveryAttempts > _maxRecoveryAttempts) {
+      if (isDash &&
+          !_hasTriedProgressiveFallback &&
+          widget.onDashPlaybackFailed != null) {
+        _hasTriedProgressiveFallback = true;
+        _isRecovering = false;
+        widget.onDashPlaybackFailed!.call();
+        return;
+      }
+      _isRecovering = false;
+      _stopWatchdog();
+      if (mounted && _initToken == token) {
+        setState(() {
+          _playbackErrorMessage = '视频播放卡顿或流异常，请点击重试';
+        });
+      }
+      return;
+    }
+
+    if (mounted) setState(() {});
+
+    try {
+      final video = _controller;
+      // 第 1 次非报错卡帧：先做原地 seek 踢活（刷新硬解输出与 Texture 帧）
+      if (!forceReinit &&
+          _recoveryAttempts == 1 &&
+          video != null &&
+          video.value.isInitialized &&
+          !video.value.hasError) {
+        _lastSeekAt = _now();
+        await video.pause();
+        await video.seekTo(resumePos);
+        await video.setPlaybackSpeed(_effectivePlaybackSpeed);
+        await video.play();
+        if (audio != null &&
+            audio.value.isInitialized &&
+            !audio.value.hasError) {
+          await audio.seekTo(resumePos);
+          await audio.setPlaybackSpeed(_effectivePlaybackSpeed);
+        }
+        _lastWatchdogVideoPos = resumePos;
+        _lastWatchdogProgressAt = _now();
+        _lastRecoveryAt = _now();
+        _isRecovering = false;
+        _reconcileDualStreamPlayback();
+        if (mounted) setState(() {});
+        return;
+      }
+
+      // 第 2 次及以后（或缓冲挂死/底层报错）：先尝试刷新最新 CDN 播放地址再重建控制器
+      if (!_isLocalFileAvailable && widget.onRefreshPlayStream != null) {
+        final refreshed = await widget.onRefreshPlayStream!(
+          _activePlayUrlInfo.currentQuality,
+        );
+        if (!mounted || _initToken != token) {
+          _isRecovering = false;
+          return;
+        }
+        if (refreshed != null) {
+          _activePlayUrlInfo = refreshed;
+        }
+      }
+
+      _lastRecoveryAt = _now();
+      _isRecovering = false;
+      await _initPlayer(initialPosition: resumePos);
+    } catch (_) {
+      _isRecovering = false;
+      if (mounted && _initToken == token) {
+        setState(() {
+          _playbackErrorMessage = '视频恢复播放失败，请点击重试';
+        });
+      }
+    }
+  }
+
+  Future<void> _retryPlayback() async {
+    _recoveryAttempts = 0;
+    _hasTriedProgressiveFallback = false;
+    _playbackErrorMessage = null;
+    _isExplicitlyPaused = false;
+    final resumePos = currentPosition;
+    if (mounted) setState(() {});
+
+    if (!_isLocalFileAvailable && widget.onRefreshPlayStream != null) {
+      try {
+        final refreshed = await widget.onRefreshPlayStream!(
+          _activePlayUrlInfo.currentQuality,
+        );
+        if (!mounted) return;
+        if (refreshed != null) {
+          _activePlayUrlInfo = refreshed;
+        }
+      } catch (_) {}
+    }
+
+    await _initPlayer(initialPosition: resumePos);
+  }
+
+  void _reconcileDualStreamPlayback() {
+    final video = _controller;
+    final audio = _audioController;
+    if (video == null || audio == null) return;
+
+    final decision = evaluateDualStreamSync(
+      isExplicitlyPaused: _isExplicitlyPaused,
+      isRecovering: _isRecovering,
+      videoInitialized: video.value.isInitialized,
+      videoPlaying: video.value.isPlaying,
+      videoBuffering: video.value.isBuffering,
+      videoCompleted: video.value.isCompleted,
+      videoHasError: video.value.hasError,
+      audioInitialized: audio.value.isInitialized,
+      audioPlaying: audio.value.isPlaying,
+      audioBuffering: audio.value.isBuffering,
+      audioCompleted: audio.value.isCompleted,
+      audioHasError: audio.value.hasError,
+      isSyncPausedAudio: _isSyncPausedAudio,
+      isSyncPausedVideo: _isSyncPausedVideo,
+    );
+
+    _isSyncPausedAudio = decision.nextSyncPausedAudio;
+    _isSyncPausedVideo = decision.nextSyncPausedVideo;
+
+    if (decision.pauseAudio) {
+      unawaited(_pauseQuietly(audio));
+    }
+    if (decision.pauseVideo) {
+      unawaited(_pauseQuietly(video));
+    }
+    if (decision.resumeVideo && decision.resumeAudio) {
+      unawaited(() async {
+        await _resumeVideoQuietly(video);
+        await _resumeAudioAligned(video, audio);
+      }());
+    } else if (decision.resumeVideo) {
+      unawaited(_resumeVideoQuietly(video));
+    } else if (decision.resumeAudio) {
+      unawaited(_resumeAudioAligned(video, audio));
+    }
+  }
+
+  Future<void> _pauseQuietly(VideoPlayerController c) async {
+    try {
+      await c.pause();
+    } catch (_) {}
+  }
+
+  Future<void> _resumeVideoQuietly(VideoPlayerController video) async {
+    try {
+      if (!mounted || video != _controller || _isExplicitlyPaused) return;
+      await video.setPlaybackSpeed(_effectivePlaybackSpeed);
+      await video.play();
+      _lastWatchdogProgressAt = _now();
+    } catch (_) {}
+  }
+
+  Future<void> _resumeAudioAligned(
+    VideoPlayerController video,
+    VideoPlayerController audio,
+  ) async {
+    if (_isResumingAudio) return;
+    _isResumingAudio = true;
+    try {
+      if (!mounted ||
+          video != _controller ||
+          audio != _audioController ||
+          _isExplicitlyPaused ||
+          _isRecovering ||
+          video.value.isBuffering ||
+          !video.value.isPlaying) {
+        return;
+      }
+      final videoPos = video.value.position;
+      final audioPos = audio.value.position;
+      final drift = (videoPos - audioPos).abs();
+      if (drift >= kDashAudioResumeAlignThreshold &&
+          !_isSeekingNow &&
+          !_isDraggingProgress &&
+          _sliderDragPosition.value == null) {
+        _lastAudioSyncAt = _now();
+        await audio.seekTo(videoPos);
+      }
+      if (!mounted ||
+          video != _controller ||
+          audio != _audioController ||
+          _isExplicitlyPaused ||
+          _isRecovering ||
+          video.value.isBuffering ||
+          !video.value.isPlaying) {
+        return;
+      }
+      await audio.setPlaybackSpeed(_effectivePlaybackSpeed);
+      await audio.play();
+    } catch (_) {
+    } finally {
+      _isResumingAudio = false;
+    }
   }
 
   void _enableWakelock() {
@@ -797,6 +1287,28 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     if (!mounted || _controller == null) return;
 
     final val = _controller!.value;
+    if (val.isInitialized && val.position > Duration.zero) {
+      _lastKnownPosition = val.position;
+    }
+    if (val.position != _lastWatchdogVideoPos) {
+      _lastWatchdogVideoPos = val.position;
+      _lastWatchdogProgressAt = _now();
+    }
+
+    if (val.hasError) {
+      _disableWakelock();
+      _danmakuController.setPlaying(false);
+      if (!_isRecovering && !_isExplicitlyPaused) {
+        unawaited(
+          _attemptPlaybackRecovery(
+            reason: 'videoError: ${val.errorDescription ?? 'unknown'}',
+            forceReinit: true,
+          ),
+        );
+      }
+      return;
+    }
+
     if (val.isPlaying && !_wasVideoPlaying) {
       _reassertPlaybackSpeeds();
     }
@@ -814,22 +1326,31 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
       playbackSpeed: _effectivePlaybackSpeed,
     );
 
-    // DASH 双流：以视频轨为时钟纠正伴音轨漂移
-    if (val.isPlaying) {
+    // DASH 双流：缓冲态协同 + 视频轨为时钟纠正伴音轨漂移
+    _reconcileDualStreamPlayback();
+    if (val.isPlaying && !val.isBuffering && !_isSyncPausedVideo) {
       _syncAudioWithVideo();
     }
 
     widget.onProgressUpdate?.call(val.position, val.duration);
   }
 
-  /// 伴音轨状态监听：仅用于缓冲恢复时补发平台倍速（与视频轨同理）。
+  /// 伴音轨状态监听：缓冲恢复时补发平台倍速并联动视频轨同步状态。
   void _onAudioPlayerUpdate() {
+    if (!mounted) return;
     final audio = _audioController;
     if (audio == null) return;
+    if (audio.value.hasError) {
+      if (!_isRecovering && !_isExplicitlyPaused) {
+        unawaited(_handleMidPlaybackAudioError());
+      }
+      return;
+    }
     if (audio.value.isPlaying && !_wasAudioPlaying) {
       _reassertPlaybackSpeeds();
     }
     _wasAudioPlaying = audio.value.isPlaying;
+    _reconcileDualStreamPlayback();
   }
 
   void _startHideTimer() {
@@ -875,6 +1396,9 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   Future<void> pause() async {
     _isExplicitlyPaused = true;
+    _isSyncPausedAudio = false;
+    _isSyncPausedVideo = false;
+    _stopWatchdog();
     await _applyToPlayers((c) => c.pause());
     if (_pendingController != null) {
       try {
@@ -896,8 +1420,36 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   Future<void> play() async {
     _isExplicitlyPaused = false;
-    if (_controller != null && !_controller!.value.isPlaying) {
-      await _applyToPlayers((c) => c.play());
+    _isSyncPausedAudio = false;
+    _isSyncPausedVideo = false;
+    _playbackErrorMessage = null;
+    final video = _controller;
+    if (video == null) return;
+
+    if (video.value.hasError) {
+      await _retryPlayback();
+      return;
+    }
+
+    if (video.value.isCompleted) {
+      await _seekBothPlayers(Duration.zero);
+    }
+
+    if (!video.value.isPlaying ||
+        (_audioController != null && !_audioController!.value.isPlaying)) {
+      await video.setPlaybackSpeed(_effectivePlaybackSpeed);
+      await video.play();
+      final audio = _audioController;
+      if (audio != null && audio.value.isInitialized) {
+        if (!video.value.isBuffering) {
+          await _resumeAudioAligned(video, audio);
+        } else {
+          _isSyncPausedAudio = true;
+        }
+      }
+      _lastWatchdogVideoPos = video.value.position;
+      _lastWatchdogProgressAt = _now();
+      _startWatchdog();
       _danmakuController.setPlaying(true);
       _startHideTimer();
       if (mounted) setState(() {});
@@ -906,7 +1458,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
 
   void _togglePlayPause() {
     if (_controller == null) return;
-    if (_controller!.value.isPlaying) {
+    final video = _controller!;
+    if (video.value.isPlaying ||
+        (!_isExplicitlyPaused &&
+            (video.value.isBuffering || _isSyncPausedVideo))) {
       pause();
       _hideTimer?.cancel();
     } else {
@@ -1148,6 +1703,8 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
   @override
   void dispose() {
     _initToken++;
+    WidgetsBinding.instance.removeObserver(this);
+    _stopWatchdog();
     SleepTimerService().unregisterPauseCallback(_onSleepTimerPause);
     _hideTimer?.cancel();
     _lockIconTimer?.cancel();
@@ -1330,6 +1887,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
         _controller != null && _controller!.value.isInitialized;
 
     Widget playerBody = Container(
+      key: _playerBodyKey,
       color: Colors.black,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -1637,7 +2195,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                   child: RepaintBoundary(child: VideoPlayer(_controller!)),
                 ),
               )
-            else
+            else if (_playbackErrorMessage == null)
               Center(
                 child: SizedBox(
                   width: 32,
@@ -1652,12 +2210,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
             // Danmaku Overlay Layer
             DanmakuOverlay(controller: _danmakuController),
 
-            // Buffering indicator (locally listening to controller)
-            if (hasController)
+            // Buffering / Recovery indicator (locally listening to controller)
+            if (hasController && _playbackErrorMessage == null)
               ValueListenableBuilder<VideoPlayerValue>(
                 valueListenable: _controller!,
                 builder: (context, val, _) {
-                  if (!val.isBuffering) return const SizedBox.shrink();
+                  if (!val.isBuffering && !_isRecovering) {
+                    return const SizedBox.shrink();
+                  }
                   return const Center(
                     child: SizedBox(
                       width: 36,
@@ -1671,6 +2231,54 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                     ),
                   );
                 },
+              ),
+
+            // Playback Error / Stall Retry Overlay
+            if (_playbackErrorMessage != null)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: OverlayColors.bar,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white24, width: 0.8),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Colors.white70,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _playbackErrorMessage!,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _retryPlayback,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('重试', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white38),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
             // Ultra-slim bottom progress line (when controls are hidden, locally listening to controller)
@@ -1976,23 +2584,20 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                 ),
               ),
 
-            // Subtitle Overlay
+            // Subtitle Overlay (SubtitleOverlay 自带 Positioned，直接挂载于 Stack 下)
             if (widget.isSubtitleEnabled &&
                 widget.subtitleData != null &&
                 hasController)
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: _showControls ? 80 : 24,
-                child: ValueListenableBuilder<VideoPlayerValue>(
-                  valueListenable: _controller!,
-                  builder: (context, val, _) {
-                    return SubtitleOverlay(
-                      subtitleData: widget.subtitleData!,
-                      currentPosition: val.position,
-                    );
-                  },
-                ),
+              ValueListenableBuilder<VideoPlayerValue>(
+                valueListenable: _controller!,
+                builder: (context, val, _) {
+                  return SubtitleOverlay(
+                    subtitleData: widget.subtitleData!,
+                    currentPosition: val.position,
+                    isFullScreen: isFull,
+                    bottomOffset: _showControls ? 80.0 : 24.0,
+                  );
+                },
               ),
 
             // In-Player Floating Quality Selector Panel (直接在上方弹出半透明框)
@@ -2053,7 +2658,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     // 只列视频真实提供的画质；此前无条件补"1080P 60帧"等档位，
     // 大会员点了必被降级并误报"需大会员"。
     return buildQualityPanelItems(
-      widget.playUrlInfo,
+      _activePlayUrlInfo,
       isLoggedIn: BiliHttpClient().isLoggedIn,
       labelOf: _getQualityLabel,
     );
@@ -2063,7 +2668,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
     return PlayerQualityPanel(
       qualityItems: _getAvailableQualities(),
       // 选中态用服务端实际授权的画质（DASH 下响应体 quality 字段不可信）
-      currentQuality: widget.playUrlInfo.grantedQuality,
+      currentQuality: _activePlayUrlInfo.grantedQuality,
       accent: _getPlayerAccent(context),
       isFull: isFull,
       onSelectQuality: (quality) {
@@ -2259,11 +2864,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
             ),
 
             // Center Play/Pause Quick Toggle (listens to controller)
-            if (hasController)
+            if (hasController && _playbackErrorMessage == null)
               ValueListenableBuilder<VideoPlayerValue>(
                 valueListenable: _controller!,
                 builder: (context, val, _) {
-                  if (val.isPlaying || !val.isInitialized) {
+                  if (val.isPlaying ||
+                      val.isBuffering ||
+                      _isRecovering ||
+                      !val.isInitialized) {
                     return const SizedBox.shrink();
                   }
                   return IconButton(
@@ -2372,6 +2980,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                         max: maxMs,
                                         onChangeStart: (v) {
                                           _hideTimer?.cancel();
+                                          _isDraggingProgress = true;
                                           _sliderDragPosition.value = v;
                                           HapticFeedback.selectionClick();
                                         },
@@ -2380,6 +2989,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                                         },
                                         onChangeEnd: (v) {
                                           final ms = v.toInt();
+                                          _isDraggingProgress = false;
                                           unawaited(
                                             _seekBothPlayers(
                                               Duration(milliseconds: ms),
@@ -2509,7 +3119,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer> {
                         vertical: 3,
                       ),
                       child: Text(
-                        _getQualityLabel(widget.playUrlInfo.currentQuality),
+                        _getQualityLabel(
+                          _activePlayUrlInfo.grantedQuality > 0
+                              ? _activePlayUrlInfo.grantedQuality
+                              : _activePlayUrlInfo.currentQuality,
+                        ),
                         style: TextStyle(
                           color: _showQualityPanel ? accent : Colors.white,
                           fontSize: 11,

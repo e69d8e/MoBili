@@ -837,5 +837,77 @@ void main() {
       // Reset cookies after test
       await BiliHttpClient().clearUserCookies();
     });
+
+    test('PlayUrlInfo.getCandidateUrls 与主备音视频轨列表按 UPOS > 非MCDN > MCDN 排序并去重', () {
+      const mcdn = 'https://1-2-3-4.mcdn.bilivideo.cn:486/v.m4s';
+      const nonMcdnMirror = 'https://cn-sh-ct-01-01.examplecdn.com/v.m4s';
+      const uposPrimary = 'https://upos-sz-mirrorcos.bilivideo.com/v.m4s';
+      const uposBackup = 'https://upos-sz-mirrorhw.bilivideo.com/v.m4s';
+
+      expect(
+        PlayUrlInfo.getCandidateUrls(mcdn, [
+          nonMcdnMirror,
+          uposPrimary,
+          '',
+          uposPrimary,
+          uposBackup,
+          mcdn,
+        ]),
+        equals([
+          uposPrimary,
+          uposBackup,
+          nonMcdnMirror,
+          mcdn,
+        ]),
+      );
+
+      final info = PlayUrlInfo(
+        currentQuality: 80,
+        format: 'dash',
+        timelength: 60000,
+        acceptQuality: const [80],
+        acceptDescription: const ['1080P 高清'],
+        durls: const [],
+        supportFormats: const [],
+        videoTracks: [
+          DashVideoItem(
+            id: 80,
+            baseUrl: mcdn,
+            backupUrls: const [nonMcdnMirror, uposPrimary, uposPrimary],
+            bandwidth: 2000000,
+            mimeType: 'video/mp4',
+            codecs: 'avc1.640032',
+            width: 1920,
+            height: 1080,
+          ),
+        ],
+        audioTracks: [
+          DashAudioItem(
+            id: 30280,
+            baseUrl: 'https://edge.mcdn.bilivideo.cn/a.m4s',
+            backupUrls: const [
+              'https://upos-sz-mirrorhw.bilivideo.com/a.m4s',
+              'https://upos-sz-mirrorhw.bilivideo.com/a.m4s',
+            ],
+            bandwidth: 192000,
+            mimeType: 'audio/mp4',
+            codecs: 'mp4a.40.2',
+          ),
+        ],
+        videoCodecid: 7,
+      );
+
+      expect(
+        info.primaryVideoCandidateUrls,
+        equals([uposPrimary, nonMcdnMirror, mcdn]),
+      );
+      expect(
+        info.separateAudioCandidateUrls,
+        equals([
+          'https://upos-sz-mirrorhw.bilivideo.com/a.m4s',
+          'https://edge.mcdn.bilivideo.cn/a.m4s',
+        ]),
+      );
+    });
   });
 }

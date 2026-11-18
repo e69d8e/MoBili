@@ -15,6 +15,34 @@ const int _kSeekBackResetThreshold = 8 * 1024 * 1024;
 /// 缓存块大小。取流与落盘都按块对齐：回拖最坏多取一块（≤2MiB）。
 const int _kStreamBlockSize = 2 * 1024 * 1024;
 
+/// 上游单次建连 / 分片读取超时，避免 CDN 半开连接卡死导致画面冻结。
+const Duration _kUpstreamTimeout = Duration(seconds: 12);
+
+/// 单个代理条目的上游目标（本地文件或主/备远程 CDN 地址）。
+class _ProxyTarget {
+  final bool isLocal;
+  final String primaryUrl;
+  final List<String> backupUrls;
+
+  const _ProxyTarget.local(this.primaryUrl)
+    : isLocal = true,
+      backupUrls = const [];
+
+  const _ProxyTarget.remote(this.primaryUrl, [this.backupUrls = const []])
+    : isLocal = false;
+
+  List<String> get candidateUrls {
+    if (backupUrls.isEmpty) return [primaryUrl];
+    final result = <String>[primaryUrl];
+    for (final url in backupUrls) {
+      if (url.isNotEmpty && !result.contains(url)) {
+        result.add(url);
+      }
+    }
+    return result;
+  }
+}
+
 /// Lightweight local streaming proxy to serve Bilibili DASH and MP4 streams
 /// with standard video/mp4 and audio/mp4 MIME types, proper Referer/User-Agent/Cookie headers,
 /// and Range request support. Resolves B站 CDN 403 Forbidden and player unsupported format errors.
@@ -31,11 +59,9 @@ class BiliStreamProxy {
   HttpServer? _server;
   int _port = 0;
 
-  /// token -> 远程 URL，或 `local:<绝对路径>`（本地文件映射）
-  final Map<String, String> _urlMap = {};
+  /// token -> 上游目标（远程主备地址或本地路径）
+  final Map<String, _ProxyTarget> _urlMap = {};
   HttpClient? _httpClient;
-
-  static const String _localPrefix = 'local:';
 
   /// 磁盘缓存总量上限（LRU 淘汰）。
   static const int _defaultMaxCacheBytes = 512 * 1024 * 1024;
@@ -115,8 +141,8 @@ class BiliStreamProxy {
   void _handleRequest(HttpRequest request) async {
     final path = request.uri.path;
     final token = path.replaceFirst('/', '').replaceAll('.mp4', '');
-    final targetUrl = _urlMap[token];
-    if (targetUrl == null) {
+    final target = _urlMap[token];
+    if (target == null) {
       request.response.statusCode = HttpStatus.notFound;
       await request.response.close();
       return;
@@ -129,10 +155,10 @@ class BiliStreamProxy {
       return;
     }
 
-    if (targetUrl.startsWith(_localPrefix)) {
+    if (target.isLocal) {
       await _serveLocalFile(
         request,
-        targetUrl.substring(_localPrefix.length),
+        target.primaryUrl,
         token.startsWith('locala_'),
       );
       return;
@@ -140,27 +166,28 @@ class BiliStreamProxy {
 
     try {
       if (method == 'HEAD') {
-        await _forwardHead(request, targetUrl, token.startsWith('audio_'));
+        await _forwardHead(request, target, token.startsWith('audio_'));
         return;
       }
 
       // 缓存目录拿不到（测试环境 / Web）时 _entryFor 返回 null → 纯转发
-      // 缓存目录拿不到（测试环境 / Web）时 _entryFor 返回 null → 纯转发
       final entry = await _entryFor(token);
       if (entry == null) {
-        await _passthrough(request, targetUrl, null);
+        await _passthrough(request, target, null);
         return;
       }
       entry.touch();
       entry.activeRequests++;
+      entry.liveRequests++;
       try {
-        await _serveWithCache(request, entry, targetUrl);
+        await _serveWithCache(request, entry, target);
       } finally {
+        entry.liveRequests = math.max(0, entry.liveRequests - 1);
         entry.activeRequests = math.max(0, entry.activeRequests - 1);
       }
       // 渐进式预取：出流结束后把缓存向前补到预测深度（网络波动时顶上）
-      if (prefetchEnabled) {
-        unawaited(_runPrefetchLoop(entry, targetUrl));
+      if (prefetchEnabled && entry.liveRequests == 0) {
+        unawaited(_runPrefetchLoop(entry, target));
       }
     } catch (e) {
       debugPrint('BiliStreamProxy _handleRequest error: $e');
@@ -173,20 +200,34 @@ class BiliStreamProxy {
 
   Future<void> _forwardHead(
     HttpRequest request,
-    String targetUrl,
+    _ProxyTarget target,
     bool isAudio,
   ) async {
-    final clientReq = await _client.openUrl('HEAD', Uri.parse(targetUrl));
-    _setUpstreamHeaders(clientReq, rangeHeader: null);
-    final clientRes = await clientReq.close();
-    request.response.statusCode = clientRes.statusCode;
-    _setResponseHeaders(request, isAudio: isAudio);
-    final contentLength = clientRes.headers.value(HttpHeaders.contentLengthHeader);
-    if (contentLength != null) {
-      request.response.headers.set(HttpHeaders.contentLengthHeader, contentLength);
+    final candidates = target.candidateUrls;
+    Object? lastError;
+    for (final url in candidates) {
+      try {
+        final clientReq = await _client
+            .openUrl('HEAD', Uri.parse(url))
+            .timeout(_kUpstreamTimeout);
+        _setUpstreamHeaders(clientReq, rangeHeader: null);
+        final clientRes = await clientReq.close().timeout(_kUpstreamTimeout);
+        request.response.statusCode = clientRes.statusCode;
+        _setResponseHeaders(request, isAudio: isAudio);
+        final contentLength =
+            clientRes.headers.value(HttpHeaders.contentLengthHeader);
+        if (contentLength != null) {
+          request.response.headers
+              .set(HttpHeaders.contentLengthHeader, contentLength);
+        }
+        await clientRes.drain<void>();
+        await request.response.close();
+        return;
+      } catch (e) {
+        lastError = e;
+      }
     }
-    await clientRes.drain<void>();
-    await request.response.close();
+    throw lastError ?? StateError('HEAD upstream failed');
   }
 
   void _setUpstreamHeaders(HttpClientRequest clientReq, {String? rangeHeader}) {
@@ -221,15 +262,40 @@ class BiliStreamProxy {
   /// 上游流可对齐时（206，或 200 且从头取）把字节同步喂给磁盘缓存。
   Future<void> _passthrough(
     HttpRequest request,
-    String targetUrl,
+    _ProxyTarget target,
     _StreamCacheEntry? entry,
   ) async {
-    final clientReq = await _client.openUrl(request.method, Uri.parse(targetUrl));
-    _setUpstreamHeaders(
-      clientReq,
-      rangeHeader: request.headers.value(HttpHeaders.rangeHeader),
-    );
-    final clientRes = await clientReq.close();
+    final candidates = target.candidateUrls;
+    final initialRangeHeader = request.headers.value(HttpHeaders.rangeHeader);
+    final requestedStart = _requestedRangeStart(request);
+
+    HttpClientResponse? clientRes;
+    int candidateIdx = 0;
+    Object? lastError;
+
+    // 建连与首响阶段允许主/备 CDN 自动故障切换（尚未向播放器写响应头）
+    for (; candidateIdx < candidates.length; candidateIdx++) {
+      try {
+        final clientReq = await _client
+            .openUrl(request.method, Uri.parse(candidates[candidateIdx]))
+            .timeout(_kUpstreamTimeout);
+        _setUpstreamHeaders(clientReq, rangeHeader: initialRangeHeader);
+        final res = await clientReq.close().timeout(_kUpstreamTimeout);
+        if (res.statusCode >= 400 && candidateIdx + 1 < candidates.length) {
+          await _discardResponse(res);
+          continue;
+        }
+        clientRes = res;
+        break;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    if (clientRes == null) {
+      throw lastError ?? StateError('upstream passthrough failed');
+    }
+
     request.response.statusCode = clientRes.statusCode;
 
     final token = request.uri.path.replaceFirst('/', '').replaceAll('.mp4', '');
@@ -250,7 +316,7 @@ class BiliStreamProxy {
         : _upstreamAlignedStart(
             clientRes.statusCode,
             contentRange,
-            requestedStart: _requestedRangeStart(request),
+            requestedStart: requestedStart,
           );
     if (e == null || alignStart == null) {
       try {
@@ -263,25 +329,85 @@ class BiliStreamProxy {
 
     // 可对齐：登记总长并边转发边喂缓存
     if (e.total == null && contentRange != null) {
-      final m = RegExp(r'/(\d+)$').firstMatch(contentRange.trim());
-      final t = m != null ? int.tryParse(m.group(1)!) : null;
+      final t = _parseContentRangeTotal(contentRange);
       if (t != null && t > 0) {
         e.total = t;
         e.markDirty();
       }
     }
     e.activeRequests++;
+    final writerId = e.allocWriterId();
     var served = alignStart;
+    final expectedTotalEnd = e.total ??
+        (clientRes.contentLength > 0 ? alignStart + clientRes.contentLength : null);
+    var activeRes = clientRes;
+    var activeCandidateIdx = candidateIdx;
+    var resumeAttempts = 0;
+
     try {
-      var offset = alignStart;
-      await for (final chunk in clientRes) {
-        _feedCache(e, offset, chunk);
-        offset += chunk.length;
-        request.response.add(chunk);
-        // 逐块 flush：播放器断开（缓冲已满 / seek）能在下一个分块内感知，
-        // 已送出的字节数即为预取水位
-        await request.response.flush();
-        served = offset;
+      while (true) {
+        var offset = served;
+        var bytesInRes = 0;
+        final declaredLen = activeRes.contentLength;
+        bool needResume = false;
+
+        try {
+          await for (final chunk in activeRes.timeout(_kUpstreamTimeout)) {
+            _feedCache(e, offset, chunk, writerId: writerId);
+            offset += chunk.length;
+            bytesInRes += chunk.length;
+            try {
+              request.response.add(chunk);
+              // 逐块 flush：播放器断开（缓冲已满 / seek）能在下一个分块内感知，
+              // 已送出的字节数即为预取水位
+              await request.response.flush();
+            } catch (_) {
+              throw const _ClientDisconnectedException();
+            }
+            served = offset;
+          }
+          // 若上游声明了 Content-Length 却提前 EOF，尝试断点续传补齐后续字节
+          if (declaredLen >= 0 &&
+              bytesInRes < declaredLen &&
+              (expectedTotalEnd == null || served < expectedTotalEnd)) {
+            needResume = true;
+          }
+        } on _ClientDisconnectedException {
+          rethrow;
+        } on TimeoutException {
+          needResume = true;
+        } on SocketException {
+          needResume = true;
+        } on HttpException {
+          needResume = true;
+        }
+
+        if (!needResume || resumeAttempts >= math.max(2, candidates.length)) {
+          break;
+        }
+        resumeAttempts++;
+        activeCandidateIdx = (activeCandidateIdx + 1) % candidates.length;
+        final nextRangeEnd =
+            expectedTotalEnd != null ? '${expectedTotalEnd - 1}' : '';
+        final nextReq = await _client
+            .openUrl('GET', Uri.parse(candidates[activeCandidateIdx]))
+            .timeout(_kUpstreamTimeout);
+        _setUpstreamHeaders(
+          nextReq,
+          rangeHeader: 'bytes=$served-$nextRangeEnd',
+        );
+        final nextRes = await nextReq.close().timeout(_kUpstreamTimeout);
+        final nextCr = nextRes.headers.value(HttpHeaders.contentRangeHeader);
+        final nextStart = _upstreamAlignedStart(
+          nextRes.statusCode,
+          nextCr,
+          requestedStart: served,
+        );
+        if (nextStart != served) {
+          await _discardResponse(nextRes);
+          break;
+        }
+        activeRes = nextRes;
       }
       e.noteServed(served);
     } catch (_) {
@@ -296,6 +422,25 @@ class BiliStreamProxy {
     }
   }
 
+  Future<void> _discardResponse(HttpClientResponse res) async {
+    try {
+      final sub = res.listen((_) {});
+      await sub.cancel();
+    } catch (_) {}
+  }
+
+  int? _parseContentRangeStart(String? contentRange) {
+    if (contentRange == null) return null;
+    final m = RegExp(r'^bytes\s+(\d+)-').firstMatch(contentRange.trim());
+    return m != null ? int.tryParse(m.group(1)!) : null;
+  }
+
+  int? _parseContentRangeTotal(String? contentRange) {
+    if (contentRange == null) return null;
+    final m = RegExp(r'/(\d+)$').firstMatch(contentRange.trim());
+    return m != null ? int.tryParse(m.group(1)!) : null;
+  }
+
   /// 上游响应字节流的实际起始偏移；无法对齐时返回 null。
   int? _upstreamAlignedStart(
     int statusCode,
@@ -303,9 +448,7 @@ class BiliStreamProxy {
     required int? requestedStart,
   }) {
     if (statusCode == HttpStatus.partialContent && contentRange != null) {
-      final m = RegExp(r'^bytes (\d+)-').firstMatch(contentRange.trim());
-      if (m != null) return int.tryParse(m.group(1)!);
-      return null;
+      return _parseContentRangeStart(contentRange);
     }
     if (statusCode == HttpStatus.ok) {
       // 上游忽略 Range 返回整段：只有从头取才对齐
@@ -535,13 +678,13 @@ class BiliStreamProxy {
   Future<void> _serveWithCache(
     HttpRequest request,
     _StreamCacheEntry entry,
-    String targetUrl,
+    _ProxyTarget target,
   ) async {
     final total = entry.total;
     final range = _parseRange(request, total);
     // 后缀区间缺总长、总长未知的开放区间等 → 透传（顺带喂缓存）
     if (range == null || range.endInclusive == null) {
-      await _passthrough(request, targetUrl, entry);
+      await _passthrough(request, target, entry);
       return;
     }
 
@@ -558,8 +701,6 @@ class BiliStreamProxy {
 
     final plan =
         _planServe(entry, start: start, endExclusive: endInclusive + 1);
-    // 出流水位 = 播放器最近一次请求覆盖到的位置（预取锚点）
-    entry.noteServed(plan.endExclusive);
 
     final response = request.response;
     _setResponseHeaders(request, isAudio: entry.isAudio);
@@ -576,19 +717,27 @@ class BiliStreamProxy {
       );
     }
 
+    var servedEnd = start;
     try {
       for (final seg in plan.segments) {
         if (seg.cached) {
-          await _readCachedTo(response, entry, seg.start, seg.endExclusive);
+          await _readCachedTo(
+            response,
+            entry,
+            seg.start,
+            seg.endExclusive,
+            onServed: (pos) => servedEnd = pos,
+          );
         } else {
           await _fetchFillTo(
             response,
             entry,
-            targetUrl,
+            target,
             fetchStart: seg.fetchStart,
             fetchEndExclusive: seg.fetchEndExclusive,
             playerStart: seg.start,
             playerEndExclusive: seg.endExclusive,
+            onServed: (pos) => servedEnd = pos,
           );
         }
       }
@@ -596,6 +745,11 @@ class BiliStreamProxy {
     } catch (_) {
       // 播放器断开或上游失败：中断出流，播放器会按 Range 重试
     } finally {
+      // 仅按真实交付给播放器的末端更新水位（避免开放区间 bytes=0- 直接跳到 EOF
+      // 导致预测预取失效）
+      if (servedEnd > start) {
+        entry.noteServed(servedEnd);
+      }
       try {
         await response.close();
       } catch (_) {}
@@ -662,8 +816,9 @@ class BiliStreamProxy {
     HttpResponse response,
     _StreamCacheEntry entry,
     int start,
-    int endExclusive,
-  ) async {
+    int endExclusive, {
+    void Function(int pos)? onServed,
+  }) async {
     var pos = start;
     while (pos < endExclusive) {
       final blockIndex = pos ~/ _kStreamBlockSize;
@@ -676,20 +831,42 @@ class BiliStreamProxy {
       if (sliceEnd <= pos) {
         throw StateError('cache block $blockIndex shorter than expected');
       }
-      final file = entry.blockFile(blockIndex);
-      if (!file.existsSync()) {
-        // 已登记但尚未落盘：等写入队列完成后重试一次
-        await entry.awaitWrites();
+
+      // 优先命中在途写入内存缓冲，避免块刚入队、磁盘原子落盘尚未完成时的读写竞争
+      Uint8List? bytes = entry.pendingBlockData(blockIndex);
+      if (bytes == null) {
+        final file = entry.blockFile(blockIndex);
         if (!file.existsSync()) {
-          entry.dropBlock(blockIndex);
-          entry.flushMetaIfNeeded();
-          throw StateError('cache block file vanished: $blockIndex');
+          // 已登记但尚未落盘：等写入队列完成后再查
+          await entry.awaitWrites();
+          bytes = entry.pendingBlockData(blockIndex);
+          if (bytes == null) {
+            if (!file.existsSync()) {
+              entry.dropBlock(blockIndex);
+              entry.flushMetaIfNeeded();
+              throw StateError('cache block file vanished: $blockIndex');
+            }
+            bytes = await file.readAsBytes();
+          }
+        } else {
+          bytes = await file.readAsBytes();
         }
       }
-      final bytes = await file.readAsBytes();
+
       final from = pos - blockIndex * _kStreamBlockSize;
-      response.add(bytes.sublist(from, from + (sliceEnd - pos)));
+      final needed = sliceEnd - pos;
+      if (bytes.length < from + needed) {
+        entry.dropBlock(blockIndex);
+        entry.flushMetaIfNeeded();
+        throw StateError(
+          'cache block $blockIndex corrupted: ${bytes.length} < ${from + needed}',
+        );
+      }
+
+      response.add(bytes.sublist(from, from + needed));
+      await response.flush();
       pos = sliceEnd;
+      onServed?.call(pos);
     }
   }
 
@@ -700,56 +877,153 @@ class BiliStreamProxy {
   Future<void> _fetchFillTo(
     HttpResponse? response,
     _StreamCacheEntry entry,
-    String targetUrl, {
+    _ProxyTarget target, {
     required int fetchStart,
     required int fetchEndExclusive,
     required int playerStart,
     required int playerEndExclusive,
+    void Function(int pos)? onServed,
   }) async {
-    final clientReq = await _client.openUrl('GET', Uri.parse(targetUrl));
-    _setUpstreamHeaders(
-      clientReq,
-      rangeHeader: 'bytes=$fetchStart-${fetchEndExclusive - 1}',
-    );
-    final clientRes = await clientReq.close();
+    final candidates = target.candidateUrls;
+    final writerId = entry.allocWriterId();
+    final maxAttempts = math.max(3, candidates.length + 1);
+    var currentOffset = fetchStart;
+    var candidateIdx = 0;
+    var attempts = 0;
+    var playerSentEnd = playerStart;
+    Object? lastError;
 
-    final aligned = clientRes.statusCode == HttpStatus.partialContent ||
-        (clientRes.statusCode == HttpStatus.ok && fetchStart == 0);
-    if (!aligned) {
-      // 不再读取响应体：取消订阅即销毁上游连接，避免为坏响应拉完整段视频
-      throw StateError('upstream range fetch failed: ${clientRes.statusCode}');
-    }
-
-    // 首个回源响应顺带登记总长（影响后续块完整性判断）
-    final contentRange = clientRes.headers.value(HttpHeaders.contentRangeHeader);
-    if (entry.total == null && contentRange != null) {
-      final m = RegExp(r'/(\d+)$').firstMatch(contentRange.trim());
-      final t = m != null ? int.tryParse(m.group(1)!) : null;
-      if (t != null && t > 0) {
-        entry.total = t;
-        entry.markDirty();
+    while (currentOffset < fetchEndExclusive) {
+      // 预测预取遇到实时播放请求立即让出带宽与缓冲区
+      if (response == null && entry.liveRequests > 0) {
+        return;
       }
-    }
 
-    var offset = fetchStart;
-    await for (final chunk in clientRes) {
-      final chunkStart = offset;
-      _feedCache(entry, offset, chunk);
-      offset += chunk.length;
+      final url = candidates[candidateIdx % candidates.length];
+      HttpClientResponse? clientRes;
+      try {
+        final clientReq = await _client
+            .openUrl('GET', Uri.parse(url))
+            .timeout(_kUpstreamTimeout);
+        _setUpstreamHeaders(
+          clientReq,
+          rangeHeader: 'bytes=$currentOffset-${fetchEndExclusive - 1}',
+        );
+        clientRes = await clientReq.close().timeout(_kUpstreamTimeout);
 
-      if (response != null) {
-        final from = math.max(0, playerStart - chunkStart);
-        final to = math.min(chunk.length, playerEndExclusive - chunkStart);
-        if (to > from) {
-          response.add(chunk.sublist(from, to));
-          await response.flush();
+        final aligned = clientRes.statusCode == HttpStatus.partialContent ||
+            (clientRes.statusCode == HttpStatus.ok && currentOffset == 0);
+        if (!aligned) {
+          final status = clientRes.statusCode;
+          await _discardResponse(clientRes);
+          final isAuthOrRangeErr = status == HttpStatus.forbidden ||
+              status == HttpStatus.notFound ||
+              status == HttpStatus.gone ||
+              status == HttpStatus.requestedRangeNotSatisfiable;
+          final hasUntriedCandidate = candidateIdx + 1 < candidates.length;
+          if ((isAuthOrRangeErr && !hasUntriedCandidate) ||
+              attempts >= maxAttempts - 1) {
+            throw StateError('upstream range fetch failed: $status');
+          }
+          attempts++;
+          candidateIdx++;
+          continue;
         }
-      }
-      if (offset >= fetchEndExclusive) {
-        // 缓存要填的完成了（fetch 段是播放器段的超集）；提前退出会取消
-        // 订阅并销毁上游连接
+
+        final contentRange =
+            clientRes.headers.value(HttpHeaders.contentRangeHeader);
+        if (entry.total == null && contentRange != null) {
+          final t = _parseContentRangeTotal(contentRange);
+          if (t != null && t > 0) {
+            entry.total = t;
+            entry.markDirty();
+          }
+        }
+
+        if (clientRes.statusCode == HttpStatus.partialContent &&
+            contentRange != null) {
+          final parsedStart = _parseContentRangeStart(contentRange);
+          if (parsedStart != null && parsedStart > currentOffset) {
+            await _discardResponse(clientRes);
+            throw StateError(
+              'upstream range gap: expected $currentOffset, got $parsedStart',
+            );
+          }
+        }
+
+        var streamOffset = currentOffset;
+        var bytesInRes = 0;
+        final declaredLen = clientRes.contentLength;
+
+        await for (final chunk in clientRes.timeout(_kUpstreamTimeout)) {
+          if (response == null && entry.liveRequests > 0) {
+            return;
+          }
+          final chunkStart = streamOffset;
+          _feedCache(entry, streamOffset, chunk, writerId: writerId);
+          streamOffset += chunk.length;
+          bytesInRes += chunk.length;
+
+          if (response != null) {
+            final effectiveStart = math.max(playerStart, playerSentEnd);
+            final from = math.max(0, effectiveStart - chunkStart);
+            final to = math.min(chunk.length, playerEndExclusive - chunkStart);
+            if (to > from) {
+              try {
+                response.add(chunk.sublist(from, to));
+                await response.flush();
+              } catch (_) {
+                throw const _ClientDisconnectedException();
+              }
+              playerSentEnd = chunkStart + to;
+              onServed?.call(playerSentEnd);
+            }
+          }
+          currentOffset = streamOffset;
+          if (currentOffset >= fetchEndExclusive) {
+            break;
+          }
+        }
+
+        if (currentOffset >= fetchEndExclusive) {
+          return;
+        }
+
+        // 上游未声明 Content-Length 且已正常 EOF：不再盲目重拉同一短响应
+        if (declaredLen < 0) {
+          break;
+        }
+        // 声明了 Content-Length 但提前断开：按剩余字节断点续传或切换备链
+        if (bytesInRes < declaredLen && attempts < maxAttempts - 1) {
+          attempts++;
+          candidateIdx++;
+          continue;
+        }
         break;
+      } on _ClientDisconnectedException {
+        rethrow;
+      } catch (e) {
+        lastError = e;
+        if (attempts >= maxAttempts - 1) {
+          break;
+        }
+        attempts++;
+        candidateIdx++;
       }
+    }
+
+    // 实时播放绝不能把未填满的区间放行给下一段缓存（否则会产生字节空洞导致解码器卡死）
+    if (response != null && playerSentEnd < playerEndExclusive) {
+      throw lastError ??
+          StateError(
+            'upstream fetch incomplete: $playerSentEnd < $playerEndExclusive',
+          );
+    }
+    if (response == null && currentOffset < fetchEndExclusive) {
+      throw lastError ??
+          StateError(
+            'prefetch incomplete: $currentOffset < $fetchEndExclusive',
+          );
     }
   }
 
@@ -762,13 +1036,14 @@ class BiliStreamProxy {
   /// 每次出流结束后触发一次；预取深度已达标则立即返回。
   Future<void> _runPrefetchLoop(
     _StreamCacheEntry entry,
-    String targetUrl,
+    _ProxyTarget target,
   ) async {
-    if (entry.prefetchActive) return;
+    if (entry.prefetchActive || entry.liveRequests > 0) return;
     entry.prefetchActive = true;
     entry.activeRequests++; // 预取期间不参与 LRU 淘汰
     try {
       while (true) {
+        if (entry.liveRequests > 0) return;
         final total = entry.total;
         if (total == null) return; // 总长未知（首个请求尚未对齐），无从规划
         final depthEnd = math.min(
@@ -785,7 +1060,7 @@ class BiliStreamProxy {
           await _fetchFillTo(
             null,
             entry,
-            targetUrl,
+            target,
             fetchStart: from,
             fetchEndExclusive: batchEnd,
             playerStart: from,
@@ -794,6 +1069,7 @@ class BiliStreamProxy {
         } catch (_) {
           return; // 回源失败：等下一次出流触发再试，避免死循环
         }
+        if (entry.liveRequests > 0) return;
         entry.prefetchCursor = batchEnd;
       }
     } finally {
@@ -812,7 +1088,12 @@ class BiliStreamProxy {
   }
 
   /// 把一段字节流喂进块缓冲；从块头连续凑满整块（或到达已知总长）才落盘。
-  void _feedCache(_StreamCacheEntry entry, int offset, List<int> bytes) {
+  void _feedCache(
+    _StreamCacheEntry entry,
+    int offset,
+    List<int> bytes, {
+    required int writerId,
+  }) {
     if (bytes.isEmpty) return;
     var off = offset;
     var i = 0;
@@ -820,18 +1101,41 @@ class BiliStreamProxy {
       final blockIndex = off ~/ _kStreamBlockSize;
       final posInBlock = off % _kStreamBlockSize;
       final buf = entry.bufferFor(blockIndex);
+
+      if (buf.writerId != 0 && buf.writerId != writerId) {
+        if (posInBlock == 0) {
+          // 新写入者恰好从块头开始：重置缓冲，避免沿用旧请求残留
+          buf.resetForWriter(writerId);
+        } else {
+          // 其他写入者正在组装同一块：跳过本块，避免并发交织污染
+          final skip = math.min(
+            _kStreamBlockSize - posInBlock,
+            bytes.length - i,
+          );
+          i += skip;
+          off += skip;
+          continue;
+        }
+      }
+
       final expected = buf.nextExpectedPosInBlock;
       if (expected >= 0 && posInBlock != expected) {
-        // 与已有缓冲不连续（空洞或重叠）：该块放弃缓存，跳到下一块边界
-        entry.dropBuffer(blockIndex);
-        final skip = math.min(
-          _kStreamBlockSize - posInBlock,
-          bytes.length - i,
-        );
-        i += skip;
-        off += skip;
-        continue;
+        if (posInBlock == 0) {
+          buf.resetForWriter(writerId);
+        } else {
+          // 与已有缓冲不连续（空洞或重叠）：该块放弃缓存，跳到下一块边界
+          entry.dropBuffer(blockIndex);
+          final skip = math.min(
+            _kStreamBlockSize - posInBlock,
+            bytes.length - i,
+          );
+          i += skip;
+          off += skip;
+          continue;
+        }
       }
+
+      buf.writerId = writerId;
       final take = math.min(
         math.min(bytes.length - i, _kStreamBlockSize - posInBlock),
         _kStreamBlockSize - buf.filled,
@@ -871,6 +1175,7 @@ class BiliStreamProxy {
     String remoteUrl, {
     bool isAudio = false,
     String? cacheKey,
+    List<String> backupUrls = const [],
   }) async {
     if (kIsWeb || remoteUrl.isEmpty) return remoteUrl;
     if (remoteUrl.startsWith('file://') ||
@@ -890,10 +1195,11 @@ class BiliStreamProxy {
     final hash = md5.convert(utf8.encode(cacheKey ?? remoteUrl)).toString();
     final key = '${prefix}_$hash';
 
+    _urlMap.remove(key);
     if (_urlMap.length > 200) {
       _urlMap.remove(_urlMap.keys.first);
     }
-    _urlMap[key] = remoteUrl;
+    _urlMap[key] = _ProxyTarget.remote(remoteUrl, backupUrls);
     return 'http://127.0.0.1:$_port/$key.mp4';
   }
 
@@ -918,10 +1224,11 @@ class BiliStreamProxy {
     final hash = md5.convert(utf8.encode(cleanPath)).toString();
     final key = '${prefix}_$hash';
 
+    _urlMap.remove(key);
     if (_urlMap.length > 200) {
       _urlMap.remove(_urlMap.keys.first);
     }
-    _urlMap[key] = '$_localPrefix$cleanPath';
+    _urlMap[key] = _ProxyTarget.local(cleanPath);
     return 'http://127.0.0.1:$_port/$key.mp4';
   }
 
@@ -997,7 +1304,9 @@ class BiliStreamProxy {
       } catch (_) {
         // 播放器提前断开（seek/缓冲已满足）
       }
-      await response.close();
+      try {
+        await response.close();
+      } catch (_) {}
     } catch (e) {
       debugPrint('BiliStreamProxy _serveLocalFile error: $e');
       try {
@@ -1043,10 +1352,13 @@ class _StreamCacheEntry {
   final Map<int, int> blocks = {};
 
   final Map<int, _BlockBuffer> _buffers = {};
+  final Map<int, Uint8List> _pendingBlockData = {};
   Future<void> _writeQueue = Future.value();
   bool _dirty = false;
   bool _disposed = false;
   int activeRequests = 0;
+  int liveRequests = 0;
+  int _nextWriterId = 1;
   DateTime lastAccess;
 
   /// 出流水位：播放器最近一次请求覆盖到的字节位置（预取锚点）。
@@ -1057,6 +1369,10 @@ class _StreamCacheEntry {
 
   /// 预取循环是否在执行（防重入）。
   bool prefetchActive = false;
+
+  int allocWriterId() => _nextWriterId++;
+
+  Uint8List? pendingBlockData(int index) => _pendingBlockData[index];
 
   /// 记录一次出流覆盖到的位置。向前推进时直接采用；
   /// 向后回退超过阈值视为 seek，重置预取游标从新位置重新规划。
@@ -1117,25 +1433,36 @@ class _StreamCacheEntry {
   }
 
   void enqueueBlockWrite(int index, Uint8List data, {void Function()? onWritten}) {
-    // 入队即登记：后续请求立刻能按缓存规划；磁盘写入异步跟上
+    // 入队即登记：后续请求立刻能按缓存规划；在途写前由 _pendingBlockData 兜底零竞争读取
     if (!blocks.containsKey(index)) {
       blocks[index] = data.length;
       onWritten?.call();
       _dirty = true;
     }
+    _pendingBlockData[index] = data;
     _writeQueue = _writeQueue.then((_) async {
       // 条目已被淘汰/清空后再完成的写入直接丢弃，避免重建孤儿目录
-      if (_disposed) return;
+      if (_disposed) {
+        _pendingBlockData.remove(index);
+        return;
+      }
       try {
         final d = dir;
         if (!d.existsSync()) {
           d.createSync(recursive: true);
         }
-        await blockFile(index).writeAsBytes(data, flush: false);
+        final target = blockFile(index);
+        final tmp = File('${target.path}.tmp');
+        await tmp.writeAsBytes(data, flush: false);
+        await tmp.rename(target.path);
       } catch (_) {
         // 磁盘满 / 目录被清理：撤销登记，不影响播放（回源兜底）
         blocks.remove(index);
         _dirty = true;
+      } finally {
+        if (identical(_pendingBlockData[index], data)) {
+          _pendingBlockData.remove(index);
+        }
       }
     });
   }
@@ -1150,6 +1477,7 @@ class _StreamCacheEntry {
   void deleteFromDisk() {
     _disposed = true;
     _buffers.clear();
+    _pendingBlockData.clear();
     blocks.clear();
     try {
       if (dir.existsSync()) {
@@ -1183,10 +1511,17 @@ class _BlockBuffer {
   /// 本缓冲从块内哪个偏移开始（-1 = 尚未写入）。
   int startInBlock = -1;
   int filled = 0;
+  int writerId = 0;
 
   /// 下一次写入应落在的块内偏移；-1 表示空缓冲（接受任意起点）。
   int get nextExpectedPosInBlock =>
       startInBlock < 0 ? -1 : startInBlock + filled;
+
+  void resetForWriter(int id) {
+    startInBlock = -1;
+    filled = 0;
+    writerId = id;
+  }
 
   void append(List<int> bytes, int offset, int count, int posInBlock) {
     if (startInBlock < 0) {
@@ -1203,6 +1538,10 @@ class _BlockBuffer {
     // sublist 自带一次拷贝即可，不要再套 fromList 二次拷贝 2MB。
     return _data.sublist(0, filled);
   }
+}
+
+class _ClientDisconnectedException implements Exception {
+  const _ClientDisconnectedException();
 }
 
 class _ServeSegment {
