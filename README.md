@@ -91,20 +91,21 @@
 - **Audio Engine**: [just_audio](https://pub.dev/packages/just_audio) + [audio_session](https://pub.dev/packages/audio_session)
 - **Image & Caching**: [cached_network_image](https://pub.dev/packages/cached_network_image)
 - **Persistence**: [shared_preferences](https://pub.dev/packages/shared_preferences)
-- **CI/CD**: GitHub Actions (全平台多架构自动化矩阵打包与发布)
+- **CI/CD**: GitHub Actions (Android arm64-v8a / armeabi-v7a / Universal 自动打包与发布)
 
 ---
 
 ## 📦 下载与安装 / Download
 
-访问 [GitHub Releases](https://github.com/e69d8e/MoBili/releases) 获取各平台最新版本安装包：
+访问 [GitHub Releases](https://github.com/e69d8e/MoBili/releases/latest) 获取最新版本。发布流水线只构建以下三个 Android 安装包：
 
-| 平台 | 安装包格式 | 说明 |
+| 安装包 | 适用设备 | 说明 |
 | :--- | :--- | :--- |
-| **Android** | `.apk` / `.aab` | 支持 arm64-v8a、armeabi-v7a、x86_64 及 Universal 通用包 |
-| **macOS** | `.dmg` / `.zip` | 支持 Apple Silicon / Intel 架构 |
-| **Windows** | `.exe` / `.zip` | 提供 Inno Setup 安装向导与免安装绿色便携版 |
-| **Linux** | `.deb` / `.tar.gz` | 提供 Debian/Ubuntu 安装包及通用独立运行包 |
+| `MoBili-Android-arm64-v8a.apk` | 绝大多数现代 64 位 Android 手机 | **推荐**，体积最小 |
+| `MoBili-Android-armeabi-v7a.apk` | 老旧 32 位 ARM 设备 | 兼容性优先 |
+| `MoBili-Android-Universal.apk` | 全部架构（含 x86_64 模拟器） | 通用包，体积稍大 |
+
+> iOS / macOS / Windows / Linux 版本不再随 Releases 发布，如需使用可参考下方开发章节在本地自行编译。
 
 ---
 
