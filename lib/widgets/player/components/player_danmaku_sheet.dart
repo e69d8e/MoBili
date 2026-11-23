@@ -4,12 +4,12 @@ import '../danmaku_overlay.dart';
 
 /// Modal bottom sheet for configuring player danmaku opacity, font size, and area ratio.
 class PlayerDanmakuSheet {
-  static void show(
+  static Future<void> show(
     BuildContext context, {
     required DanmakuController danmakuController,
     required Color accent,
   }) {
-    showModalBottomSheet(
+    return showModalBottomSheet<void>(
       context: context,
       backgroundColor: OverlayColors.sheet,
       shape: const RoundedRectangleBorder(

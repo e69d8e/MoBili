@@ -30,7 +30,7 @@ class LoadingView extends StatelessWidget {
             Text(
               message!,
               style: TextStyle(
-                color: Theme.of(context).hintColor,
+                color: context.colors.textHint,
                 fontSize: 13,
               ),
             ),

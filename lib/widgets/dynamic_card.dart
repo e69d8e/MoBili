@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/dynamic_model.dart';
+import '../models/video_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/dynamic/dynamic_detail_screen.dart';
 import '../screens/profile/login_dialog.dart';
@@ -14,6 +15,7 @@ import '../services/api/bili_http_client.dart';
 import '../services/api/dynamic_api_service.dart';
 import '../services/api/user_api_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_dimens.dart';
 import '../utils/formatters.dart';
 import 'app_toast.dart';
 import 'image_viewer.dart';
@@ -103,54 +105,86 @@ class _DynamicCardState extends State<DynamicCard> {
     }
   }
 
+  void _showMoreSheet(BuildContext context, DynamicItem item) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.colors.card,
+      shape: RoundedRectangleBorder(borderRadius: AppRadius.sheet),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: context.colors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            if (item.text.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('复制动态正文'),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: item.text));
+                  Navigator.pop(ctx);
+                  AppToast.show(context, '已复制正文');
+                },
+              ),
+            if (item.author.mid > 0)
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded),
+                title: Text('进入 ${item.author.name} 的空间'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => UpSpaceScreen(mid: item.author.mid),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final cardScope = item.id.isNotEmpty ? item.id : 'card_${identityHashCode(this)}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       decoration: BoxDecoration(
         color: context.colors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.colors.divider, width: 0.8),
-        // 卡片投影统一为极淡黑，暗色主题下自然隐去，无需按明暗分支
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: AppRadius.card,
       ),
+      clipBehavior: Clip.antiAlias,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: _navigateToDetail,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.card,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Author Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
+                padding: const EdgeInsets.fromLTRB(12.0, 12.0, 6.0, 8.0),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        if (item.author.mid > 0) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (ctx) =>
-                                  UpSpaceScreen(mid: item.author.mid),
-                            ),
-                          );
-                        }
-                      },
-                      child: UserAvatar(url: item.author.face, size: 38),
-                    ),
-                    const SizedBox(width: 8.0),
-                    Expanded(
-                      child: GestureDetector(
+                    Semantics(
+                      button: true,
+                      label: '查看 ${item.author.name} 主页',
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
                         onTap: () {
                           if (item.author.mid > 0) {
                             Navigator.of(context).push(
@@ -161,51 +195,96 @@ class _DynamicCardState extends State<DynamicCard> {
                             );
                           }
                         },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.author.name,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Text(
-                                  item.author.pubTime.isNotEmpty
-                                      ? item.author.pubTime
-                                      : (item.author.pubTs > 0
-                                            ? Formatters.formatTime(
-                                                item.author.pubTs,
-                                              )
-                                            : ''),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: context.colors.textHint,
-                                  ),
+                        child: UserAvatar(url: item.author.face, size: 38),
+                      ),
+                    ),
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        label: '查看 ${item.author.name} 主页',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            if (item.author.mid > 0) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (ctx) =>
+                                      UpSpaceScreen(mid: item.author.mid),
                                 ),
-                                if (item.author.pubAction.isNotEmpty) ...[
-                                  const SizedBox(width: 4.0),
+                              );
+                            }
+                          },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.author.name,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
                                   Text(
-                                    '· ${item.author.pubAction}',
+                                    item.author.pubTime.isNotEmpty
+                                        ? item.author.pubTime
+                                        : (item.author.pubTs > 0
+                                              ? Formatters.formatTime(
+                                                  item.author.pubTs,
+                                                )
+                                              : ''),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: context.colors.textHint,
                                     ),
                                   ),
+                                  if (item.author.pubAction.isNotEmpty) ...[
+                                    const SizedBox(width: 4.0),
+                                    Text(
+                                      '· ${item.author.pubAction}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: context.colors.textHint,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 19,
+                        color: context.colors.textHint,
+                      ),
+                      tooltip: '更多操作',
+                      onPressed: () => _showMoreSheet(context, item),
                     ),
                   ],
                 ),
               ),
+
+              // Title (专栏/文章等标题未含在正文里时独立展示)
+              if (item.title.isNotEmpty && !item.text.contains(item.title))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12.0, 2.0, 12.0, 2.0),
+                  child: Text(
+                    item.title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      color: context.colors.textMain,
+                    ),
+                  ),
+                ),
 
               // Text Content
               if (item.text.isNotEmpty)
@@ -231,7 +310,12 @@ class _DynamicCardState extends State<DynamicCard> {
               if (item.video != null && item.video!.bvid.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 8.0),
-                  child: _buildVideoCard(context, item.video!),
+                  child: _buildVideoCard(
+                    context,
+                    item.video!,
+                    heroTag: 'dyn_vid_${cardScope}_${item.video!.bvid}',
+                    owner: item.author,
+                  ),
                 ),
 
               // Images (if any)
@@ -241,7 +325,7 @@ class _DynamicCardState extends State<DynamicCard> {
                   child: _buildImages(
                     context,
                     item.pictures,
-                    heroPrefix: 'dyn_${item.id}',
+                    heroPrefix: 'dyn_$cardScope',
                   ),
                 ),
 
@@ -249,7 +333,8 @@ class _DynamicCardState extends State<DynamicCard> {
               if (item.orig != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12.0, 4, 12.0, 8.0),
-                  child: GestureDetector(
+                  child: InkWell(
+                    borderRadius: AppRadius.card,
                     onTap: () {
                       if (item.orig!.id.isNotEmpty) {
                         Navigator.of(context).push(
@@ -260,13 +345,15 @@ class _DynamicCardState extends State<DynamicCard> {
                             ),
                           ),
                         );
+                      } else {
+                        _navigateToDetail();
                       }
                     },
                     child: Container(
                       padding: const EdgeInsets.all(8.0),
                       decoration: BoxDecoration(
                         color: context.colors.fill,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: AppRadius.card,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,14 +369,20 @@ class _DynamicCardState extends State<DynamicCard> {
                           if (item.orig!.video != null &&
                               item.orig!.video!.bvid.isNotEmpty) ...[
                             const SizedBox(height: 4.0),
-                            _buildVideoCard(context, item.orig!.video!),
+                            _buildVideoCard(
+                              context,
+                              item.orig!.video!,
+                              heroTag:
+                                  'orig_vid_${cardScope}_${item.orig!.id}_${item.orig!.video!.bvid}',
+                              owner: item.orig!.author,
+                            ),
                           ],
                           if (item.orig!.pictures.isNotEmpty) ...[
                             const SizedBox(height: 4.0),
                             _buildImages(
                               context,
                               item.orig!.pictures,
-                              heroPrefix: 'orig_${item.orig!.id}',
+                              heroPrefix: 'orig_${cardScope}_${item.orig!.id}',
                             ),
                           ],
                         ],
@@ -341,22 +434,45 @@ class _DynamicCardState extends State<DynamicCard> {
 
   Widget _buildVideoCard(
     BuildContext context,
-    DynamicVideo video,
-  ) {
+    DynamicVideo video, {
+    required String heroTag,
+    DynamicAuthor? owner,
+  }) {
+    final initialVideo = VideoItem(
+      aid: video.aid,
+      bvid: video.bvid,
+      cid: 0,
+      title: video.title,
+      pic: video.cover,
+      desc: video.desc,
+      duration: 0,
+      pubdate: 0,
+      ctime: 0,
+      owner: Owner(
+        mid: owner?.mid ?? 0,
+        name: owner?.name ?? '',
+        face: owner?.face ?? '',
+      ),
+      stat: Stat(),
+    );
+
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (ctx) => VideoDetailScreen(bvid: video.bvid),
+            builder: (ctx) => VideoDetailScreen(
+              bvid: video.bvid,
+              initialVideo: initialVideo,
+              heroTag: heroTag,
+            ),
           ),
         );
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadius.card,
       child: Container(
         decoration: BoxDecoration(
           color: context.colors.fill,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: context.colors.divider, width: 0.6),
+          borderRadius: AppRadius.card,
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(
@@ -368,11 +484,14 @@ class _DynamicCardState extends State<DynamicCard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  NetworkImageView(
-                    url: video.cover,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 240,
-                    memCacheHeight: 150,
+                  Hero(
+                    tag: heroTag,
+                    child: NetworkImageView(
+                      url: video.cover,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 480,
+                      memCacheHeight: 300,
+                    ),
                   ),
                   Positioned(
                     bottom: 4,
@@ -542,47 +661,59 @@ class _DynamicCardState extends State<DynamicCard> {
           displayHeight = 200.0;
         }
 
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            ImageViewer.show(
-              context,
-              pictures: [pic],
-              initialIndex: 0,
-              heroPrefix: heroPrefix,
-            );
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: displayWidth,
-              height: displayHeight,
-              color: context.colors.fill,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  NetworkImageView(
-                    url: pic.url,
-                    width: displayWidth,
-                    height: displayHeight,
-                    fit: BoxFit.cover,
-                    alignment: alignment,
-                    memCacheWidth: (displayWidth * 2.2).round().clamp(200, 960),
-                    memCacheHeight: (displayHeight * 2.2).round().clamp(
-                      200,
-                      960,
+        return Semantics(
+          button: true,
+          image: true,
+          label: '查看大图',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              ImageViewer.show(
+                context,
+                pictures: [pic],
+                initialIndex: 0,
+                heroPrefix: heroPrefix,
+              );
+            },
+          child: Hero(
+            tag: '${heroPrefix}_0',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: displayWidth,
+                height: displayHeight,
+                color: context.colors.fill,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    NetworkImageView(
+                      url: pic.url,
+                      width: displayWidth,
+                      height: displayHeight,
+                      fit: BoxFit.cover,
+                      alignment: alignment,
+                      disableServerCrop: isLong,
+                      memCacheWidth: (displayWidth * 2.2).round().clamp(
+                        200,
+                        960,
+                      ),
+                      memCacheHeight: (displayHeight * 2.2).round().clamp(
+                        200,
+                        960,
+                      ),
                     ),
-                  ),
-                  if (isLong)
-                    Positioned(bottom: 6, right: 6, child: _buildBadge('长图'))
-                  else if (isGif)
-                    Positioned(bottom: 6, right: 6, child: _buildBadge('GIF')),
-                ],
+                    if (isLong)
+                      Positioned(bottom: 6, right: 6, child: _buildBadge('长图'))
+                    else if (isGif)
+                      Positioned(bottom: 6, right: 6, child: _buildBadge('GIF')),
+                  ],
+                ),
               ),
             ),
           ),
-        );
+        ),
+      );
       },
     );
   }
@@ -616,43 +747,50 @@ class _DynamicCardState extends State<DynamicCard> {
               final isGif = pic.url.toLowerCase().contains('.gif');
 
               rowItems.add(
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    ImageViewer.show(
-                      context,
-                      pictures: pictures,
-                      initialIndex: idx,
-                      heroPrefix: heroPrefix,
-                    );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      width: itemWidth,
-                      height: itemHeight,
-                      color: context.colors.fill,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          NetworkImageView(
-                            url: pic.url,
-                            width: itemWidth,
-                            height: itemHeight,
-                            fit: BoxFit.cover,
-                            alignment: isLong
-                                ? Alignment.topCenter
-                                : Alignment.center,
-                            memCacheWidth: (itemWidth * 2.2).round().clamp(
-                              150,
-                              480,
+                Semantics(
+                  button: true,
+                  image: true,
+                  label: '查看图片 ${idx + 1}/$totalCount',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      ImageViewer.show(
+                        context,
+                        pictures: pictures,
+                        initialIndex: idx,
+                        heroPrefix: heroPrefix,
+                      );
+                    },
+                    child: Hero(
+                      tag: '${heroPrefix}_$idx',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: itemWidth,
+                          height: itemHeight,
+                          color: context.colors.fill,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              NetworkImageView(
+                                url: pic.url,
+                              width: itemWidth,
+                              height: itemHeight,
+                              fit: BoxFit.cover,
+                              alignment: isLong
+                                  ? Alignment.topCenter
+                                  : Alignment.center,
+                              disableServerCrop: isLong,
+                              memCacheWidth: (itemWidth * 2.2).round().clamp(
+                                150,
+                                480,
+                              ),
+                              memCacheHeight: (itemHeight * 2.2).round().clamp(
+                                150,
+                                480,
+                              ),
                             ),
-                            memCacheHeight: (itemHeight * 2.2).round().clamp(
-                              150,
-                              480,
-                            ),
-                          ),
                           if (isLastOfNine)
                             Container(
                               color: Colors.black.withValues(alpha: 0.6),
@@ -683,6 +821,8 @@ class _DynamicCardState extends State<DynamicCard> {
                     ),
                   ),
                 ),
+              ),
+              ),
               );
             } else {
               rowItems.add(SizedBox(width: itemWidth, height: itemHeight));
@@ -733,33 +873,45 @@ class _DynamicCardState extends State<DynamicCard> {
     final color = active
         ? Theme.of(context).colorScheme.primary
         : (context.colors.textSub);
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: Row(
-          children: [
-            AnimatedScale(
-              scale: active ? 1.15 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutBack,
-              child: Icon(icon, size: 16, color: color),
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 40),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: [
+                AnimatedScale(
+                  scale: (!disableAnimations && active) ? 1.15 : 1.0,
+                  duration: disableAnimations
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  curve: Curves.easeOutBack,
+                  child: Icon(icon, size: 16, color: color),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: color,
-                fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

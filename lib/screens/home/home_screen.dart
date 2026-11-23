@@ -1,10 +1,17 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/video_model.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/search_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
+import '../../theme/app_typography.dart';
+import '../../utils/app_routes.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/state_views.dart';
@@ -22,9 +29,16 @@ class HomeScreen extends StatefulWidget {
 class HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final GlobalKey<NestedScrollViewState> _nestedKey =
+      GlobalKey<NestedScrollViewState>();
+  final ScrollController _outerScrollController = ScrollController();
 
   // 上一次稳定停留的分区，用于识别「重复点击当前 Tab」
   int _selectedTabIndex = 0;
+
+  // 顶部搜索胶囊热词轮播
+  int _hotHintIndex = 0;
+  Timer? _hotHintTimer;
 
   final GlobalKey<_RecommendFeedTabState> _rcmdKey =
       GlobalKey<_RecommendFeedTabState>();
@@ -38,6 +52,32 @@ class HomeScreenState extends State<HomeScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final sp = context.read<SearchProvider>();
+      if (sp.hotSearches.isEmpty) {
+        sp.loadHotSearches().then((_) {
+          if (mounted) _ensureHotHintTimer();
+        });
+      } else {
+        _ensureHotHintTimer();
+      }
+    });
+  }
+
+  void _ensureHotHintTimer() {
+    if (_hotHintTimer != null) return;
+    final hotCount = context.read<SearchProvider>().hotSearches.length;
+    if (hotCount <= 1) return;
+    _hotHintTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      final list = context.read<SearchProvider>().hotSearches;
+      if (list.isEmpty) return;
+      setState(() {
+        _hotHintIndex = (_hotHintIndex + 1) % list.length;
+      });
+    });
   }
 
   void _onTabChanged() {
@@ -50,178 +90,255 @@ class HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _hotHintTimer?.cancel();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
+    _outerScrollController.dispose();
     super.dispose();
+  }
+
+  bool get _isNestedAtTop {
+    final outerAtTop =
+        !_outerScrollController.hasClients ||
+        _outerScrollController.positions.every((pos) => pos.pixels <= 1);
+    final inner = _nestedKey.currentState?.innerController;
+    final innerAtTop =
+        inner == null ||
+        !inner.hasClients ||
+        inner.positions.every((pos) => pos.pixels <= 1);
+    return outerAtTop && innerAtTop;
+  }
+
+  Future<void> _scrollAllToTop() async {
+    final inner = _nestedKey.currentState?.innerController;
+    if (inner != null && inner.hasClients) {
+      // NestedScrollView + TabBarView（KeepAlive）会使 innerController 同时挂载多个滚动视图，
+      // 逐一取用已滚出顶部的首个 position 调用 animateTo，内部 Coordinator 会联动所有关联位置。
+      for (final pos in inner.positions.toList()) {
+        if (pos.pixels > 0) {
+          await pos.animateTo(
+            0,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+          );
+          break;
+        }
+      }
+    }
+    if (!mounted) return;
+    if (_outerScrollController.hasClients) {
+      for (final pos in _outerScrollController.positions.toList()) {
+        if (pos.pixels > 0) {
+          await pos.animateTo(
+            0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+          );
+          break;
+        }
+      }
+    }
   }
 
   /// 底部导航重复点击：官方客户端行为是「先回顶，已在顶部时再点才刷新」。
   Future<void> refreshAndScrollToTop() async {
+    final atTop = _isNestedAtTop;
+    await _scrollAllToTop();
+    if (!atTop) return;
     final curIndex = _tabController.index;
     if (curIndex == 0) {
-      final tab = _rcmdKey.currentState;
-      if (tab != null) await tab.onReTap(refresh: tab.isAtTop);
+      await _rcmdKey.currentState?.triggerRefresh();
     } else if (curIndex == 1) {
-      final tab = _popularKey.currentState;
-      if (tab != null) await tab.onReTap(refresh: tab.isAtTop);
+      await _popularKey.currentState?.triggerRefresh();
     } else if (curIndex == 2) {
-      final tab = _rankingKey.currentState;
-      if (tab != null) await tab.onReTap(refresh: tab.isAtTop);
-    }
-  }
-
-  /// 顶栏「换一换」：显式刷新当前分区并回到顶部
-  void refreshCurrentTab() {
-    final index = _tabController.index;
-    if (index == 0) {
-      _rcmdKey.currentState?.onReTap(refresh: true);
-    } else if (index == 1) {
-      _popularKey.currentState?.onReTap(refresh: true);
-    } else if (index == 2) {
-      _rankingKey.currentState?.onReTap(refresh: true);
-    }
-  }
-
-  /// 顶部 Tab 重复点击当前分区时回顶（不强制联网刷新）
-  void _scrollTabToTop(int index) {
-    if (index == 0) {
-      _rcmdKey.currentState?.scrollToTop();
-    } else if (index == 1) {
-      _popularKey.currentState?.scrollToTop();
-    } else if (index == 2) {
-      _rankingKey.currentState?.scrollToTop();
+      await _rankingKey.currentState?.triggerRefresh();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).colorScheme.primary;
+    final hotSearches = context.select<SearchProvider, List<String>>(
+      (sp) => sp.hotSearches.map((e) => e.keyword).toList(growable: false),
+    );
+    final hintText = hotSearches.isNotEmpty
+        ? '热搜: ${hotSearches[_hotHintIndex % hotSearches.length]}'
+        : '搜索视频、UP主、图文...';
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            // MoBili Logo / Wordmark
-            Text(
-              '墨哩',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: context.colors.textMain,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(width: 8.0),
-            // Minimalist Search Bar Pill
-            Expanded(
-              child: InkWell(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (ctx) => const SearchScreen()),
-                  );
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  decoration: BoxDecoration(
-                    color: context.colors.fill,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.search_rounded,
-                        size: 16,
-                        color: context.colors.textHint,
+      body: NestedScrollView(
+        key: _nestedKey,
+        controller: _outerScrollController,
+        floatHeaderSlivers: true,
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+          final tabHeight = math.max(42.0, 40.0 * textScale);
+          return [
+            SliverOverlapAbsorber(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              sliver: SliverAppBar(
+                floating: true,
+                snap: true,
+                pinned: true,
+                forceElevated: innerBoxIsScrolled,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                surfaceTintColor: Colors.transparent,
+                titleSpacing: AppSpacing.lg,
+                title: Row(
+                  children: [
+                    Text(
+                      '墨哩',
+                      style: TextStyle(
+                        fontSize: AppTypography.title,
+                        fontWeight: FontWeight.w800,
+                        color: context.colors.textMain,
+                        letterSpacing: -0.5,
                       ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        '搜索视频、UP主、图文...',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: context.colors.textHint,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    // 极简搜索胶囊：轮播热搜提示
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        label: '搜索：$hintText',
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              AppRoutes.page(const SearchScreen()),
+                            );
+                          },
+                          borderRadius: AppRadius.of(AppRadius.pill),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 38),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md,
+                                vertical: 8.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: context.colors.fill,
+                                borderRadius: AppRadius.of(AppRadius.pill),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.search_rounded,
+                                    size: 16,
+                                    color: context.colors.textHint,
+                                  ),
+                                  const SizedBox(width: 6.0),
+                                  Expanded(
+                                    child: AnimatedSwitcher(
+                                      duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false)
+                                          ? Duration.zero
+                                          : const Duration(milliseconds: 240),
+                                      layoutBuilder: (currentChild, previousChildren) =>
+                                          Stack(
+                                        alignment: Alignment.centerLeft,
+                                        children: [
+                                          ...previousChildren,
+                                          ?currentChild,
+                                        ],
+                                      ),
+                                      child: Text(
+                                        hintText,
+                                        key: ValueKey(hintText),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: AppTypography.body2,
+                                          color: context.colors.textHint,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.watch_later_outlined, size: 21),
+                      tooltip: '稍后观看',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                      color: context.colors.textSub,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          AppRoutes.page(const WatchLaterScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                bottom: PreferredSize(
+                  preferredSize: Size.fromHeight(tabHeight + 2),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: context.colors.divider.withValues(alpha: 0.6),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: 248.0 * textScale.clamp(1.0, 1.4),
+                      height: tabHeight,
+                      child: TabBar(
+                        controller: _tabController,
+                        isScrollable: false,
+                        indicatorColor: primaryColor,
+                        indicatorWeight: 2.5,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        labelColor: primaryColor,
+                        unselectedLabelColor: context.colors.textSub,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: AppTypography.body1,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontSize: AppTypography.body,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        dividerColor: Colors.transparent,
+                        dividerHeight: 0,
+                        onTap: (idx) {
+                          final hp = context.read<HomeProvider>();
+                          final isReTap = _selectedTabIndex == idx;
+                          hp.setTab(idx);
+                          if (isReTap) _scrollAllToTop();
+                        },
+                        tabs: const [
+                          Tab(text: '推荐'),
+                          Tab(text: '热门'),
+                          Tab(text: '排行榜'),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 4),
-            // 换一换：显式刷新当前分区（对齐官方客户端的显式刷新入口）
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: '换一换',
-              padding: const EdgeInsets.all(4.0),
-              constraints: const BoxConstraints(),
-              visualDensity: VisualDensity.compact,
-              color: context.colors.textSub,
-              onPressed: refreshCurrentTab,
-            ),
-            // Watch Later entry icon
-            IconButton(
-              icon: const Icon(Icons.watch_later_outlined, size: 21),
-              tooltip: '稍后观看',
-              padding: const EdgeInsets.all(4.0),
-              constraints: const BoxConstraints(),
-              visualDensity: VisualDensity.compact,
-              color: context.colors.textSub,
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (ctx) => const WatchLaterScreen()),
-                );
-              },
-            ),
-          ],
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: Center(
-            child: SizedBox(
-              width: 240,
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: false,
-                indicatorColor: primaryColor,
-                indicatorWeight: 2.5,
-                indicatorSize: TabBarIndicatorSize.label,
-                labelColor: primaryColor,
-                unselectedLabelColor: context.colors.textSub,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                ),
-                dividerColor: Colors.transparent,
-                dividerHeight: 0,
-                onTap: (idx) {
-                  final hp = context.read<HomeProvider>();
-                  final isReTap = _selectedTabIndex == idx;
-                  hp.setTab(idx);
-                  if (isReTap) _scrollTabToTop(idx);
-                },
-                tabs: const [
-                  Tab(text: '推荐'),
-                  Tab(text: '热门'),
-                  Tab(text: '排行榜'),
-                ],
-              ),
-            ),
+          ];
+        },
+        body: ScrollConfiguration(
+          // NestedScrollView 的 innerController 会被 TabBarView 多个保活 Tab 共享，
+          // 禁用自动桌面端 Scrollbar 以避免其内部访问单个 position 时触发 _positions.length == 1 断言。
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _RecommendFeedTab(key: _rcmdKey),
+              _PopularVideosTab(key: _popularKey),
+              _RankingVideosTab(key: _rankingKey),
+            ],
           ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _RecommendFeedTab(key: _rcmdKey),
-          _PopularVideosTab(key: _popularKey),
-          _RankingVideosTab(key: _rankingKey),
-        ],
       ),
     );
   }
@@ -239,7 +356,6 @@ class _RecommendFeedTab extends StatefulWidget {
 
 class _RecommendFeedTabState extends State<_RecommendFeedTab>
     with AutomaticKeepAliveClientMixin {
-  final ScrollController _scrollController = ScrollController();
   final GlobalKey<RefreshIndicatorState> _refreshKey =
       GlobalKey<RefreshIndicatorState>();
 
@@ -250,6 +366,7 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final hp = context.read<HomeProvider>();
       if (hp.recommendVideos.isEmpty && !hp.rcmdLoading) {
         hp.loadRecommendFeed();
@@ -257,31 +374,9 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
     });
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  bool get isAtTop =>
-      !_scrollController.hasClients || _scrollController.offset <= 1;
-
-  Future<void> scrollToTop() async {
-    if (_scrollController.hasClients && _scrollController.offset > 0) {
-      await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  /// 重复点击当前分区：先回顶；已在顶部时才刷新
-  Future<void> onReTap({required bool refresh}) async {
-    await scrollToTop();
-    if (!refresh) return;
+  Future<void> triggerRefresh() async {
     if (_refreshKey.currentState != null) {
-      _refreshKey.currentState!.show();
+      await _refreshKey.currentState!.show();
     } else if (mounted) {
       await _handleRefresh();
     }
@@ -291,7 +386,6 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
     final homeProvider = context.read<HomeProvider>();
     final ok = await homeProvider.loadRecommendFeed(isRefresh: true);
     if (!mounted) return;
-    // 成功时静默，避免打扰；失败才给出明确提示
     if (!ok) AppToast.show(context, '刷新失败，请检查网络');
   }
 
@@ -316,14 +410,13 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
       (p) => p.recommendVideos,
     );
 
-    if (isLoading && videos.isEmpty) {
-      return const VideoGridSkeleton();
+    if ((isLoading && videos.isEmpty) || (!loaded && error == null)) {
+      return const _SliverSkeletonWrapper();
     }
 
     if (videos.isEmpty) {
-      return _buildFirstPageState(
+      return _FirstPageStateSliver(
         error: error,
-        loaded: loaded,
         refreshKey: _refreshKey,
         onRefresh: _handleRefresh,
       );
@@ -331,7 +424,6 @@ class _RecommendFeedTabState extends State<_RecommendFeedTab>
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
-      scrollController: _scrollController,
       videos: videos,
       isLoadingMore: isLoadingMore,
       hasMore: hasMore,
@@ -355,7 +447,6 @@ class _PopularVideosTab extends StatefulWidget {
 
 class _PopularVideosTabState extends State<_PopularVideosTab>
     with AutomaticKeepAliveClientMixin {
-  final ScrollController _scrollController = ScrollController();
   final GlobalKey<RefreshIndicatorState> _refreshKey =
       GlobalKey<RefreshIndicatorState>();
 
@@ -366,6 +457,7 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final hp = context.read<HomeProvider>();
       if (hp.popularVideos.isEmpty && !hp.popularLoading) {
         hp.loadPopularVideos();
@@ -373,31 +465,9 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
     });
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  bool get isAtTop =>
-      !_scrollController.hasClients || _scrollController.offset <= 1;
-
-  Future<void> scrollToTop() async {
-    if (_scrollController.hasClients && _scrollController.offset > 0) {
-      await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  /// 重复点击当前分区：先回顶；已在顶部时才刷新
-  Future<void> onReTap({required bool refresh}) async {
-    await scrollToTop();
-    if (!refresh) return;
+  Future<void> triggerRefresh() async {
     if (_refreshKey.currentState != null) {
-      _refreshKey.currentState!.show();
+      await _refreshKey.currentState!.show();
     } else if (mounted) {
       await _handleRefresh();
     }
@@ -433,14 +503,13 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
       (p) => p.popularVideos,
     );
 
-    if (isLoading && videos.isEmpty) {
-      return const VideoGridSkeleton();
+    if ((isLoading && videos.isEmpty) || (!loaded && error == null)) {
+      return const _SliverSkeletonWrapper();
     }
 
     if (videos.isEmpty) {
-      return _buildFirstPageState(
+      return _FirstPageStateSliver(
         error: error,
-        loaded: loaded,
         refreshKey: _refreshKey,
         onRefresh: _handleRefresh,
       );
@@ -448,7 +517,6 @@ class _PopularVideosTabState extends State<_PopularVideosTab>
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
-      scrollController: _scrollController,
       videos: videos,
       isLoadingMore: isLoadingMore,
       hasMore: hasMore,
@@ -472,7 +540,6 @@ class _RankingVideosTab extends StatefulWidget {
 
 class _RankingVideosTabState extends State<_RankingVideosTab>
     with AutomaticKeepAliveClientMixin {
-  final ScrollController _scrollController = ScrollController();
   final GlobalKey<RefreshIndicatorState> _refreshKey =
       GlobalKey<RefreshIndicatorState>();
 
@@ -483,6 +550,7 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final hp = context.read<HomeProvider>();
       if (hp.rankingVideos.isEmpty && !hp.rankingLoading) {
         hp.loadRankingVideos();
@@ -490,31 +558,9 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
     });
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  bool get isAtTop =>
-      !_scrollController.hasClients || _scrollController.offset <= 1;
-
-  Future<void> scrollToTop() async {
-    if (_scrollController.hasClients && _scrollController.offset > 0) {
-      await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  /// 重复点击当前分区：先回顶；已在顶部时才刷新
-  Future<void> onReTap({required bool refresh}) async {
-    await scrollToTop();
-    if (!refresh) return;
+  Future<void> triggerRefresh() async {
     if (_refreshKey.currentState != null) {
-      _refreshKey.currentState!.show();
+      await _refreshKey.currentState!.show();
     } else if (mounted) {
       await _handleRefresh();
     }
@@ -539,14 +585,13 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
       (p) => p.rankingVideos,
     );
 
-    if (isLoading && videos.isEmpty) {
-      return const VideoGridSkeleton();
+    if ((isLoading && videos.isEmpty) || (!loaded && error == null)) {
+      return const _SliverSkeletonWrapper();
     }
 
     if (videos.isEmpty) {
-      return _buildFirstPageState(
+      return _FirstPageStateSliver(
         error: error,
-        loaded: loaded,
         refreshKey: _refreshKey,
         onRefresh: _handleRefresh,
       );
@@ -554,7 +599,6 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
 
     return _CommonVideoGrid(
       refreshKey: _refreshKey,
-      scrollController: _scrollController,
       videos: videos,
       isLoadingMore: false,
       onRefresh: _handleRefresh,
@@ -566,40 +610,63 @@ class _RankingVideosTabState extends State<_RankingVideosTab>
 }
 
 // ==========================================
-// 通用空/错态与「不感兴趣」
+// 通用空/错态与骨架容器（兼容 NestedScrollView OverlapInjector）
 // ==========================================
+class _SliverSkeletonWrapper extends StatelessWidget {
+  const _SliverSkeletonWrapper();
 
-/// 首屏占位需要区分三种情况：加载失败要可重试、成功但确实没有内容要说明、
-/// 请求尚未发出时保持骨架占位（避免首帧闪出「加载失败」）。
-Widget _buildFirstPageState({
-  required String? error,
-  required bool loaded,
-  required GlobalKey<RefreshIndicatorState> refreshKey,
-  required Future<void> Function() onRefresh,
-}) {
-  if (!loaded && error == null) return const VideoGridSkeleton();
-
-  // 空态/错态同样支持下拉刷新，避免只能依赖按钮重试
-  final child = error != null
-      ? ErrorView(message: error, onRetry: () => onRefresh())
-      : EmptyView(message: '暂时没有内容，下拉刷新试试', onRetry: () => onRefresh());
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      // 让内容至少铺满可视高度，居中提示才不会贴在顶部
-      final content = constraints.maxHeight.isFinite
-          ? SizedBox(height: constraints.maxHeight, child: child)
-          : child;
-      return RefreshIndicator(
-        key: refreshKey,
-        color: Theme.of(context).colorScheme.primary,
-        onRefresh: onRefresh,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: content,
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
         ),
-      );
-    },
-  );
+        const SliverFillRemaining(
+          child: ResponsiveMaxConstraint(
+            child: VideoGridSkeleton(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FirstPageStateSliver extends StatelessWidget {
+  final String? error;
+  final GlobalKey<RefreshIndicatorState> refreshKey;
+  final Future<void> Function() onRefresh;
+
+  const _FirstPageStateSliver({
+    required this.error,
+    required this.refreshKey,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final child = error != null
+        ? ErrorView(message: error!, onRetry: () => onRefresh())
+        : EmptyView(message: '暂时没有内容，下拉刷新试试', onRetry: () => onRefresh());
+    return RefreshIndicator(
+      key: refreshKey,
+      color: Theme.of(context).colorScheme.primary,
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 void _hideVideo(BuildContext context, VideoItem video) {
@@ -612,7 +679,6 @@ void _hideVideo(BuildContext context, VideoItem video) {
 // ==========================================
 class _CommonVideoGrid extends StatelessWidget {
   final Key? refreshKey;
-  final ScrollController scrollController;
   final List<VideoItem> videos;
   final bool isLoadingMore;
   final bool hasMore;
@@ -626,7 +692,6 @@ class _CommonVideoGrid extends StatelessWidget {
 
   const _CommonVideoGrid({
     this.refreshKey,
-    required this.scrollController,
     required this.videos,
     required this.isLoadingMore,
     this.hasMore = true,
@@ -638,18 +703,10 @@ class _CommonVideoGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = ResponsiveGridConfig.calculateCrossAxisCount(
-      context,
-    );
-    final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
-      context,
-    );
     final showFooter = isLoadingMore || !hasMore;
 
     return NotificationListener<ScrollNotification>(
       onNotification: (scrollInfo) {
-        // 守卫：翻页在途 / 已到底 / 短列表无滚动区时不再触发，
-        // 避免一次滚动发出多条通知导致重复翻页
         if (onLoadMore == null || isLoadingMore || !hasMore) return false;
         if (scrollInfo.metrics.maxScrollExtent <= 0) return false;
         if (scrollInfo.metrics.pixels >=
@@ -662,66 +719,86 @@ class _CommonVideoGrid extends StatelessWidget {
         key: refreshKey,
         color: Theme.of(context).colorScheme.primary,
         onRefresh: onRefresh,
-        child: CustomScrollView(
-          controller: scrollController,
-          // 短列表也能下拉刷新，否则 RefreshIndicator 在某些平台不响应
-          physics: const AlwaysScrollableScrollPhysics(),
-          scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 8.0,
-              ),
-              sliver: SliverGrid.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  childAspectRatio: childAspectRatio,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth
+                .clamp(0.0, ResponsiveUtil.maxContentWidth);
+            final horizontalInset =
+                ((constraints.maxWidth - maxWidth) / 2).clamp(0.0, double.infinity);
+            final crossAxisCount =
+                ResponsiveGridConfig.calculateCrossAxisCountForWidth(maxWidth);
+            final mainAxisExtent =
+                ResponsiveGridConfig.calculateMainAxisExtent(
+              context,
+              availableWidth: maxWidth,
+              crossAxisCount: crossAxisCount,
+            );
+
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
+              slivers: [
+                SliverOverlapInjector(
+                  handle:
+                      NestedScrollView.sliverOverlapAbsorberHandleFor(context),
                 ),
-                itemCount: videos.length,
-                itemBuilder: (ctx, idx) {
-                  final video = videos[idx];
-                  return RepaintBoundary(
-                    child: VideoCard(
-                      video: video,
-                      showMoreMenu: onNotInterested != null,
-                      onNotInterested: onNotInterested == null
-                          ? null
-                          : () => onNotInterested!(video),
-                      heroTag: '${heroTagPrefix}_${video.bvid}_$idx',
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    12.0 + horizontalInset,
+                    8.0,
+                    12.0 + horizontalInset,
+                    8.0,
+                  ),
+                  sliver: SliverGrid.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      mainAxisExtent: mainAxisExtent,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
                     ),
-                  );
-                },
-              ),
-            ),
-            // 底部提示独占整行，避免「没有更多了」被挤进单个网格单元
-            if (showFooter)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  child: Center(
-                    child: isLoadingMore
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          )
-                        : Text(
-                            '没有更多了',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.colors.textHint,
-                            ),
-                          ),
+                    itemCount: videos.length,
+                    itemBuilder: (ctx, idx) {
+                      final video = videos[idx];
+                      return RepaintBoundary(
+                        child: VideoCard(
+                          video: video,
+                          showMoreMenu: onNotInterested != null,
+                          onNotInterested: onNotInterested == null
+                              ? null
+                              : () => onNotInterested!(video),
+                          heroTag: '${heroTagPrefix}_${video.bvid}_$idx',
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ),
-          ],
+                if (showFooter)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                      child: Center(
+                        child: isLoadingMore
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              )
+                            : Text(
+                                '没有更多了',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: context.colors.textHint,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );

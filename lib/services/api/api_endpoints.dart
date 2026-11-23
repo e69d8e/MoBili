@@ -53,6 +53,8 @@ class ApiEndpoints {
   static const String userDynamic = '$biliBase/x/polymer/web-dynamic/v1/feed/all';
   static const String dynamicDetail = '$biliBase/x/polymer/web-dynamic/v1/detail';
   static const String opusDetail = '$biliBase/x/polymer/web-dynamic/v1/opus/detail';
+  static const String articleViewInfo = '$biliBase/x/article/viewinfo';
+  static const String articleView = '$biliBase/x/article/view';
   static const String userFollowings = '$biliBase/x/relation/followings';
   static const String userFollowers = '$biliBase/x/relation/followers';
   static const String relationStat = '$biliBase/x/relation/stat';

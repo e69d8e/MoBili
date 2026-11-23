@@ -15,6 +15,10 @@ class NetworkImageView extends StatelessWidget {
   final int? memCacheWidth;
   final int? memCacheHeight;
 
+  /// 为 true（或 alignment 为 topCenter）时仅按宽度缩放而不拼接 CDN `_1c` 居中裁切后缀，
+  /// 确保长图从顶部完整保留画面内容，避免服务端把长图中间截断后交由客户端顶对齐。
+  final bool disableServerCrop;
+
   const NetworkImageView({
     super.key,
     required this.url,
@@ -27,10 +31,16 @@ class NetworkImageView extends StatelessWidget {
     this.errorWidget,
     this.memCacheWidth,
     this.memCacheHeight,
+    this.disableServerCrop = false,
   });
 
-  @override
-  Widget build(BuildContext context) {
+  /// 标准化并拼接 B 站 CDN 尺寸后缀，供卡片与详情 Hero 底图对齐缓存 Key。
+  static String resolveEffectiveUrl(
+    String url, {
+    int? cacheWidth,
+    int? cacheHeight,
+    bool disableServerCrop = false,
+  }) {
     String formattedUrl = url.trim();
     if (formattedUrl.startsWith('//')) {
       formattedUrl = 'https:$formattedUrl';
@@ -38,15 +48,21 @@ class NetworkImageView extends StatelessWidget {
       formattedUrl = formattedUrl.replaceFirst('http://', 'https://');
     }
 
-    // Convert AVIF to WebP to ensure 100% decoding compatibility across all devices
     if (formattedUrl.contains('.avif')) {
       formattedUrl = formattedUrl.replaceAll('.avif', '.webp');
     }
+    if (formattedUrl.isEmpty) return '';
 
-    if (formattedUrl.isEmpty) {
-      return _buildFallback(context);
-    }
+    return formatBiliCdnUrl(
+      formattedUrl,
+      cacheWidth: cacheWidth,
+      cacheHeight: cacheHeight,
+      disableServerCrop: disableServerCrop,
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
     // Intelligently compute memCache constraints based on device pixel ratio
     int? effectiveCacheWidth = memCacheWidth;
     int? effectiveCacheHeight = memCacheHeight;
@@ -65,12 +81,17 @@ class NetworkImageView extends StatelessWidget {
       }
     }
 
-    // Optimize download size at Bilibili CDN level with WebP & on-the-fly thumbnail resizing
-    formattedUrl = formatBiliCdnUrl(
-      formattedUrl,
+    final bool skipCrop = disableServerCrop || alignment == Alignment.topCenter;
+    final formattedUrl = resolveEffectiveUrl(
+      url,
       cacheWidth: effectiveCacheWidth,
       cacheHeight: effectiveCacheHeight,
+      disableServerCrop: skipCrop,
     );
+
+    if (formattedUrl.isEmpty) {
+      return _buildFallback(context);
+    }
 
     Widget image = CachedNetworkImage(
       imageUrl: formattedUrl,
@@ -79,8 +100,8 @@ class NetworkImageView extends StatelessWidget {
       fit: fit,
       alignment: alignment,
       memCacheWidth: effectiveCacheWidth,
-      memCacheHeight: effectiveCacheHeight,
-      fadeInDuration: const Duration(milliseconds: 100),
+      memCacheHeight: skipCrop ? null : effectiveCacheHeight,
+      fadeInDuration: const Duration(milliseconds: 160),
       fadeOutDuration: Duration.zero,
       httpHeaders: kIsWeb
           ? null
@@ -115,7 +136,7 @@ class NetworkImageView extends StatelessWidget {
       color: context.colors.fill,
       child: Icon(
         Icons.image_not_supported_outlined,
-        color: Theme.of(context).hintColor,
+        color: context.colors.textHint,
         size: 24,
       ),
     );
@@ -123,7 +144,12 @@ class NetworkImageView extends StatelessWidget {
 
   /// Transforms raw Bilibili CDN URLs to request compressed WebP thumbnails at target resolution,
   /// avoiding downloading 1080P/4K original images into disk cache and mobile data waste.
-  static String formatBiliCdnUrl(String url, {int? cacheWidth, int? cacheHeight}) {
+  static String formatBiliCdnUrl(
+    String url, {
+    int? cacheWidth,
+    int? cacheHeight,
+    bool disableServerCrop = false,
+  }) {
     if (url.isEmpty) return url;
     // Skip GIFs and URLs that already have CDN formatting/crop suffixes
     if (url.contains('@') || url.toLowerCase().contains('.gif')) {
@@ -139,7 +165,9 @@ class NetworkImageView extends StatelessWidget {
 
     // Determine target dimensions
     final int? w = cacheWidth != null && cacheWidth > 0 ? cacheWidth.clamp(60, 1920) : null;
-    final int? h = cacheHeight != null && cacheHeight > 0 ? cacheHeight.clamp(60, 1920) : null;
+    final int? h = !disableServerCrop && cacheHeight != null && cacheHeight > 0
+        ? cacheHeight.clamp(60, 1920)
+        : null;
 
     String suffix;
     if (w != null && h != null) {

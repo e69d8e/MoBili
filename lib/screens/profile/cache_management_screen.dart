@@ -191,7 +191,7 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                           _buildCacheItemTile(
                             context: context,
                             icon: Icons.video_library_outlined,
-                            iconColor: Colors.deepPurpleAccent,
+                            iconColor: context.colors.warning,
                             title: '离线视频与本地弹幕',
                             subtitle: info.videoCacheCount > 0
                                 ? '已下载 ${info.videoCacheCount} 个分集视频及本地弹幕'
@@ -295,7 +295,6 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
               ),
             ),
             value: enabled,
-            activeTrackColor: primary,
             onChanged: (val) => _cacheService.setAutoCleanEnabled(val),
           ),
           if (enabled) ...[
@@ -555,12 +554,12 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
                         if (tempRatio > 0)
                           Expanded(
                             flex: (tempRatio * 1000).toInt().clamp(1, 1000),
-                            child: Container(color: Colors.teal),
+                            child: Container(color: context.colors.success),
                           ),
                         if (videoRatio > 0)
                           Expanded(
                             flex: (videoRatio * 1000).toInt().clamp(1, 1000),
-                            child: Container(color: Colors.deepPurpleAccent),
+                            child: Container(color: context.colors.warning),
                           ),
                       ],
                     ),
@@ -574,10 +573,10 @@ class _CacheManagementScreenState extends State<CacheManagementScreen> {
             children: [
               _buildLegendDot(primary, '图片缓存 (${AppCacheService.formatBytes(info.imageCacheBytes)})'),
               const SizedBox(width: 12.0),
-              _buildLegendDot(Colors.teal, '临时文件 (${AppCacheService.formatBytes(info.tempDirBytes)})'),
+              _buildLegendDot(context.colors.success, '临时文件 (${AppCacheService.formatBytes(info.tempDirBytes)})'),
               if (info.videoCacheBytes > 0) ...[
                 const SizedBox(width: 12.0),
-                _buildLegendDot(Colors.deepPurpleAccent, '离线视频 (${AppCacheService.formatBytes(info.videoCacheBytes)})'),
+                _buildLegendDot(context.colors.warning, '离线视频 (${AppCacheService.formatBytes(info.videoCacheBytes)})'),
               ],
             ],
           ),

@@ -125,10 +125,6 @@ class AppUpdateDialog extends StatelessWidget {
           ),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: primaryColor,
-            foregroundColor: Colors.white,
-          ),
           onPressed: () => _openReleasePage(context),
           child: const Text('前往下载'),
         ),

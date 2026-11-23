@@ -5,11 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../services/api/video_api_service.dart';
+import '../../services/player/sleep_timer_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/network_image_view.dart';
+import '../../widgets/player/sleep_timer_bottom_sheet.dart';
 import 'video_detail_screen.dart';
 
 class ListenPlaylistItem {
@@ -48,6 +51,7 @@ class ListenVideoScreen extends StatefulWidget {
   final List<ListenPlaylistItem>? playlist;
   final int initialPlaylistIndex;
   final void Function(ListenPlaylistItem item, int index)? onSwitchPlaylistItem;
+  final String? heroTag;
 
   const ListenVideoScreen({
     super.key,
@@ -64,6 +68,7 @@ class ListenVideoScreen extends StatefulWidget {
     this.playlist,
     this.initialPlaylistIndex = 0,
     this.onSwitchPlaylistItem,
+    this.heroTag,
   });
 
   @override
@@ -76,6 +81,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   List<ListenPlaylistItem>? _playlist;
   int _currentPlaylistIndex = 0;
   bool _isAutoAdvancing = false;
+  bool _isResolvingTrack = false;
+  final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
 
   @override
   void didChangeDependencies() {
@@ -92,6 +99,9 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
     if (!mounted || _listenProvider == null) return;
     final p = _listenProvider!;
     if (p.duration > Duration.zero && p.position >= p.duration && !p.isBuffering && !_isAutoAdvancing) {
+      if (SleepTimerService().isEndOfVideoMode || p.isSleepEndOfTrack) {
+        return;
+      }
       if (_playlist != null && _currentPlaylistIndex + 1 < _playlist!.length) {
         _isAutoAdvancing = true;
         Future.delayed(const Duration(milliseconds: 600), () {
@@ -146,10 +156,8 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   @override
   void dispose() {
     _listenProvider?.removeListener(_onListenProviderUpdate);
-    // Whenever exiting the listen video screen, pause playback if still playing
-    if (_listenProvider != null && _listenProvider!.isPlaying) {
-      _listenProvider!.pause();
-    }
+    // 最小化/离开全屏听视频页时不暂停后台播放，保持 MiniAudioPlayer 续播
+    _dragOffsetNotifier.dispose();
     _rotationController.dispose();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -183,13 +191,20 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       );
     } else {
       if (targetCid == 0) {
+        setState(() => _isResolvingTrack = true);
         try {
           final detail = await VideoApiService().getVideoDetail(item.bvid);
           if (detail != null && detail.pages.isNotEmpty) {
             targetCid = detail.pages[0].cid;
           }
-        } catch (_) {}
+        } catch (_) {
+        } finally {
+          if (mounted) {
+            setState(() => _isResolvingTrack = false);
+          }
+        }
       }
+      if (!mounted) return;
 
       await provider.playAudio(
         bvid: item.bvid,
@@ -255,100 +270,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   }
 
   void _showSleepTimerDialog(BuildContext context, ListenVideoProvider provider) {
-    final primary = Theme.of(context).colorScheme.primary;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: context.colors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.bedtime_outlined, size: 18, color: primary),
-                    const SizedBox(width: 4.0),
-                    const Text(
-                      '定时关闭',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12.0),
-                ListTile(
-                  title: Center(
-                    child: Text(
-                      '不开启',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: !provider.isSleepTimerActive && !provider.isSleepEndOfTrack
-                            ? primary
-                            : null,
-                        fontWeight: !provider.isSleepTimerActive && !provider.isSleepEndOfTrack
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    provider.cancelSleepTimer();
-                    Navigator.pop(ctx);
-                  },
-                ),
-                _buildSleepOption(ctx, provider, '15 分钟后', const Duration(minutes: 15), primary),
-                _buildSleepOption(ctx, provider, '30 分钟后', const Duration(minutes: 30), primary),
-                _buildSleepOption(ctx, provider, '45 分钟后', const Duration(minutes: 45), primary),
-                _buildSleepOption(ctx, provider, '60 分钟后', const Duration(minutes: 60), primary),
-                ListTile(
-                  title: Center(
-                    child: Text(
-                      '播完当前视频',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: provider.isSleepEndOfTrack ? primary : null,
-                        fontWeight: provider.isSleepEndOfTrack ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  onTap: () {
-                    provider.setSleepTimer(null, endOfTrack: true);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSleepOption(
-    BuildContext context,
-    ListenVideoProvider provider,
-    String label,
-    Duration duration,
-    Color primary,
-  ) {
-    return ListTile(
-      title: Center(
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 14),
-        ),
-      ),
-      onTap: () {
-        provider.setSleepTimer(duration);
-        Navigator.pop(context);
-      },
-    );
+    SleepTimerBottomSheet.show(context);
   }
 
   void _handleSwitchToVideo(ListenVideoProvider provider) async {
@@ -373,9 +295,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
   }
 
   void _handleMinimize(ListenVideoProvider provider) {
-    if (provider.isPlaying) {
-      provider.pause();
-    }
+    // 最小化退回上页，保持后台持续听视频并通过 MiniAudioPlayer 控制
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -395,10 +315,10 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Minimize / Back button
+          // Minimize button (keeps audio playing in MiniAudioPlayer)
           IconButton(
             icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
-            tooltip: '返回 (暂停播放)',
+            tooltip: '最小化后台播放',
             onPressed: () => _handleMinimize(provider),
           ),
 
@@ -431,18 +351,9 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             ),
           ),
 
-          // Sleep timer status / button
-          IconButton(
-            icon: Icon(
-              provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                  ? Icons.bedtime_rounded
-                  : Icons.bedtime_outlined,
-              size: 22,
-              color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                  ? primary
-                  : null,
-            ),
-            tooltip: '定时关闭',
+          // Sleep timer status / button (局部监听定时状态，不触发整页秒级重绘)
+          _SleepTimerIconButton(
+            primary: primary,
             onPressed: () => _showSleepTimerDialog(context, provider),
           ),
         ],
@@ -473,14 +384,26 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             ],
           ),
           padding: EdgeInsets.all(innerPadding),
-          child: ClipOval(
-            child: NetworkImageView(
-              url: coverUrl,
-              fit: BoxFit.cover,
-              memCacheWidth: 400,
-              memCacheHeight: 400,
-            ),
-          ),
+          child: widget.heroTag != null
+              ? Hero(
+                  tag: widget.heroTag!,
+                  child: ClipOval(
+                    child: NetworkImageView(
+                      url: coverUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 400,
+                      memCacheHeight: 400,
+                    ),
+                  ),
+                )
+              : ClipOval(
+                  child: NetworkImageView(
+                    url: coverUrl,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 400,
+                    memCacheHeight: 400,
+                  ),
+                ),
         ),
       ),
     );
@@ -506,23 +429,31 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           // Playback Speed button
-          InkWell(
-            onTap: () => _showSpeedDialog(context, provider),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: isLandscape ? 8.0 : 8.0,
-                vertical: isLandscape ? 4 : 4.0,
-              ),
-              decoration: BoxDecoration(
-                color: context.colors.fill,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${provider.speed}x',
-                style: TextStyle(
-                  fontSize: isLandscape ? 11.5 : 12,
-                  fontWeight: FontWeight.w600,
+          Semantics(
+            button: true,
+            label: '调整播放倍速，当前 ${provider.speed}x',
+            child: InkWell(
+              onTap: () => _showSpeedDialog(context, provider),
+              borderRadius: BorderRadius.circular(20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10.0,
+                    vertical: 6.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: context.colors.fill,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${provider.speed}x',
+                    style: TextStyle(
+                      fontSize: isLandscape ? 11.5 : 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -532,7 +463,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           IconButton(
             iconSize: btnSize + 2,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             icon: Icon(
               hasPlaylist ? Icons.skip_previous_rounded : Icons.replay_10_rounded,
               color: (hasPlaylist && !canPrev)
@@ -572,18 +503,21 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             ),
             child: IconButton(
               iconSize: playIconSize,
-              icon: provider.isBuffering
+              tooltip: provider.isPlaying ? '暂停' : '播放',
+              icon: (provider.isBuffering || _isResolvingTrack)
                   ? SizedBox(
                       width: isLandscape ? 20 : 24,
                       height: isLandscape ? 20 : 24,
-                      child: const CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.onPrimary,
+                        ),
                       ),
                     )
                   : Icon(
                       provider.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onPrimary,
                     ),
               onPressed: provider.togglePlayPause,
             ),
@@ -593,7 +527,7 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
           IconButton(
             iconSize: btnSize + 2,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             icon: Icon(
               hasPlaylist ? Icons.skip_next_rounded : Icons.forward_10_rounded,
               color: (hasPlaylist && !canNext)
@@ -619,25 +553,17 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
             IconButton(
               iconSize: isLandscape ? 24 : 26,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               icon: const Icon(Icons.queue_music_rounded),
               tooltip: '播放列表',
               onPressed: () => _showPlaylistBottomSheet(context, provider, primary),
             )
           else
-            IconButton(
-              iconSize: isLandscape ? 22 : 24,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              icon: Icon(
-                provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                    ? Icons.alarm_on_rounded
-                    : Icons.alarm_rounded,
-                color: provider.isSleepTimerActive || provider.isSleepEndOfTrack
-                    ? primary
-                    : null,
-              ),
-              tooltip: '定时设置',
+            _SleepTimerIconButton(
+              primary: primary,
+              size: isLandscape ? 22 : 24,
+              compact: true,
+              iconOnlyAlarm: true,
               onPressed: () => _showSleepTimerDialog(context, provider),
             ),
         ],
@@ -675,9 +601,13 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                     ),
                     const Spacer(),
                     IconButton(
+                      tooltip: '关闭播放列表',
                       icon: const Icon(Icons.close_rounded, size: 20),
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -899,21 +829,11 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                                 ),
                               ),
                             ],
-                            if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: primary.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
-                                    style: TextStyle(fontSize: 10, color: primary),
-                                  ),
-                                ),
-                              ),
+                            _SleepTimerStatusBanner(
+                              primary: primary,
+                              fontSize: 10,
+                              topPadding: 4,
+                            ),
                             const SizedBox(height: 4.0),
                             _ListenProgressSection(
                               fallbackDuration: widget.totalDuration,
@@ -1025,21 +945,11 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
                       ),
                     ),
                   ],
-                  if (provider.isSleepTimerActive && provider.sleepTimerRemaining != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '🌙 将在 ${Formatters.formatDuration(provider.sleepTimerRemaining!.inSeconds)} 后停止播放',
-                          style: TextStyle(fontSize: 11, color: primary),
-                        ),
-                      ),
-                    ),
+                  _SleepTimerStatusBanner(
+                    primary: primary,
+                    fontSize: 11,
+                    topPadding: 8.0,
+                  ),
                 ],
               ),
             ),
@@ -1075,9 +985,6 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
       bool isPlaying,
       bool isBuffering,
       double speed,
-      bool isSleepTimerActive,
-      Duration? sleepTimerRemaining,
-      bool isSleepEndOfTrack,
     })>(
       selector: (_, p) => (
         title: p.title ?? widget.title,
@@ -1086,12 +993,11 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
         isPlaying: p.isPlaying,
         isBuffering: p.isBuffering,
         speed: p.speed,
-        isSleepTimerActive: p.isSleepTimerActive,
-        sleepTimerRemaining: p.sleepTimerRemaining,
-        isSleepEndOfTrack: p.isSleepEndOfTrack,
       ),
       builder: (context, data, _) {
-        if (data.isPlaying) {
+        final disableAnimations =
+            MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+        if (data.isPlaying && !disableAnimations) {
           if (!_rotationController.isAnimating) {
             _rotationController.repeat();
           }
@@ -1106,51 +1012,177 @@ class _ListenVideoScreenState extends State<ListenVideoScreen> with SingleTicker
         final currentCover = data.coverUrl;
         final currentUpName = data.upName;
 
-        return PopScope(
-          canPop: true,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) {
-              if (provider.isPlaying) {
-                provider.pause();
-              }
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragUpdate: (details) {
+            final next = (_dragOffsetNotifier.value + details.delta.dy).clamp(0.0, 420.0);
+            _dragOffsetNotifier.value = next;
+          },
+          onVerticalDragEnd: (details) {
+            final dy = _dragOffsetNotifier.value;
+            final velocity = details.primaryVelocity ?? 0.0;
+            if (dy > 110 || velocity > 650) {
+              _dragOffsetNotifier.value = 0.0;
+              _handleMinimize(provider);
+            } else {
+              _dragOffsetNotifier.value = 0.0;
             }
           },
-          child: Scaffold(
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 1. Ambient blurred background with memory-efficient low-res cache
-                if (currentCover.isNotEmpty)
+          onVerticalDragCancel: () => _dragOffsetNotifier.value = 0.0,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _dragOffsetNotifier,
+            builder: (context, dragDy, child) {
+              return Transform.translate(
+                offset: Offset(0, dragDy),
+                child: dragDy > 0
+                    ? ClipRRect(
+                        borderRadius: AppRadius.sheet,
+                        child: child,
+                      )
+                    : child,
+              );
+            },
+            child: Scaffold(
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 1. Ambient blurred background with memory-efficient low-res cache
+                  if (currentCover.isNotEmpty)
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: NetworkImageView(
+                          url: currentCover,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 100,
+                          memCacheHeight: 100,
+                        ),
+                      ),
+                    ),
                   Positioned.fill(
                     child: RepaintBoundary(
-                      child: NetworkImageView(
-                        url: currentCover,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 100,
-                        memCacheHeight: 100,
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                        child: Container(
+                          color: context.colors.bg.withValues(alpha: 0.78),
+                        ),
                       ),
                     ),
                   ),
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-                      child: Container(
-                        color: context.colors.bg.withValues(alpha: 0.78),
-                      ),
-                    ),
-                  ),
-                ),
 
-                // 2. Main Content (Landscape vs Portrait adaptive layout)
-                SafeArea(
-                  child: isLandscape
-                      ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary)
-                      : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary),
-                ),
-              ],
+                  // 2. Main Content (Landscape vs Portrait adaptive layout)
+                  SafeArea(
+                    child: isLandscape
+                        ? _buildLandscapeLayout(context, provider, currentTitle, currentCover, currentUpName, primary)
+                        : _buildPortraitLayout(context, provider, currentTitle, currentCover, currentUpName, primary),
+                  ),
+                ],
+              ),
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class _SleepTimerIconButton extends StatelessWidget {
+  final Color primary;
+  final double size;
+  final bool compact;
+  final bool iconOnlyAlarm;
+  final VoidCallback onPressed;
+
+  const _SleepTimerIconButton({
+    required this.primary,
+    this.size = 22,
+    this.compact = false,
+    this.iconOnlyAlarm = false,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: SleepTimerService(),
+      builder: (context, _) {
+        final serviceActive = SleepTimerService().isActive;
+        return Selector<ListenVideoProvider, bool>(
+          selector: (_, p) => p.isSleepTimerActive || p.isSleepEndOfTrack,
+          builder: (context, providerActive, _) {
+            final active = serviceActive || providerActive;
+            final iconData = iconOnlyAlarm
+                ? (active ? Icons.alarm_on_rounded : Icons.alarm_rounded)
+                : (active ? Icons.bedtime_rounded : Icons.bedtime_outlined);
+            return IconButton(
+              iconSize: size,
+              padding: compact ? EdgeInsets.zero : null,
+              constraints: compact
+                  ? const BoxConstraints(minWidth: 44, minHeight: 44)
+                  : null,
+              icon: Icon(
+                iconData,
+                size: size,
+                color: active ? primary : null,
+              ),
+              tooltip: '定时关闭',
+              onPressed: onPressed,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SleepTimerStatusBanner extends StatelessWidget {
+  final Color primary;
+  final double fontSize;
+  final double topPadding;
+
+  const _SleepTimerStatusBanner({
+    required this.primary,
+    required this.fontSize,
+    required this.topPadding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: SleepTimerService(),
+      builder: (context, _) {
+        final sleepService = SleepTimerService();
+        return Selector<ListenVideoProvider, Duration?>(
+          selector: (_, p) => p.sleepTimerRemaining,
+          builder: (context, providerRemaining, _) {
+            String? text;
+            if (sleepService.isDurationMode && sleepService.remainingSeconds > 0) {
+              text =
+                  '🌙 将在 ${Formatters.formatDuration(sleepService.remainingSeconds)} 后停止播放';
+            } else if (sleepService.isEndOfVideoMode) {
+              text = '🌙 播完本音频后自动停止';
+            } else if (providerRemaining != null) {
+              text =
+                  '🌙 将在 ${Formatters.formatDuration(providerRemaining.inSeconds)} 后停止播放';
+            }
+            if (text == null) return const SizedBox.shrink();
+            return Padding(
+              padding: EdgeInsets.only(top: topPadding),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8.0,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  text,
+                  style: TextStyle(fontSize: fontSize, color: primary),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1204,7 +1236,7 @@ class _ListenProgressSectionState extends State<_ListenProgressSection> {
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                   overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                   activeTrackColor: widget.primary,
-                  inactiveTrackColor: context.colors.divider,
+                  inactiveTrackColor: context.colors.textSub.withValues(alpha: 0.3),
                   thumbColor: widget.primary,
                 ),
                 child: Slider(

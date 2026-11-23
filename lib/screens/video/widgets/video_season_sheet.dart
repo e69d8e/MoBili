@@ -1,13 +1,13 @@
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../models/video_model.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_dimens.dart';
 import '../../../utils/formatters.dart';
 
-/// Modal dialog/bottom sheet for browsing and selecting UGC collection/season episodes.
+/// 底部抽屉形式展示 UGC 合集选集，统一支持手势下拉关闭与自动定位当前剧集。
 class VideoSeasonSheet {
-  static void show(
+  static Future<void> show(
     BuildContext context, {
     required UgcSeason season,
     required String currentBvid,
@@ -15,123 +15,112 @@ class VideoSeasonSheet {
   }) {
     final allEpisodes = season.sections.expand((s) => s.episodes).toList();
 
-    showGeneralDialog(
+    return showModalBottomSheet<void>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: '合集选集',
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      transitionDuration: const Duration(milliseconds: 260),
-      transitionBuilder: (ctx, anim1, anim2, child) {
-        final curved = CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic);
-        return SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(curved),
-          child: FadeTransition(
-            opacity: curved,
-            child: child,
-          ),
-        );
-      },
-      pageBuilder: (ctx, anim1, anim2) {
-        final screenWidth = MediaQuery.of(ctx).size.width;
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
         final screenHeight = MediaQuery.of(ctx).size.height;
         final bottomInset = MediaQuery.of(ctx).padding.bottom;
-        final dialogWidth = math.min(screenWidth - 32, 480.0);
 
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0 + bottomInset),
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: dialogWidth,
-                constraints: BoxConstraints(maxHeight: screenHeight * 0.52),
-                decoration: BoxDecoration(
-                  color: context.colors.card.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: context.colors.divider,
-                    width: 0.8,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      // 浮层投影固定为淡黑，暗色主题下自然隐去
-                      color: Colors.black.withValues(alpha: 0.28),
-                      blurRadius: 24,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 8),
+        return Container(
+          constraints: BoxConstraints(maxHeight: screenHeight * 0.65),
+          decoration: BoxDecoration(
+            color: context.colors.card,
+            borderRadius: AppRadius.sheet,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                14.0,
+                10.0,
+                14.0,
+                math.max(12.0, bottomInset > 0 ? 4.0 : 12.0),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 10.0),
+                      decoration: BoxDecoration(
+                        color: context.colors.divider,
+                        borderRadius: AppRadius.of(AppRadius.pill),
+                      ),
                     ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header
-                        Row(
+                  ),
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.12),
+                          borderRadius: AppRadius.of(AppRadius.sm),
+                        ),
+                        child: Icon(
+                          Icons.video_library_rounded,
+                          size: 15,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.video_library_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
-                            ),
-                            const SizedBox(width: 8.0),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '合集选集',
-                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                  ),
-                                  Text(
-                                    '${season.title} · 共${season.epCount}集',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.colors.textHint,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                            const Text(
+                              '合集选集',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 16),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: () => Navigator.of(ctx).pop(),
+                            Text(
+                              '${season.title} · 共${season.epCount}集',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.colors.textHint,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8.0),
-                        Divider(
-                          height: 1,
-                          thickness: 0.5,
-                          color: context.colors.divider,
-                        ),
-                        const SizedBox(height: 8.0),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10.0),
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: context.colors.divider,
+                  ),
+                  const SizedBox(height: 8.0),
 
-                        // Episode List（打开时自动定位到正在播放的剧集）
-                        Flexible(
-                          child: _EpisodeList(
-                            episodes: allEpisodes,
-                            currentBvid: currentBvid,
-                            onSelectEpisode: onSelectEpisode,
-                          ),
-                        ),
-                      ],
+                  // Episode List（打开时自动定位到正在播放的剧集）
+                  Flexible(
+                    child: _EpisodeList(
+                      episodes: allEpisodes,
+                      currentBvid: currentBvid,
+                      onSelectEpisode: onSelectEpisode,
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),

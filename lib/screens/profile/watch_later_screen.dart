@@ -312,12 +312,12 @@ class _WatchLaterScreenState extends State<WatchLaterScreen> {
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                                 decoration: BoxDecoration(
-                                                  color: primaryColor.withValues(alpha: 0.85),
+                                                  color: primaryColor.withValues(alpha: 0.92),
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
                                                   '看到 ${Formatters.formatDuration(effectiveProgress)}',
-                                                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                                                  style: TextStyle(color: onPrimary, fontSize: 10, fontWeight: FontWeight.w600),
                                                 ),
                                               ),
                                             ),

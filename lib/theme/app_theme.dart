@@ -12,26 +12,30 @@ enum AppThemePreset {
     description: '极简墨韵，水墨留白，淡雅素净',
     lightPrimary: Color(0xFF22242A),
     darkPrimary: Color(0xFFEDEDF2),
-    secondary: Color(0xFF6B7280),
+    secondary: Color(0xFF5A616E),
+    darkSecondary: Color(0xFFA1A1AA),
     previewColors: [Color(0xFF22242A), Color(0xFF5A5E6B), Color(0xFFE5E7EB)],
   ),
   biliPink(
     key: 'pink',
     name: '经典哔哩',
     description: '经典粉蓝，元气活泼，青春生动',
-    lightPrimary: Color(0xFFFF6699),
+    // 浅色底选用加深玫红与深天蓝以满足 WCAG AA 4.5:1，暗色底维持经典高亮粉
+    lightPrimary: Color(0xFFC9255E),
     darkPrimary: Color(0xFFFF6699),
-    secondary: Color(0xFF00AEEC),
-    previewColors: [Color(0xFFFF6699), Color(0xFF00AEEC), Color(0xFFFFF0F5)],
+    secondary: Color(0xFF006EA8),
+    darkSecondary: Color(0xFF38BDF8),
+    previewColors: [Color(0xFFC9255E), Color(0xFF00AEEC), Color(0xFFFFF0F5)],
   ),
   bamboo(
     key: 'bamboo',
     name: '竹青黛绿',
     description: '苍翠竹林，温润沉静，清雅自然',
-    lightPrimary: Color(0xFF2E7D6F),
+    lightPrimary: Color(0xFF277063),
     darkPrimary: Color(0xFF4DB6AC),
-    secondary: Color(0xFF388E3C),
-    previewColors: [Color(0xFF2E7D6F), Color(0xFF4DB6AC), Color(0xFFE0F2F1)],
+    secondary: Color(0xFF2E7D32),
+    darkSecondary: Color(0xFF66BB6A),
+    previewColors: [Color(0xFF277063), Color(0xFF4DB6AC), Color(0xFFE0F2F1)],
   ),
   porcelain(
     key: 'porcelain',
@@ -39,17 +43,19 @@ enum AppThemePreset {
     description: '青花霁色，远山如黛，澄澈旷远',
     lightPrimary: Color(0xFF2A6F97),
     darkPrimary: Color(0xFF60A5FA),
-    secondary: Color(0xFF0284C7),
+    secondary: Color(0xFF006EA8),
+    darkSecondary: Color(0xFF38BDF8),
     previewColors: [Color(0xFF2A6F97), Color(0xFF60A5FA), Color(0xFFEFF6FF)],
   ),
   cinnabar(
     key: 'cinnabar',
     name: '朱砂丹枫',
     description: '朱砂落印，层林尽染，古风典雅',
-    lightPrimary: Color(0xFFC0483E),
+    lightPrimary: Color(0xFFB83B32),
     darkPrimary: Color(0xFFFB923C),
-    secondary: Color(0xFFDC2626),
-    previewColors: [Color(0xFFC0483E), Color(0xFFFB923C), Color(0xFFFFF7ED)],
+    secondary: Color(0xFFC62828),
+    darkSecondary: Color(0xFFF87171),
+    previewColors: [Color(0xFFB83B32), Color(0xFFFB923C), Color(0xFFFFF7ED)],
   ),
   wisteria(
     key: 'wisteria',
@@ -57,7 +63,8 @@ enum AppThemePreset {
     description: '暮霭微茫，山色空濛，风雅幽美',
     lightPrimary: Color(0xFF75549E),
     darkPrimary: Color(0xFFA78BFA),
-    secondary: Color(0xFF8B5CF6),
+    secondary: Color(0xFF6D28D9),
+    darkSecondary: Color(0xFFC4B5FD),
     previewColors: [Color(0xFF75549E), Color(0xFFA78BFA), Color(0xFFF5F3FF)],
   );
 
@@ -67,6 +74,7 @@ enum AppThemePreset {
   final Color lightPrimary;
   final Color darkPrimary;
   final Color secondary;
+  final Color darkSecondary;
   final List<Color> previewColors;
 
   const AppThemePreset({
@@ -76,6 +84,7 @@ enum AppThemePreset {
     required this.lightPrimary,
     required this.darkPrimary,
     required this.secondary,
+    required this.darkSecondary,
     required this.previewColors,
   });
 
@@ -101,46 +110,57 @@ class AppTheme {
   static const Color cardDark = Color(0xFF18181C);
   static const Color cardDarkAmoled = Color(0xFF121215);
   static const Color surfaceDark = Color(0xFF222228);
-  static const Color dividerDark = Color(0xFF26262D);
+  static const Color surfaceDarkAmoled = Color(0xFF1E1E24);
+  static const Color dividerDark = Color(0xFF2C2C35);
+  static const Color dividerDarkAmoled = Color(0xFF282832);
+  static const Color darkOnAccent = Color(0xFF0D0E12);
 
   // Clean Light Mode Colors
   static const Color bgLight = Color(0xFFF7F8FA);
   static const Color cardLight = Colors.white;
   static const Color surfaceLight = Color(0xFFF1F2F5);
   static const Color textMainLight = Color(0xFF18191C);
-  static const Color textSubLight = Color(0xFF61666D);
-  static const Color textHintLight = Color(0xFF9499A0);
+  static const Color textSubLight = Color(0xFF52565E);
+  static const Color textHintLight = Color(0xFF676C75);
   static const Color dividerLight = Color(0xFFEBECEF);
 
   // Dark Mode Typography Colors
   static const Color textMainDark = Color(0xFFF4F4F6);
-  static const Color textSubDark = Color(0xFF9898A0);
-  static const Color textHintDark = Color(0xFF5E5E68);
+  static const Color textSubDark = Color(0xFFACAEB8);
+  static const Color textHintDark = Color(0xFF888894);
 
   // Semantic status colors
   static const Color warning = Color(0xFFFFB027);
-  static const Color dangerLight = Color(0xFFE5484D);
+  static const Color warningLight = Color(0xFF8F5200);
+  static const Color dangerLight = Color(0xFFC62828);
   static const Color dangerDark = Color(0xFFFF6B6B);
-  static const Color successLight = Color(0xFF4CAF50);
+  static const Color successLight = Color(0xFF226927);
   static const Color successDark = Color(0xFF66BB6A);
 
   // Skeleton shimmer highlight (lighter than fill)
   static const Color fillHighlightLight = Color(0xFFF7F8FA);
   static const Color fillHighlightDark = Color(0xFF2E2E38);
+  static const Color fillHighlightDarkAmoled = Color(0xFF2A2A34);
 
   /// Helper to get current primary color from context
   static Color primary(BuildContext context) => Theme.of(context).colorScheme.primary;
 
+  /// 按 WCAG 2.1 亮度阈值（~0.179）为底色自动挑选高对比度前景（深墨色或纯白）。
+  static Color contrastOnColor(Color background) {
+    return background.computeLuminance() > 0.179 ? darkOnAccent : Colors.white;
+  }
+
   static PageTransitionsTheme _buildPageTransitionsTheme(bool enablePredictiveBack) {
     return PageTransitionsTheme(
       builders: {
+        // 未启用系统预返回时，全平台统一采用平滑横向侧滑转场（替代生硬的缩放转场）
         TargetPlatform.android: enablePredictiveBack
             ? const PredictiveBackPageTransitionsBuilder()
-            : const ZoomPageTransitionsBuilder(),
+            : const CupertinoPageTransitionsBuilder(),
         TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
         TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
-        TargetPlatform.windows: const ZoomPageTransitionsBuilder(),
-        TargetPlatform.linux: const ZoomPageTransitionsBuilder(),
+        TargetPlatform.windows: const CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: const CupertinoPageTransitionsBuilder(),
       },
     );
   }
@@ -149,7 +169,7 @@ class AppTheme {
   static ThemeData _polish(ThemeData theme) {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final fill = isDark ? surfaceDark : surfaceLight;
+    final fill = scheme.surfaceContainer;
     final sub = isDark ? textSubDark : textSubLight;
     final hint = isDark ? textHintDark : textHintLight;
     final noInputBorder = OutlineInputBorder(
@@ -158,6 +178,7 @@ class AppTheme {
     );
 
     return theme.copyWith(
+      hintColor: hint,
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -173,9 +194,10 @@ class AppTheme {
           height: 1.5,
         ),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
+      bottomSheetTheme: BottomSheetThemeData(
         surfaceTintColor: Colors.transparent,
         clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.sheet),
       ),
       inputDecorationTheme: InputDecorationThemeData(
         filled: true,
@@ -225,13 +247,48 @@ class AppTheme {
           textStyle: const TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.w600),
         ),
       ),
+      // 不在全局覆写 backgroundColor/foregroundColor，避免劫持 FilledButton.tonal 的 tonal 配色；
+      // 常规 FilledButton 会自动读取 ColorScheme.primary / onPrimary。
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
           elevation: 0,
           textStyle: const TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.w600),
         ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: fill,
+          foregroundColor: scheme.primary,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          textStyle: const TextStyle(fontSize: AppTypography.body, fontWeight: FontWeight.w600),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return hint;
+          }
+          if (states.contains(WidgetState.selected)) {
+            return scheme.onPrimary;
+          }
+          return sub;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return fill;
+          }
+          if (states.contains(WidgetState.selected)) {
+            return scheme.primary;
+          }
+          return fill;
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return Colors.transparent;
+          }
+          return scheme.outline;
+        }),
       ),
     );
   }
@@ -242,7 +299,10 @@ class AppTheme {
   }) {
     final primary = preset.lightPrimary;
     final secondary = preset.secondary;
-    final onPrimary = (primary.computeLuminance() > 0.5) ? Colors.black : Colors.white;
+    final onPrimary = contrastOnColor(primary);
+    final onSecondary = contrastOnColor(secondary);
+    final primaryContainer = Color.alphaBlend(primary.withValues(alpha: 0.14), cardLight);
+    final secondaryContainer = Color.alphaBlend(secondary.withValues(alpha: 0.14), cardLight);
 
     return _polish(ThemeData(
       useMaterial3: true,
@@ -253,10 +313,25 @@ class AppTheme {
       textTheme: AppTypography.build(textMainLight),
       colorScheme: ColorScheme.light(
         primary: primary,
-        secondary: secondary,
-        surface: cardLight,
         onPrimary: onPrimary,
+        primaryContainer: primaryContainer,
+        onPrimaryContainer: textMainLight,
+        secondary: secondary,
+        onSecondary: onSecondary,
+        secondaryContainer: secondaryContainer,
+        onSecondaryContainer: textMainLight,
+        error: dangerLight,
+        onError: Colors.white,
+        surface: cardLight,
         onSurface: textMainLight,
+        surfaceContainerLowest: cardLight,
+        surfaceContainerLow: bgLight,
+        surfaceContainer: surfaceLight,
+        surfaceContainerHigh: const Color(0xFFE7E9EE),
+        surfaceContainerHighest: const Color(0xFFE0E2E8),
+        onSurfaceVariant: textSubLight,
+        outline: const Color(0xFF7D828B),
+        outlineVariant: dividerLight,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: bgLight,
@@ -278,16 +353,9 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
         margin: EdgeInsets.zero,
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: cardLight,
-        selectedItemColor: primary,
-        unselectedItemColor: textSubLight,
-        elevation: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.normal),
-      ),
       navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: cardLight,
+        elevation: 0,
         indicatorColor: primary.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -324,16 +392,6 @@ class AppTheme {
         activeTrackColor: primary,
         thumbColor: primary,
       ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return primary;
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return primary.withValues(alpha: 0.4);
-          return null;
-        }),
-      ),
       dividerTheme: const DividerThemeData(
         color: dividerLight,
         thickness: 0.6,
@@ -350,9 +408,16 @@ class AppTheme {
   }) {
     final bg = isAmoled ? pureBlack : inkBg;
     final cardBg = isAmoled ? cardDarkAmoled : cardDark;
+    final fillBg = isAmoled ? surfaceDarkAmoled : surfaceDark;
+    final dividerColor = isAmoled ? dividerDarkAmoled : dividerDark;
     final primary = preset.darkPrimary;
-    final secondary = preset.secondary;
-    final onPrimary = (primary.computeLuminance() > 0.5) ? Colors.black : Colors.white;
+    final secondary = preset.darkSecondary;
+    final onPrimary = contrastOnColor(primary);
+    final onSecondary = contrastOnColor(secondary);
+    final primaryContainer = Color.alphaBlend(primary.withValues(alpha: 0.22), cardBg);
+    final onPrimaryContainer = Color.lerp(primary, textMainDark, 0.45)!;
+    final secondaryContainer = Color.alphaBlend(secondary.withValues(alpha: 0.20), cardBg);
+    final onSecondaryContainer = Color.lerp(secondary, textMainDark, 0.45)!;
 
     return _polish(ThemeData(
       useMaterial3: true,
@@ -363,10 +428,28 @@ class AppTheme {
       textTheme: AppTypography.build(textMainDark),
       colorScheme: ColorScheme.dark(
         primary: primary,
-        secondary: secondary,
-        surface: cardBg,
         onPrimary: onPrimary,
+        primaryContainer: primaryContainer,
+        onPrimaryContainer: onPrimaryContainer,
+        secondary: secondary,
+        onSecondary: onSecondary,
+        secondaryContainer: secondaryContainer,
+        onSecondaryContainer: onSecondaryContainer,
+        error: dangerDark,
+        onError: darkOnAccent,
+        surface: cardBg,
         onSurface: textMainDark,
+        surfaceContainerLowest: bg,
+        surfaceContainerLow: cardBg,
+        surfaceContainer: fillBg,
+        surfaceContainerHigh: isAmoled ? const Color(0xFF26262F) : fillHighlightDark,
+        surfaceContainerHighest: isAmoled ? fillHighlightDarkAmoled : const Color(0xFF343440),
+        onSurfaceVariant: textSubDark,
+        outline: isAmoled ? const Color(0xFF6B6B7A) : const Color(0xFF6E6E7D),
+        outlineVariant: dividerColor,
+        inverseSurface: textMainDark,
+        onInverseSurface: bg,
+        inversePrimary: preset.lightPrimary,
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: bg,
@@ -388,16 +471,9 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: AppRadius.card),
         margin: EdgeInsets.zero,
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: cardBg,
-        selectedItemColor: primary,
-        unselectedItemColor: textSubDark,
-        elevation: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.normal),
-      ),
       navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: cardBg,
+        elevation: 0,
         indicatorColor: primary.withValues(alpha: 0.15),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -434,18 +510,8 @@ class AppTheme {
         activeTrackColor: primary,
         thumbColor: primary,
       ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return primary;
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return primary.withValues(alpha: 0.4);
-          return null;
-        }),
-      ),
       dividerTheme: DividerThemeData(
-        color: isAmoled ? const Color(0xFF1B1B1F) : dividerDark,
+        color: dividerColor,
         thickness: 0.6,
         space: 1,
       ),

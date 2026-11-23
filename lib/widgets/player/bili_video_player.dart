@@ -23,9 +23,12 @@ import '../../services/settings/player_settings_service.dart';
 import '../../services/player/system_media_control_service.dart';
 import '../../services/player/sleep_timer_service.dart';
 import '../../utils/formatters.dart';
+import '../../utils/responsive_util.dart';
 import '../app_toast.dart';
+import '../network_image_view.dart';
 import 'components/player_danmaku_sheet.dart';
 import 'components/player_floating_panels.dart';
+import 'components/player_progress_bar.dart';
 import 'danmaku_overlay.dart';
 import 'sleep_timer_bottom_sheet.dart';
 import 'subtitle_overlay.dart';
@@ -35,6 +38,7 @@ export 'bili_player_value.dart';
 class BiliVideoPlayer extends StatefulWidget {
   final PlayUrlInfo playUrlInfo;
   final String? localFilePath;
+  final String? coverUrl;
   final List<DanmakuItem> danmakus;
   final List<VideoChapter> chapters;
   final String title;
@@ -45,6 +49,8 @@ class BiliVideoPlayer extends StatefulWidget {
   final VoidCallback? onNextEpisode;
   final VoidCallback? onListenMode;
   final void Function(Duration position, Duration duration)? onProgressUpdate;
+  final Widget? autoNextOverlay;
+  final ValueListenable<double>? portraitCollapseListenable;
   final List<SubtitleTrack> subtitleTracks;
   final SubtitleTrack? currentSubtitleTrack;
   final SubtitleData? subtitleData;
@@ -70,6 +76,7 @@ class BiliVideoPlayer extends StatefulWidget {
     super.key,
     required this.playUrlInfo,
     this.localFilePath,
+    this.coverUrl,
     this.danmakus = const [],
     this.chapters = const [],
     this.title = '',
@@ -80,6 +87,8 @@ class BiliVideoPlayer extends StatefulWidget {
     this.onNextEpisode,
     this.onListenMode,
     this.onProgressUpdate,
+    this.autoNextOverlay,
+    this.portraitCollapseListenable,
     this.subtitleTracks = const [],
     this.currentSubtitleTrack,
     this.subtitleData,
@@ -101,6 +110,35 @@ enum _PanGestureMode {
   horizontalSeek,
   verticalBrightness,
   verticalVolume,
+  verticalFullscreen,
+}
+
+enum _TapZone { left, center, right }
+
+class _PlayerHudData {
+  final IconData? icon;
+  final String text;
+  final Alignment alignment;
+  final double? progress;
+
+  const _PlayerHudData({
+    this.icon,
+    required this.text,
+    required this.alignment,
+    this.progress,
+  });
+}
+
+class _DoubleTapRippleData {
+  final bool isForward;
+  final int totalSeconds;
+  final int token;
+
+  const _DoubleTapRippleData({
+    required this.isForward,
+    required this.totalSeconds,
+    required this.token,
+  });
 }
 
 class BiliVideoPlayerState extends State<BiliVideoPlayer>
@@ -158,6 +196,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   Timer? _hideTimer;
   bool _isFullScreen = false;
   double _playbackSpeed = 1.0;
+  final FocusNode _playerFocusNode = FocusNode(debugLabel: 'bili_video_player');
   DeviceOrientation _currentLandscapeOrientation =
       DeviceOrientation.landscapeLeft;
 
@@ -180,9 +219,11 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   bool _wasVideoPlaying = false;
   bool _wasAudioPlaying = false;
 
-  // Pan Progress Seek & Vertical Pan Gestures (左右滑动快进快退 / 屏幕两侧滑动调亮度与音量)
+  // Pan Progress Seek & Vertical Pan Gestures (左右滑动快进快退 / 两侧亮度音量 / 居中全屏滑入)
   bool _isDraggingProgress = false;
   bool _isPanGestureIgnored = false;
+  bool _hasPinchedInGesture = false;
+  BoxFit _videoFit = BoxFit.contain;
   _PanGestureMode _panMode = _PanGestureMode.none;
   Offset _panStartPosition = Offset.zero;
   Duration _dragStartPosition = Duration.zero;
@@ -192,7 +233,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   Offset? _panDownLocalPosition;
   Offset? _panDownGlobalPosition;
 
-  // Screen Brightness & Volume (左半边上下滑动调亮度，右半边上下滑动调音量)
+  // Screen Brightness & Volume (左30%亮度，中40%全屏，右30%音量)
   double _screenBrightness = 1.0; // 0.0 ~ 1.0 (1.0 = normal full brightness)
   double _currentVolume = 1.0; // 0.0 ~ 1.0
   double get screenBrightness => _screenBrightness;
@@ -226,15 +267,24 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   bool _showChapterPanel = false;
   bool _showSubtitlePanel = false;
 
-  // Double-tap & HUD Overlay
-  Offset _lastTapDownPosition = Offset.zero;
-  bool _showHud = false;
-  String _hudText = '';
-  IconData? _hudIcon;
-  Alignment _hudAlignment = Alignment.center;
+  // 零延迟单击 + 双连击累加状态
+  DateTime? _lastTapUpAt;
+  _TapZone? _lastTapZone;
+  bool _controlsBeforeFirstTap = true;
+  int _doubleTapStreak = 0;
+  int _doubleTapRippleSeq = 0;
+  Timer? _doubleTapRippleTimer;
+
+  // 局部状态 ValueNotifier：拖拽快进与亮度/音量 HUD 不触发整棵播放器树重建
   Timer? _hudTimer;
-  double? _hudProgress;
   int _lastHudPercent = -1;
+  final ValueNotifier<_PlayerHudData?> _hudNotifier =
+      ValueNotifier<_PlayerHudData?>(null);
+  final ValueNotifier<Duration?> _dragSeekTarget =
+      ValueNotifier<Duration?>(null);
+  final ValueNotifier<bool> _dragSeekCancelled = ValueNotifier<bool>(false);
+  final ValueNotifier<_DoubleTapRippleData?> _doubleTapRippleNotifier =
+      ValueNotifier<_DoubleTapRippleData?>(null);
 
   // Isolated Slider Scrubbing
   final ValueNotifier<double?> _sliderDragPosition = ValueNotifier<double?>(
@@ -1543,9 +1593,10 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       _controller!.value.aspectRatio < 0.95;
 
   void _toggleFullScreen() {
-    final isLandscape =
+    final isMobileLandscape =
+        ResponsiveUtil.isMobile &&
         MediaQuery.of(context).orientation == Orientation.landscape;
-    if (_isFullScreen || isLandscape) {
+    if (_isFullScreen || isMobileLandscape) {
       exitFullScreen();
     } else {
       enterFullScreen();
@@ -1573,9 +1624,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       if (!_isFullScreen) {
         _isScreenLocked = false;
         _showChapterPanel = false;
+        _showQualityPanel = false;
+        _showSpeedPanel = false;
+        _showSubtitlePanel = false;
       }
     });
     widget.onFullScreenChanged?.call(_isFullScreen);
+
+    if (!ResponsiveUtil.isMobile) {
+      return;
+    }
 
     if (_isFullScreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -1616,6 +1674,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
   }
 
   void _toggleFullscreenOrientation() {
+    if (!ResponsiveUtil.isMobile) return;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     if (isVerticalVideo) {
@@ -1650,6 +1709,18 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       });
     }
     HapticFeedback.lightImpact();
+  }
+
+  void _setVideoFit(BoxFit fit) {
+    if (_videoFit == fit) return;
+    setState(() => _videoFit = fit);
+    HapticFeedback.selectionClick();
+    _showTextHud(
+      icon: fit == BoxFit.cover
+          ? Icons.fit_screen_rounded
+          : Icons.aspect_ratio_rounded,
+      text: fit == BoxFit.cover ? '铺满画面' : '适应画面',
+    );
   }
 
   void _toggleQualityPanel() {
@@ -1692,12 +1763,20 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     _startHideTimer();
   }
 
-  void _showDanmakuSettings() {
-    PlayerDanmakuSheet.show(
+  Future<void> _showDanmakuSettings() async {
+    _hideTimer?.cancel();
+    await PlayerDanmakuSheet.show(
       context,
       danmakuController: _danmakuController,
       accent: _getPlayerAccent(context),
     );
+    if (mounted) _startHideTimer();
+  }
+
+  Future<void> _openSleepTimerSheet() async {
+    _hideTimer?.cancel();
+    await SleepTimerBottomSheet.show(context);
+    if (mounted) _startHideTimer();
   }
 
   @override
@@ -1709,7 +1788,12 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     _hideTimer?.cancel();
     _lockIconTimer?.cancel();
     _hudTimer?.cancel();
+    _doubleTapRippleTimer?.cancel();
     _sliderDragPosition.dispose();
+    _hudNotifier.dispose();
+    _dragSeekTarget.dispose();
+    _dragSeekCancelled.dispose();
+    _doubleTapRippleNotifier.dispose();
     _disableWakelock();
     SystemMediaControlService.instance.removeVolumeListener();
     SystemMediaControlService.instance.resetBrightness();
@@ -1745,10 +1829,76 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       } catch (_) {}
       _pendingAudioController = null;
     }
+    _playerFocusNode.dispose();
     _danmakuController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    // 方向与系统栏状态由外层 VideoDetailScreen / CachedVideoPlayerScreen 统一退出恢复，
+    // 防止切集或同页刷新流时把全屏播放踢回竖屏。
     super.dispose();
+  }
+
+  /// 桌面端与 Web 端键盘快捷键映射：聚焦播放器时支持播放控制、快进退、音量、全屏与面板退出。
+  Map<ShortcutActivator, VoidCallback> _buildKeyboardShortcuts() {
+    return {
+      const SingleActivator(LogicalKeyboardKey.space): _handleSpaceKey,
+      const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+          _handleSeekByKey(-5),
+      const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+          _handleSeekByKey(5),
+      const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+          _adjustVolumeByKey(0.1),
+      const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+          _adjustVolumeByKey(-0.1),
+      const SingleActivator(LogicalKeyboardKey.keyF): () {
+        if (!_isScreenLocked) _toggleFullScreen();
+      },
+      const SingleActivator(LogicalKeyboardKey.escape): _handleEscapeKey,
+    };
+  }
+
+  void _handleSpaceKey() {
+    if (_isScreenLocked || _controller == null) return;
+    _togglePlayPause();
+    final isNowPlaying =
+        _controller!.value.isPlaying && !_isExplicitlyPaused;
+    _showPlayPauseHud(isPlaying: isNowPlaying);
+  }
+
+  void _handleSeekByKey(int deltaSeconds) {
+    if (_isScreenLocked) return;
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    _seekRelative(deltaSeconds);
+    _showTextHud(
+      icon: deltaSeconds > 0
+          ? Icons.fast_forward_rounded
+          : Icons.fast_rewind_rounded,
+      text: deltaSeconds > 0 ? '+${deltaSeconds}s' : '${deltaSeconds}s',
+    );
+  }
+
+  void _adjustVolumeByKey(double delta) {
+    if (_isScreenLocked) return;
+    final next = (_currentVolume + delta).clamp(0.0, 1.0);
+    unawaited(setVolume(next));
+    _showVolumeHud(next);
+    _dismissHudAfterDelay(const Duration(milliseconds: 900));
+  }
+
+  void _handleEscapeKey() {
+    if (_showQualityPanel ||
+        _showSpeedPanel ||
+        _showChapterPanel ||
+        _showSubtitlePanel) {
+      setState(() {
+        _showQualityPanel = false;
+        _showSpeedPanel = false;
+        _showChapterPanel = false;
+        _showSubtitlePanel = false;
+      });
+      return;
+    }
+    if (_isFullScreen) {
+      exitFullScreen();
+    }
   }
 
   void _seekRelative(int deltaSeconds) {
@@ -1766,43 +1916,44 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     HapticFeedback.lightImpact();
   }
 
-  void _showSeekHud({required bool isForward, required int seconds}) {
-    _hudTimer?.cancel();
-    setState(() {
-      _showHud = true;
-      _hudProgress = null;
-      _hudIcon = isForward
-          ? Icons.fast_forward_rounded
-          : Icons.fast_rewind_rounded;
-      _hudText = isForward ? '+$seconds 秒' : '-$seconds 秒';
-      _hudAlignment = isForward
-          ? const Alignment(0.65, 0.0)
-          : const Alignment(-0.65, 0.0);
-    });
-    _hudTimer = Timer(const Duration(milliseconds: 650), () {
+  void _showDoubleTapRipple({required bool isForward, required int totalSeconds}) {
+    _doubleTapRippleTimer?.cancel();
+    _doubleTapRippleNotifier.value = _DoubleTapRippleData(
+      isForward: isForward,
+      totalSeconds: totalSeconds,
+      token: ++_doubleTapRippleSeq,
+    );
+    _doubleTapRippleTimer = Timer(const Duration(milliseconds: 680), () {
       if (mounted) {
-        setState(() {
-          _showHud = false;
-        });
+        _doubleTapRippleNotifier.value = null;
       }
     });
   }
 
-  void _showPlayPauseHud() {
+  void _showTextHud({required IconData icon, required String text}) {
     _hudTimer?.cancel();
-    final isPlaying = _controller?.value.isPlaying ?? false;
-    setState(() {
-      _showHud = true;
-      _hudProgress = null;
-      _hudIcon = isPlaying ? Icons.play_arrow_rounded : Icons.pause_rounded;
-      _hudText = isPlaying ? '播放' : '暂停';
-      _hudAlignment = Alignment.center;
+    _hudNotifier.value = _PlayerHudData(
+      icon: icon,
+      text: text,
+      alignment: Alignment.center,
+    );
+    _hudTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) {
+        _hudNotifier.value = null;
+      }
     });
+  }
+
+  void _showPlayPauseHud({required bool isPlaying}) {
+    _hudTimer?.cancel();
+    _hudNotifier.value = _PlayerHudData(
+      icon: isPlaying ? Icons.play_arrow_rounded : Icons.pause_rounded,
+      text: isPlaying ? '播放' : '暂停',
+      alignment: Alignment.center,
+    );
     _hudTimer = Timer(const Duration(milliseconds: 550), () {
       if (mounted) {
-        setState(() {
-          _showHud = false;
-        });
+        _hudNotifier.value = null;
       }
     });
   }
@@ -1815,19 +1966,20 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
               ? Icons.brightness_medium_rounded
               : Icons.brightness_low_rounded);
 
-    if (_showHud && _lastHudPercent == percent && _hudProgress == brightness) {
+    if (_hudNotifier.value != null &&
+        _lastHudPercent == percent &&
+        _hudNotifier.value!.progress == brightness) {
       return;
     }
     _lastHudPercent = percent;
 
     _hudTimer?.cancel();
-    setState(() {
-      _showHud = true;
-      _hudIcon = icon;
-      _hudText = '$percent%';
-      _hudProgress = brightness;
-      _hudAlignment = const Alignment(-0.65, 0.0);
-    });
+    _hudNotifier.value = _PlayerHudData(
+      icon: icon,
+      text: '$percent%',
+      progress: brightness,
+      alignment: const Alignment(-0.65, 0.0),
+    );
   }
 
   void _showVolumeHud(double volume) {
@@ -1836,19 +1988,20 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
         ? Icons.volume_off_rounded
         : (volume <= 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded);
 
-    if (_showHud && _lastHudPercent == percent && _hudProgress == volume) {
+    if (_hudNotifier.value != null &&
+        _lastHudPercent == percent &&
+        _hudNotifier.value!.progress == volume) {
       return;
     }
     _lastHudPercent = percent;
 
     _hudTimer?.cancel();
-    setState(() {
-      _showHud = true;
-      _hudIcon = icon;
-      _hudText = '$percent%';
-      _hudProgress = volume;
-      _hudAlignment = const Alignment(0.65, 0.0);
-    });
+    _hudNotifier.value = _PlayerHudData(
+      icon: icon,
+      text: '$percent%',
+      progress: volume,
+      alignment: const Alignment(0.65, 0.0),
+    );
   }
 
   void _dismissHudAfterDelay([
@@ -1858,29 +2011,106 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     _hudTimer = Timer(duration, () {
       if (mounted) {
         _lastHudPercent = -1;
-        setState(() {
-          _showHud = false;
-          _hudProgress = null;
-        });
+        _hudNotifier.value = null;
       }
     });
   }
 
   Color _getPlayerAccent(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    // On the video player's dark background, if primary is dark (e.g. Ink theme light mode #22242A),
-    // fallback to clean white #EDEDF2 to guarantee high contrast and readability.
-    if (primary.computeLuminance() < 0.35) {
+    // 播放器叠加层永远压在暗底视频画面上，仅当主色过暗（如浅色模式水墨 #22242A，
+    // 亮度 < 0.179）时回退为浅白，避免暗色模式下的粉/紫等主题色也被误切回白色。
+    if (primary.computeLuminance() <= 0.179) {
       return AppTheme.textMainDark;
     }
     return primary;
   }
 
+  void _handleTapUp(TapUpDetails details) {
+    if (_isScreenLocked) {
+      _toggleLockIconVisibility();
+      return;
+    }
+    final hasController =
+        _controller != null && _controller!.value.isInitialized;
+    final now = _now();
+    final playerWidth =
+        context.size?.width ?? MediaQuery.of(context).size.width;
+    final x = details.localPosition.dx;
+    final edgeRatio = PlayerSettingsService.doubleTapEdgeRatio;
+    final zone = x < playerWidth * edgeRatio
+        ? _TapZone.left
+        : (x > playerWidth * (1 - edgeRatio) ? _TapZone.right : _TapZone.center);
+
+    final isDoubleTap =
+        hasController &&
+        _lastTapUpAt != null &&
+        _lastTapZone == zone &&
+        now.difference(_lastTapUpAt!) <= const Duration(milliseconds: 240);
+
+    if (isDoubleTap) {
+      _lastTapUpAt = now;
+      // 还原首击触发的控制栏显隐跳变，实现 0ms 单击响应与双击无缝仲裁
+      if (_showControls != _controlsBeforeFirstTap) {
+        setState(() => _showControls = _controlsBeforeFirstTap);
+        if (_showControls) {
+          _startHideTimer();
+        } else {
+          _hideTimer?.cancel();
+        }
+      }
+      final seekSeconds = PlayerSettingsService.doubleTapSeekSeconds;
+      if (zone == _TapZone.left) {
+        _doubleTapStreak = _doubleTapStreak < 0 ? _doubleTapStreak - 1 : -1;
+        _seekRelative(-seekSeconds);
+        _showDoubleTapRipple(
+          isForward: false,
+          totalSeconds: _doubleTapStreak.abs() * seekSeconds,
+        );
+      } else if (zone == _TapZone.right) {
+        _doubleTapStreak = _doubleTapStreak > 0 ? _doubleTapStreak + 1 : 1;
+        _seekRelative(seekSeconds);
+        _showDoubleTapRipple(
+          isForward: true,
+          totalSeconds: _doubleTapStreak * seekSeconds,
+        );
+      } else {
+        _doubleTapStreak = 0;
+        final video = _controller!;
+        final currentlyPlaying =
+            video.value.isPlaying ||
+            (!_isExplicitlyPaused &&
+                (video.value.isBuffering || _isSyncPausedVideo));
+        final willPlay = !currentlyPlaying;
+        _togglePlayPause();
+        _showPlayPauseHud(isPlaying: willPlay);
+      }
+      return;
+    }
+
+    _lastTapUpAt = now;
+    _lastTapZone = zone;
+    _doubleTapStreak = 0;
+    _controlsBeforeFirstTap = _showControls;
+    _toggleControls();
+  }
+
+  void _resetScaleGestureState() {
+    _accumulatedPanDx = 0.0;
+    _accumulatedPanDy = 0.0;
+    _panDownLocalPosition = null;
+    _panDownGlobalPosition = null;
+    _isPanGestureIgnored = false;
+    _hasPinchedInGesture = false;
+    _panMode = _PanGestureMode.none;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLandscape =
+    final isMobileLandscape =
+        ResponsiveUtil.isMobile &&
         MediaQuery.of(context).orientation == Orientation.landscape;
-    final isFull = _isFullScreen || isLandscape;
+    final isFull = _isFullScreen || isMobileLandscape;
     final accent = _getPlayerAccent(context);
 
     final hasController =
@@ -1888,769 +2118,1014 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
 
     Widget playerBody = Container(
       key: _playerBodyKey,
-      color: Colors.black,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanDown: (details) {
-          _panDownLocalPosition = details.localPosition;
-          _panDownGlobalPosition = details.globalPosition;
-        },
-        onTapDown: (details) {
-          _lastTapDownPosition = details.localPosition;
-        },
-        onTap: () {
-          if (_isScreenLocked) {
-            _toggleLockIconVisibility();
-            return;
-          }
-          _toggleControls();
-        },
-        onDoubleTapDown: (details) {
-          _lastTapDownPosition = details.localPosition;
-        },
-        onDoubleTap: () {
-          if (_isScreenLocked || !hasController) return;
-          // 以播放器自身宽度划分区域：左右边缘为快进/快退命中区（默认各
-          // 10%，宽度可在设置中调整），中间其余区域双击切换播放/暂停。
-          final playerWidth =
-              context.size?.width ?? MediaQuery.of(context).size.width;
-          final x = _lastTapDownPosition.dx;
-          final edgeRatio = PlayerSettingsService.doubleTapEdgeRatio;
-          final seekSeconds = PlayerSettingsService.doubleTapSeekSeconds;
-          if (x < playerWidth * edgeRatio) {
-            _seekRelative(-seekSeconds);
-            _showSeekHud(isForward: false, seconds: seekSeconds);
-          } else if (x > playerWidth * (1 - edgeRatio)) {
-            _seekRelative(seekSeconds);
-            _showSeekHud(isForward: true, seconds: seekSeconds);
-          } else {
-            _togglePlayPause();
-            _showPlayPauseHud();
+      decoration: const BoxDecoration(color: Colors.black),
+      clipBehavior: Clip.hardEdge,
+      child: Listener(
+        onPointerDown: (event) {
+          _panDownLocalPosition = event.localPosition;
+          _panDownGlobalPosition = event.position;
+          if ((ResponsiveUtil.isDesktop || kIsWeb || _isFullScreen) &&
+              !_playerFocusNode.hasFocus) {
+            _playerFocusNode.requestFocus();
           }
         },
-        onLongPressStart: (details) {
-          if (_isScreenLocked ||
-              !hasController ||
-              !PlayerSettingsService.enableLongPressSpeed) {
-            return;
-          }
-          final speedValue = PlayerSettingsService.longPressSpeedValue;
-          _speedBeforeLongPress = _playbackSpeed;
-          _isLongPressSpeeding = true;
-          unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(speedValue)));
-          _danmakuController.setPlaybackSpeed(speedValue);
-          HapticFeedback.selectionClick();
-          setState(() {});
-        },
-        onLongPressEnd: (details) {
-          if (!_isLongPressSpeeding) return;
-          _isLongPressSpeeding = false;
-          unawaited(
-            _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
-          );
-          _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
-          setState(() {});
-        },
-        onLongPressCancel: () {
-          if (!_isLongPressSpeeding) return;
-          _isLongPressSpeeding = false;
-          unawaited(
-            _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
-          );
-          _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
-          setState(() {});
-        },
-        onPanStart: (details) {
-          if (_isScreenLocked || _isLongPressSpeeding) {
-            _isPanGestureIgnored = true;
-            return;
-          }
-
-          // Top Edge & Status Bar Exclusion: Ignore touches starting in the top notification/status bar area
-          final mediaQuery = MediaQuery.of(context);
-          final topSafe = math.max(
-            mediaQuery.viewPadding.top,
-            mediaQuery.padding.top,
-          );
-          final topExclusion = math.max(topSafe + 40.0, 60.0);
-
-          final downLocalY =
-              _panDownLocalPosition?.dy ?? details.localPosition.dy;
-          final downGlobalY =
-              _panDownGlobalPosition?.dy ?? details.globalPosition.dy;
-
-          if (downGlobalY < topSafe + 50.0 ||
-              details.globalPosition.dy < topSafe + 50.0 ||
-              downLocalY < topExclusion ||
-              details.localPosition.dy < topExclusion) {
-            _isPanGestureIgnored = true;
-            return;
-          }
-
-          // Bottom Edge Exclusion: 全屏/横屏时播放器铺满整屏，底部边缘是
-          // 系统上滑返回/回主屏的手势区。起手于此的滑动交给系统处理，
-          // 不再判定为亮度/音量/进度手势，避免上滑返回时误触 HUD。
-          if (isFull) {
-            final bottomSafe = math.max(
-              mediaQuery.viewPadding.bottom,
-              mediaQuery.padding.bottom,
-            );
-            final playerHeight = context.size?.height ?? mediaQuery.size.height;
-            final bottomExclusionY =
-                playerHeight - math.max(bottomSafe + 40.0, 60.0);
-            if (downLocalY > bottomExclusionY ||
-                details.localPosition.dy > bottomExclusionY) {
-              _isPanGestureIgnored = true;
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: _handleTapUp,
+          onLongPressStart: (details) {
+            if (_isScreenLocked ||
+                !hasController ||
+                !PlayerSettingsService.enableLongPressSpeed) {
               return;
             }
-          }
-
-          _isPanGestureIgnored = false;
-          _isDraggingProgress = false;
-          _panMode = _PanGestureMode.none;
-          _panStartPosition = details.localPosition;
-          _dragStartPosition = _controller?.value.position ?? Duration.zero;
-          _targetSeekPosition = _dragStartPosition;
-          _accumulatedPanDx = 0.0;
-          _accumulatedPanDy = 0.0;
-        },
-        onPanUpdate: (details) {
-          if (_isPanGestureIgnored || _isScreenLocked || _isLongPressSpeeding) {
-            return;
-          }
-
-          _accumulatedPanDx += details.delta.dx;
-          _accumulatedPanDy += details.delta.dy;
-
-          final totalDuration = _controller?.value.duration ?? Duration.zero;
-          final screenSize = MediaQuery.of(context).size;
-          final screenWidth = screenSize.width;
-          final playerHeight = context.size?.height ?? screenSize.height;
-
-          // Gesture Arbitration (if not yet locked into a mode)
-          if (_panMode == _PanGestureMode.none) {
-            final absDx = _accumulatedPanDx.abs();
-            final absDy = _accumulatedPanDy.abs();
+            final speedValue = PlayerSettingsService.longPressSpeedValue;
+            _speedBeforeLongPress = _playbackSpeed;
+            _isLongPressSpeeding = true;
+            unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(speedValue)));
+            _danmakuController.setPlaybackSpeed(speedValue);
+            HapticFeedback.selectionClick();
+            setState(() {});
+          },
+          onLongPressEnd: (details) {
+            if (!_isLongPressSpeeding) return;
+            _isLongPressSpeeding = false;
+            unawaited(
+              _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
+            );
+            _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
+            setState(() {});
+          },
+          onLongPressCancel: () {
+            if (!_isLongPressSpeeding) return;
+            _isLongPressSpeeding = false;
+            unawaited(
+              _applyToPlayers((c) => c.setPlaybackSpeed(_speedBeforeLongPress)),
+            );
+            _danmakuController.setPlaybackSpeed(_speedBeforeLongPress);
+            setState(() {});
+          },
+          onScaleStart: (details) {
+            _hasPinchedInGesture = false;
+            if (_isScreenLocked ||
+                _isLongPressSpeeding ||
+                details.pointerCount >= 2) {
+              _isPanGestureIgnored = true;
+              _panMode = _PanGestureMode.none;
+              return;
+            }
 
             final mediaQuery = MediaQuery.of(context);
             final topSafe = math.max(
               mediaQuery.viewPadding.top,
               mediaQuery.padding.top,
             );
-            final topExclusion = math.max(topSafe + 40.0, 60.0);
+            final downLocal = _panDownLocalPosition ?? details.localFocalPoint;
+            final downGlobal = _panDownGlobalPosition ?? details.focalPoint;
 
-            // Horizontal Seek gesture (requires active controller with duration):
-            if (hasController &&
-                PlayerSettingsService.enableHorizontalPanSeek &&
-                absDx >= 22.0 &&
-                absDx > absDy * 1.5) {
-              _panMode = _PanGestureMode.horizontalSeek;
-              _isDraggingProgress = true;
-              _hideTimer?.cancel();
-              HapticFeedback.selectionClick();
-            }
-            // Vertical Pan (Brightness on Left half, Volume on Right half):
-            else if (PlayerSettingsService.enableVerticalPanVolumeBrightness &&
-                absDy >= 16.0 &&
-                absDy > absDx * 1.2 &&
-                _panStartPosition.dy >= topExclusion) {
-              _hideTimer?.cancel();
-              HapticFeedback.selectionClick();
-              if (_panStartPosition.dx < screenWidth * 0.5) {
-                _panMode = _PanGestureMode.verticalBrightness;
-                _showBrightnessHud(_screenBrightness);
-              } else {
-                _panMode = _PanGestureMode.verticalVolume;
-                _showVolumeHud(_currentVolume);
-              }
-            } else {
+            // 顶部排除区：仅按全局坐标检查状态栏，并固定局部顶栏下拉热区 48dp，
+            // 修复竖屏 SafeArea 下局部坐标重复叠加 topSafe 造成顶部 40% 死区的问题。
+            final double localTopExclusion =
+                (isFull && topSafe > 0) ? (topSafe + 40.0) : 48.0;
+            if (downGlobal.dy < topSafe + 24.0 ||
+                downLocal.dy < localTopExclusion) {
+              _isPanGestureIgnored = true;
               return;
             }
-          }
 
-          switch (_panMode) {
-            case _PanGestureMode.horizontalSeek:
-              if (totalDuration.inMilliseconds <= 0) return;
-              const double dragThreshold = 22.0;
-              final effectiveDelta = _accumulatedPanDx > 0
-                  ? (_accumulatedPanDx - dragThreshold)
-                  : (_accumulatedPanDx + dragThreshold);
-              final scaleDuration = totalDuration.inSeconds > 600
-                  ? 90.0
-                  : (totalDuration.inSeconds > 180 ? 45.0 : 20.0);
-              final deltaSeconds =
-                  (effectiveDelta / screenWidth) * scaleDuration;
-              final targetMs =
-                  (_dragStartPosition.inMilliseconds +
-                          (deltaSeconds * 1000).toInt())
-                      .clamp(0, totalDuration.inMilliseconds);
-              setState(() {
-                _targetSeekPosition = Duration(milliseconds: targetMs);
-              });
-              break;
+            // 非全屏左侧边缘留白 24dp：让渡给系统/Cupertino 左边缘侧滑返回手势
+            if (!isFull && downLocal.dx < 24.0) {
+              _isPanGestureIgnored = true;
+              return;
+            }
 
-            case _PanGestureMode.verticalBrightness:
-              final double effectiveHeight = playerHeight > 100
-                  ? playerHeight
-                  : 300.0;
-              final double delta = -details.delta.dy / (effectiveHeight * 0.75);
-              _screenBrightness = (_screenBrightness + delta).clamp(0.0, 1.0);
-              SystemMediaControlService.instance.rememberBrightness(
-                _screenBrightness,
-              );
-              SystemMediaControlService.instance.setBrightness(
-                _screenBrightness,
-              );
-              _showBrightnessHud(_screenBrightness);
-              break;
+            // 底部排除区：全屏护航系统上滑手势，小窗护航底部进度条拖动手势
+            final bottomSafe = math.max(
+              mediaQuery.viewPadding.bottom,
+              mediaQuery.padding.bottom,
+            );
+            final playerHeight = context.size?.height ?? mediaQuery.size.height;
+            final bottomThreshold = isFull
+                ? math.max(bottomSafe + 40.0, 60.0)
+                : (playerHeight > 260.0 ? 60.0 : 44.0);
+            if (downLocal.dy > playerHeight - bottomThreshold) {
+              _isPanGestureIgnored = true;
+              return;
+            }
 
-            case _PanGestureMode.verticalVolume:
-              final double effectiveHeight = playerHeight > 100
-                  ? playerHeight
-                  : 300.0;
-              final double delta = -details.delta.dy / (effectiveHeight * 0.75);
-              _currentVolume = (_currentVolume + delta).clamp(0.0, 1.0);
-              SystemMediaControlService.instance.setVolume(_currentVolume);
-              _showVolumeHud(_currentVolume);
-              break;
-
-            case _PanGestureMode.none:
-              break;
-          }
-        },
-        onPanEnd: (details) {
-          if (_panMode == _PanGestureMode.horizontalSeek) {
+            _isPanGestureIgnored = false;
             _isDraggingProgress = false;
-            if (hasController) {
-              unawaited(_seekBothPlayers(_targetSeekPosition));
-              _danmakuController.updatePosition(
-                _targetSeekPosition.inMilliseconds / 1000.0,
-              );
-            }
-            setState(() {});
-            _startHideTimer();
-          } else if (_panMode == _PanGestureMode.verticalBrightness ||
-              _panMode == _PanGestureMode.verticalVolume) {
-            if (_panMode == _PanGestureMode.verticalVolume) {
-              _lastVolumePanEndTime = DateTime.now().millisecondsSinceEpoch;
-              SystemMediaControlService.instance.setVolume(
-                _currentVolume,
-                immediate: true,
-              );
-            } else if (_panMode == _PanGestureMode.verticalBrightness) {
-              SystemMediaControlService.instance.setBrightness(
-                _screenBrightness,
-                immediate: true,
-              );
-            }
-            _dismissHudAfterDelay(const Duration(milliseconds: 800));
-            _startHideTimer();
-          }
+            _dragSeekCancelled.value = false;
+            _panMode = _PanGestureMode.none;
+            _panStartPosition = downLocal;
+            _dragStartPosition = _controller?.value.position ?? Duration.zero;
+            _targetSeekPosition = _dragStartPosition;
+            _accumulatedPanDx = 0.0;
+            _accumulatedPanDy = 0.0;
+          },
+          onScaleUpdate: (details) {
+            if (_isScreenLocked || _isLongPressSpeeding) return;
 
-          _accumulatedPanDx = 0.0;
-          _accumulatedPanDy = 0.0;
-          _panDownLocalPosition = null;
-          _panDownGlobalPosition = null;
-          _isPanGestureIgnored = false;
-          _panMode = _PanGestureMode.none;
-        },
-        onPanCancel: () {
-          if (_panMode == _PanGestureMode.horizontalSeek) {
-            _isDraggingProgress = false;
-            setState(() {});
-            _startHideTimer();
-          } else if (_panMode == _PanGestureMode.verticalBrightness ||
-              _panMode == _PanGestureMode.verticalVolume) {
-            if (_panMode == _PanGestureMode.verticalVolume) {
-              _lastVolumePanEndTime = DateTime.now().millisecondsSinceEpoch;
-              SystemMediaControlService.instance.setVolume(
-                _currentVolume,
-                immediate: true,
-              );
-            } else if (_panMode == _PanGestureMode.verticalBrightness) {
-              SystemMediaControlService.instance.setBrightness(
-                _screenBrightness,
-                immediate: true,
-              );
+            // 双指捏合缩放：铺满画面 / 适应画面切换
+            if (details.pointerCount >= 2) {
+              if (!_hasPinchedInGesture && hasController) {
+                if (details.scale > 1.18 && _videoFit != BoxFit.cover) {
+                  _hasPinchedInGesture = true;
+                  _setVideoFit(BoxFit.cover);
+                } else if (details.scale < 0.85 && _videoFit != BoxFit.contain) {
+                  _hasPinchedInGesture = true;
+                  _setVideoFit(BoxFit.contain);
+                }
+              }
+              return;
             }
-            _dismissHudAfterDelay(const Duration(milliseconds: 600));
-            _startHideTimer();
-          }
 
-          _accumulatedPanDx = 0.0;
-          _accumulatedPanDy = 0.0;
-          _panDownLocalPosition = null;
-          _panDownGlobalPosition = null;
-          _isPanGestureIgnored = false;
-          _panMode = _PanGestureMode.none;
-        },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Video Layer
-            if (hasController)
-              Center(
-                child: AspectRatio(
-                  aspectRatio: _controller!.value.aspectRatio,
-                  child: RepaintBoundary(child: VideoPlayer(_controller!)),
+            if (_isPanGestureIgnored) return;
+
+            final delta = details.focalPointDelta;
+            _accumulatedPanDx += delta.dx;
+            _accumulatedPanDy += delta.dy;
+
+            final totalDuration = _controller?.value.duration ?? Duration.zero;
+            final mediaQuery = MediaQuery.of(context);
+            final playerWidth = context.size?.width ?? mediaQuery.size.width;
+            final playerHeight =
+                context.size?.height ?? mediaQuery.size.height;
+
+            // 手势仲裁
+            if (_panMode == _PanGestureMode.none) {
+              final absDx = _accumulatedPanDx.abs();
+              final absDy = _accumulatedPanDy.abs();
+
+              if (hasController &&
+                  PlayerSettingsService.enableHorizontalPanSeek &&
+                  absDx >= 20.0 &&
+                  absDx > absDy * 1.5) {
+                _panMode = _PanGestureMode.horizontalSeek;
+                _isDraggingProgress = true;
+                _dragSeekCancelled.value = false;
+                _hideTimer?.cancel();
+                HapticFeedback.selectionClick();
+              } else if (absDy >= 16.0 && absDy > absDx * 1.2) {
+                _hideTimer?.cancel();
+                if (_panStartPosition.dx < playerWidth * 0.30) {
+                  if (!PlayerSettingsService.enableVerticalPanVolumeBrightness) {
+                    return;
+                  }
+                  _panMode = _PanGestureMode.verticalBrightness;
+                  HapticFeedback.selectionClick();
+                  _showBrightnessHud(_screenBrightness);
+                } else if (_panStartPosition.dx > playerWidth * 0.70) {
+                  if (!PlayerSettingsService.enableVerticalPanVolumeBrightness) {
+                    return;
+                  }
+                  _panMode = _PanGestureMode.verticalVolume;
+                  HapticFeedback.selectionClick();
+                  _showVolumeHud(_currentVolume);
+                } else {
+                  // 中间 40% 区域：上滑进全屏 / 下滑退全屏
+                  _panMode = _PanGestureMode.verticalFullscreen;
+                }
+              } else {
+                return;
+              }
+            }
+
+            switch (_panMode) {
+              case _PanGestureMode.horizontalSeek:
+                if (totalDuration.inMilliseconds <= 0) return;
+                final cancelled = _accumulatedPanDy.abs() > 64.0;
+                if (_dragSeekCancelled.value != cancelled) {
+                  _dragSeekCancelled.value = cancelled;
+                  HapticFeedback.selectionClick();
+                }
+                if (cancelled) return;
+                const double dragThreshold = 20.0;
+                final effectiveDelta = _accumulatedPanDx > 0
+                    ? (_accumulatedPanDx - dragThreshold)
+                    : (_accumulatedPanDx + dragThreshold);
+                final scaleDuration = totalDuration.inSeconds > 600
+                    ? 90.0
+                    : (totalDuration.inSeconds > 180 ? 45.0 : 20.0);
+                final deltaSeconds =
+                    (effectiveDelta / math.max(playerWidth, 240.0)) *
+                    scaleDuration;
+                final targetMs =
+                    (_dragStartPosition.inMilliseconds +
+                            (deltaSeconds * 1000).toInt())
+                        .clamp(0, totalDuration.inMilliseconds);
+                final target = Duration(milliseconds: targetMs);
+                _targetSeekPosition = target;
+                _dragSeekTarget.value = target;
+                _sliderDragPosition.value = targetMs.toDouble();
+                break;
+
+              case _PanGestureMode.verticalBrightness:
+                final double effectiveHeight = playerHeight > 100
+                    ? playerHeight
+                    : 300.0;
+                final double step = -delta.dy / (effectiveHeight * 0.75);
+                _screenBrightness = (_screenBrightness + step).clamp(0.0, 1.0);
+                SystemMediaControlService.instance.rememberBrightness(
+                  _screenBrightness,
+                );
+                SystemMediaControlService.instance.setBrightness(
+                  _screenBrightness,
+                );
+                _showBrightnessHud(_screenBrightness);
+                break;
+
+              case _PanGestureMode.verticalVolume:
+                final double effectiveHeight = playerHeight > 100
+                    ? playerHeight
+                    : 300.0;
+                final double step = -delta.dy / (effectiveHeight * 0.75);
+                _currentVolume = (_currentVolume + step).clamp(0.0, 1.0);
+                SystemMediaControlService.instance.setVolume(_currentVolume);
+                _showVolumeHud(_currentVolume);
+                break;
+
+              case _PanGestureMode.verticalFullscreen:
+                if (!isFull && _accumulatedPanDy < -18) {
+                  _hudNotifier.value = _PlayerHudData(
+                    icon: Icons.fullscreen_rounded,
+                    text: _accumulatedPanDy < -40 ? '松手进入全屏' : '继续上滑全屏',
+                    alignment: Alignment.center,
+                  );
+                } else if (isFull && _accumulatedPanDy > 18) {
+                  _hudNotifier.value = _PlayerHudData(
+                    icon: Icons.fullscreen_exit_rounded,
+                    text: _accumulatedPanDy > 40 ? '松手退出全屏' : '继续下滑退出',
+                    alignment: Alignment.center,
+                  );
+                }
+                break;
+
+              case _PanGestureMode.none:
+                break;
+            }
+          },
+          onScaleEnd: (details) {
+            if (_panMode == _PanGestureMode.horizontalSeek) {
+              final cancelled = _dragSeekCancelled.value;
+              _isDraggingProgress = false;
+              _dragSeekTarget.value = null;
+              _dragSeekCancelled.value = false;
+              _sliderDragPosition.value = null;
+              if (!cancelled && hasController) {
+                unawaited(_seekBothPlayers(_targetSeekPosition));
+                _danmakuController.updatePosition(
+                  _targetSeekPosition.inMilliseconds / 1000.0,
+                );
+              }
+              _startHideTimer();
+            } else if (_panMode == _PanGestureMode.verticalBrightness ||
+                _panMode == _PanGestureMode.verticalVolume) {
+              if (_panMode == _PanGestureMode.verticalVolume) {
+                _lastVolumePanEndTime = DateTime.now().millisecondsSinceEpoch;
+                SystemMediaControlService.instance.setVolume(
+                  _currentVolume,
+                  immediate: true,
+                );
+              } else {
+                SystemMediaControlService.instance.setBrightness(
+                  _screenBrightness,
+                  immediate: true,
+                );
+              }
+              _dismissHudAfterDelay(const Duration(milliseconds: 800));
+              _startHideTimer();
+            } else if (_panMode == _PanGestureMode.verticalFullscreen) {
+              _hudNotifier.value = null;
+              if (!isFull && _accumulatedPanDy < -40) {
+                enterFullScreen();
+              } else if (isFull && _accumulatedPanDy > 40) {
+                exitFullScreen();
+              }
+            }
+
+            _resetScaleGestureState();
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 过渡封面底图：初始化或切画质期间平滑衬底，消除纯黑闪屏
+              if (!hasController &&
+                  widget.coverUrl != null &&
+                  widget.coverUrl!.isNotEmpty) ...[
+                NetworkImageView(
+                  url: widget.coverUrl!,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 480,
+                  memCacheHeight: 300,
                 ),
-              )
-            else if (_playbackErrorMessage == null)
-              Center(
-                child: SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+                Container(color: Colors.black38),
+              ],
+
+              // 视频画面层
+              if (hasController)
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _videoFit == BoxFit.cover
+                      ? ClipRect(
+                          key: const ValueKey('fit_cover'),
+                          child: SizedBox.expand(
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller!.value.size.width > 0
+                                    ? _controller!.value.size.width
+                                    : 16,
+                                height: _controller!.value.size.height > 0
+                                    ? _controller!.value.size.height
+                                    : 9,
+                                child: RepaintBoundary(
+                                  child: VideoPlayer(_controller!),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          key: const ValueKey('fit_contain'),
+                          child: AspectRatio(
+                            aspectRatio: _controller!.value.aspectRatio,
+                            child: RepaintBoundary(
+                              child: VideoPlayer(_controller!),
+                            ),
+                          ),
+                        ),
+                )
+              else if (_playbackErrorMessage == null)
+                Center(
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(accent),
+                    ),
                   ),
                 ),
-              ),
 
-            // Danmaku Overlay Layer
-            DanmakuOverlay(controller: _danmakuController),
+              // Danmaku Overlay Layer
+              DanmakuOverlay(controller: _danmakuController),
 
-            // Buffering / Recovery indicator (locally listening to controller)
-            if (hasController && _playbackErrorMessage == null)
-              ValueListenableBuilder<VideoPlayerValue>(
-                valueListenable: _controller!,
-                builder: (context, val, _) {
-                  if (!val.isBuffering && !_isRecovering) {
-                    return const SizedBox.shrink();
-                  }
-                  return const Center(
-                    child: SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white70,
+              // Buffering / Recovery indicator (locally listening to controller)
+              if (hasController && _playbackErrorMessage == null)
+                ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: _controller!,
+                  builder: (context, val, _) {
+                    if (!val.isBuffering && !_isRecovering) {
+                      return const SizedBox.shrink();
+                    }
+                    return Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: OverlayColors.bubble,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white70,
+                                ),
+                              ),
+                            ),
+                            if (_isRecovering) ...[
+                              const SizedBox(height: 6),
+                              const Text(
+                                '正在恢复播放...',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
+                    );
+                  },
+                ),
+
+              // Playback Error / Stall Retry Overlay
+              if (_playbackErrorMessage != null)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: OverlayColors.bar,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white24, width: 0.8),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: Colors.white70,
+                          size: 28,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _playbackErrorMessage!,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _retryPlayback,
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('重试', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white38),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // 隐藏控制条时的底部极细进度线（仅在控制条隐藏且未拖拽时生效）
+              if (!_showControls && !_isScreenLocked && hasController)
+                ValueListenableBuilder<Duration?>(
+                  valueListenable: _dragSeekTarget,
+                  builder: (context, dragTarget, _) {
+                    if (dragTarget != null) return const SizedBox.shrink();
+                    return Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 2,
+                      child: ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: _controller!,
+                        builder: (context, val, _) {
+                          final dur = val.duration.inMilliseconds;
+                          if (dur <= 0) return const SizedBox.shrink();
+                          final pos = val.position.inMilliseconds;
+                          return LinearProgressIndicator(
+                            value: (pos / dur).clamp(0.0, 1.0),
+                            backgroundColor: Colors.white24,
+                            valueColor: AlwaysStoppedAnimation<Color>(accent),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+
+              // 控制层：隐藏完成后彻底卸载内部高频率监听，消除播放期空转重建
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                reverseDuration: Duration.zero,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: (_showControls && !_isScreenLocked)
+                    ? KeyedSubtree(
+                        key: const ValueKey('controls_visible'),
+                        child: _buildControls(context, hasController, isFull),
+                      )
+                    : const SizedBox.shrink(key: ValueKey('controls_hidden')),
+              ),
+
+              // 双击边缘快进/快退波纹动效
+              ValueListenableBuilder<_DoubleTapRippleData?>(
+                valueListenable: _doubleTapRippleNotifier,
+                builder: (context, ripple, _) {
+                  if (ripple == null) return const SizedBox.shrink();
+                  return Align(
+                    alignment: ripple.isForward
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: TweenAnimationBuilder<double>(
+                      key: ValueKey(ripple.token),
+                      tween: Tween(begin: 0.72, end: 1.0),
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, scale, child) {
+                        return Transform.scale(
+                          scale: scale,
+                          child: Container(
+                            width: 112,
+                            height: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                center: ripple.isForward
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                radius: 1.1,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.24),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  ripple.isForward
+                                      ? Icons.fast_forward_rounded
+                                      : Icons.fast_rewind_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  ripple.isForward
+                                      ? '+${ripple.totalSeconds}秒'
+                                      : '-${ripple.totalSeconds}秒',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
               ),
 
-            // Playback Error / Stall Retry Overlay
-            if (_playbackErrorMessage != null)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: OverlayColors.bar,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white24, width: 0.8),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        color: Colors.white70,
-                        size: 28,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _playbackErrorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _retryPlayback,
-                        icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('重试', style: TextStyle(fontSize: 12)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white38),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 4,
+              // 水平拖拽进度局部浮窗（ValueListenableBuilder 隔离重建）
+              if (hasController)
+                ValueListenableBuilder<Duration?>(
+                  valueListenable: _dragSeekTarget,
+                  builder: (context, targetPos, _) {
+                    if (targetPos == null) return const SizedBox.shrink();
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _dragSeekCancelled,
+                      builder: (context, cancelled, _) {
+                        final total = _controller!.value.duration;
+                        return Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20.0,
+                              vertical: 12.0,
+                            ),
+                            decoration: BoxDecoration(
+                              color: OverlayColors.bar,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: cancelled
+                                    ? Colors.redAccent.withValues(alpha: 0.7)
+                                    : Colors.white24,
+                                width: 0.8,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      cancelled
+                                          ? Icons.close_rounded
+                                          : (targetPos >= _dragStartPosition
+                                                ? Icons.fast_forward_rounded
+                                                : Icons.fast_rewind_rounded),
+                                      color: cancelled
+                                          ? Colors.redAccent
+                                          : accent,
+                                      size: 24,
+                                    ),
+                                    const SizedBox(width: 8.0),
+                                    Text(
+                                      cancelled
+                                          ? '松手取消跳转'
+                                          : (targetPos >= _dragStartPosition
+                                                ? '+${Formatters.formatDuration((targetPos - _dragStartPosition).inSeconds)}'
+                                                : '-${Formatters.formatDuration((_dragStartPosition - targetPos).inSeconds)}'),
+                                      style: TextStyle(
+                                        color: cancelled
+                                            ? Colors.redAccent
+                                            : accent,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6.0),
+                                Text(
+                                  '${Formatters.formatDuration(targetPos.inSeconds)} / ${Formatters.formatDuration(total.inSeconds)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8.0),
+                                SizedBox(
+                                  width: 140,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: total.inMilliseconds > 0
+                                          ? (targetPos.inMilliseconds /
+                                                    total.inMilliseconds)
+                                                .clamp(0.0, 1.0)
+                                          : 0.0,
+                                      backgroundColor: Colors.white24,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        cancelled ? Colors.redAccent : accent,
+                                      ),
+                                      minHeight: 3.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Ultra-slim bottom progress line (when controls are hidden, locally listening to controller)
-            if (!_showControls &&
-                !_isScreenLocked &&
-                hasController &&
-                !_isDraggingProgress)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 2,
-                child: ValueListenableBuilder<VideoPlayerValue>(
-                  valueListenable: _controller!,
-                  builder: (context, val, _) {
-                    final dur = val.duration.inMilliseconds;
-                    if (dur <= 0) return const SizedBox.shrink();
-                    final pos = val.position.inMilliseconds;
-                    return LinearProgressIndicator(
-                      value: (pos / dur).clamp(0.0, 1.0),
-                      backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation<Color>(accent),
+                        );
+                      },
                     );
                   },
                 ),
-              ),
 
-            // Controls Overlay (when controls are visible and not locked)
-            IgnorePointer(
-              ignoring: !_showControls || _isScreenLocked,
-              child: AnimatedOpacity(
-                opacity: (_showControls && !_isScreenLocked) ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: _buildControls(context, hasController, isFull),
-              ),
-            ),
-
-            // Horizontal Drag Seek HUD Overlay
-            if (_isDraggingProgress && hasController)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0,
-                    vertical: 12.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: OverlayColors.bar,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white24, width: 0.8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _targetSeekPosition >= _dragStartPosition
-                                ? Icons.fast_forward_rounded
-                                : Icons.fast_rewind_rounded,
-                            color: accent,
-                            size: 26,
-                          ),
-                          const SizedBox(width: 8.0),
-                          Text(
-                            _targetSeekPosition >= _dragStartPosition
-                                ? '+${Formatters.formatDuration((_targetSeekPosition - _dragStartPosition).inSeconds)}'
-                                : '-${Formatters.formatDuration((_dragStartPosition - _targetSeekPosition).inSeconds)}',
-                            style: TextStyle(
-                              color: accent,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8.0),
-                      Text(
-                        '${Formatters.formatDuration(_targetSeekPosition.inSeconds)} / ${Formatters.formatDuration(_controller!.value.duration.inSeconds)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8.0),
-                      SizedBox(
-                        width: 140,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value:
-                                _controller!.value.duration.inMilliseconds > 0
-                                ? (_targetSeekPosition.inMilliseconds /
-                                          _controller!
-                                              .value
-                                              .duration
-                                              .inMilliseconds)
-                                      .clamp(0.0, 1.0)
-                                : 0.0,
-                            backgroundColor: Colors.white24,
-                            valueColor: AlwaysStoppedAnimation<Color>(accent),
-                            minHeight: 3.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Double Tap Seek / PlayPause / Brightness & Volume HUD Overlay
-            if (_showHud)
-              Align(
-                alignment: _hudAlignment,
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.75, end: 1.0),
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutBack,
-                  builder: (context, scale, child) {
-                    return Transform.scale(
-                      scale: scale,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 20.0),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: _hudProgress != null ? 16.0 : 12.0,
-                          vertical: _hudProgress != null ? 12.0 : 8.0,
-                        ),
-                        decoration: BoxDecoration(
-                          color: OverlayColors.bar,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white24, width: 0.8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 14,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: _hudProgress == null
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_hudIcon != null) ...[
-                                    Icon(_hudIcon, color: accent, size: 18),
-                                    const SizedBox(width: 4.0),
-                                  ],
-                                  Text(
-                                    _hudText,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+              // 亮度 / 音量 / 播放暂停 / 全屏手势局部 HUD（零整树重建 + 平滑淡出）
+              ValueListenableBuilder<_PlayerHudData?>(
+                valueListenable: _hudNotifier,
+                builder: (context, hud, _) {
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 160),
+                    reverseDuration: Duration.zero,
+                    child: hud == null
+                        ? const SizedBox.shrink(key: ValueKey('hud_none'))
+                        : Align(
+                            key: ValueKey('${hud.alignment}_${hud.progress != null}'),
+                            alignment: hud.alignment,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 20.0,
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: hud.progress != null ? 16.0 : 12.0,
+                                vertical: hud.progress != null ? 12.0 : 8.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: OverlayColors.bar,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white24,
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
-                              )
-                            : Column(
+                              ),
+                              child: hud.progress == null
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (hud.icon != null) ...[
+                                          Icon(
+                                            hud.icon,
+                                            color: accent,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 4.0),
+                                        ],
+                                        Text(
+                                          hud.text,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (hud.icon != null) ...[
+                                          Icon(
+                                            hud.icon,
+                                            color: accent,
+                                            size: 28,
+                                          ),
+                                          const SizedBox(height: 8.0),
+                                        ],
+                                        SizedBox(
+                                          width: 64,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            child: LinearProgressIndicator(
+                                              value: hud.progress!.clamp(
+                                                0.0,
+                                                1.0,
+                                              ),
+                                              backgroundColor: Colors.white24,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    accent,
+                                                  ),
+                                              minHeight: 4,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4.0),
+                                        Text(
+                                          hud.text,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                  );
+                },
+              ),
+
+              // 长按倍速胶囊（SafeArea 避开刘海/灵动岛）
+              Positioned(
+                top: isFull ? 16 : 10,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  top: isFull,
+                  bottom: false,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: !_isLongPressSpeeding
+                        ? const SizedBox.shrink()
+                        : Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0,
+                                vertical: 4.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: OverlayColors.bubble,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.4),
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_hudIcon != null) ...[
-                                    Icon(_hudIcon, color: accent, size: 28),
-                                    const SizedBox(height: 8.0),
-                                  ],
-                                  SizedBox(
-                                    width: 64,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: LinearProgressIndicator(
-                                        value: _hudProgress!.clamp(0.0, 1.0),
-                                        backgroundColor: Colors.white24,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              accent,
-                                            ),
-                                        minHeight: 4,
-                                      ),
-                                    ),
+                                  Icon(
+                                    Icons.fast_forward_rounded,
+                                    color: accent,
+                                    size: 15,
                                   ),
-                                  const SizedBox(height: 4.0),
+                                  const SizedBox(width: 4.0),
                                   Text(
-                                    _hudText,
+                                    '${PlayerSettingsService.longPressSpeedValue.toStringAsFixed(1)}X 快进中',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
                                 ],
                               ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+
+              // 横屏锁屏按钮（移动端全屏专属，置于 SafeArea 内避开挖孔）
+              if (isFull && ResponsiveUtil.isMobile)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 200),
+                  left: (_isScreenLocked ? _showLockIcon : _showControls)
+                      ? 16
+                      : -68,
+                  top: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    right: false,
+                    top: false,
+                    bottom: false,
+                    child: Center(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _toggleLock,
+                          borderRadius: BorderRadius.circular(22),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _isScreenLocked
+                                  ? accent.withValues(alpha: 0.85)
+                                  : OverlayColors.circle,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color:
+                                    _isScreenLocked ? accent : Colors.white24,
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _isScreenLocked
+                                  ? Icons.lock_rounded
+                                  : Icons.lock_open_rounded,
+                              color: _isScreenLocked
+                                  ? Colors.white
+                                  : Colors.white70,
+                              size: 20,
+                            ),
+                          ),
+                        ),
                       ),
+                    ),
+                  ),
+                ),
+
+              // Subtitle Overlay
+              if (widget.isSubtitleEnabled &&
+                  widget.subtitleData != null &&
+                  hasController)
+                ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: _controller!,
+                  builder: (context, val, _) {
+                    return SubtitleOverlay(
+                      subtitleData: widget.subtitleData!,
+                      currentPosition: val.position,
+                      isFullScreen: isFull,
+                      bottomOffset: _showControls ? 80.0 : 24.0,
                     );
                   },
                 ),
-              ),
 
-            // Long Press 2.0X Speed HUD Overlay
-            if (_isLongPressSpeeding)
-              Positioned(
-                top: isFull ? 24 : 12,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 4.0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: OverlayColors.bubble,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: accent.withValues(alpha: 0.4),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.fast_forward_rounded,
-                          color: accent,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 4.0),
-                        Text(
-                          '${PlayerSettingsService.longPressSpeedValue.toStringAsFixed(1)}X',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              // 浮窗/抽屉控制面板（全屏贴合右侧抽屉滑出，竖屏居中偏右平滑浮现）
+              _buildActiveFloatingPanel(isFull),
 
-            // Screen Lock Button (in landscape / fullscreen mode)
-            if (isFull)
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 200),
-                left: (_isScreenLocked ? _showLockIcon : _showControls)
-                    ? 24
-                    : -60,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _toggleLock,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: _isScreenLocked
-                              ? accent.withValues(alpha: 0.85)
-                              : OverlayColors.circle,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _isScreenLocked ? accent : Colors.white24,
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          _isScreenLocked
-                              ? Icons.lock_rounded
-                              : Icons.lock_open_rounded,
-                          color: _isScreenLocked
-                              ? Colors.white
-                              : Colors.white70,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Subtitle Overlay (SubtitleOverlay 自带 Positioned，直接挂载于 Stack 下)
-            if (widget.isSubtitleEnabled &&
-                widget.subtitleData != null &&
-                hasController)
-              ValueListenableBuilder<VideoPlayerValue>(
-                valueListenable: _controller!,
-                builder: (context, val, _) {
-                  return SubtitleOverlay(
-                    subtitleData: widget.subtitleData!,
-                    currentPosition: val.position,
-                    isFullScreen: isFull,
-                    bottomOffset: _showControls ? 80.0 : 24.0,
-                  );
-                },
-              ),
-
-            // In-Player Floating Quality Selector Panel (直接在上方弹出半透明框)
-            if (_showQualityPanel && !_isScreenLocked)
-              Positioned(
-                right: isFull ? 24 : 8,
-                bottom: 40,
-                child: _buildFloatingQualityPanel(isFull),
-              ),
-
-            // In-Player Floating Speed Selector Panel
-            if (_showSpeedPanel && !_isScreenLocked)
-              Positioned(
-                right: isFull ? (widget.chapters.isNotEmpty ? 100 : 66) : 48,
-                bottom: 40,
-                child: _buildFloatingSpeedPanel(isFull),
-              ),
-
-            // In-Player Floating Chapter Selector Panel
-            if (_showChapterPanel &&
-                !_isScreenLocked &&
-                widget.chapters.isNotEmpty)
-              Positioned(
-                right: isFull ? 24 : 8,
-                bottom: 40,
-                child: _buildFloatingChapterPanel(isFull),
-              ),
-
-            // In-Player Floating Subtitle Selector Panel
-            if (_showSubtitlePanel &&
-                !_isScreenLocked &&
-                widget.subtitleTracks.isNotEmpty)
-              Positioned(
-                right: isFull ? (widget.chapters.isNotEmpty ? 140 : 106) : 76,
-                bottom: 40,
-                child: _buildFloatingSubtitlePanel(isFull),
-              ),
-          ],
+              // 自动连播下一集倒计时浮窗（由详情页传入，全屏/竖屏通用）
+              if (widget.autoNextOverlay != null) widget.autoNextOverlay!,
+            ],
+          ),
         ),
       ),
     );
 
+    final Widget result;
     if (isFull) {
-      return playerBody;
+      result = playerBody;
+    } else if (isVerticalVideo && widget.portraitCollapseListenable != null) {
+      final baseRatio = _controller!.value.aspectRatio.clamp(0.72, 1.0);
+      result = ValueListenableBuilder<double>(
+        valueListenable: widget.portraitCollapseListenable!,
+        builder: (context, collapse, child) {
+          final t = collapse.clamp(0.0, 1.0);
+          final ratio = baseRatio + ((16 / 9) - baseRatio) * t;
+          return AspectRatio(aspectRatio: ratio, child: child);
+        },
+        child: playerBody,
+      );
+    } else {
+      final double effectiveRatio = isVerticalVideo
+          ? _controller!.value.aspectRatio.clamp(0.72, 1.0)
+          : (hasController && _controller!.value.aspectRatio > 0
+                ? _controller!.value.aspectRatio.clamp(1.33, 1.85)
+                : 16 / 9);
+      result = AspectRatio(aspectRatio: effectiveRatio, child: playerBody);
     }
 
-    final double effectiveRatio = isVerticalVideo
-        ? _controller!.value.aspectRatio.clamp(0.72, 1.0)
-        : (hasController && _controller!.value.aspectRatio > 0
-              ? _controller!.value.aspectRatio.clamp(1.33, 1.85)
-              : 16 / 9);
+    return CallbackShortcuts(
+      bindings: _buildKeyboardShortcuts(),
+      child: Focus(
+        focusNode: _playerFocusNode,
+        autofocus: ResponsiveUtil.isDesktop || kIsWeb,
+        child: result,
+      ),
+    );
+  }
 
-    return AspectRatio(aspectRatio: effectiveRatio, child: playerBody);
+  Widget _buildActiveFloatingPanel(bool isFull) {
+    Widget? panel;
+    String keyName = 'none';
+    if (!_isScreenLocked) {
+      if (_showQualityPanel) {
+        keyName = 'quality';
+        panel = _buildFloatingQualityPanel(isFull);
+      } else if (_showSpeedPanel) {
+        keyName = 'speed';
+        panel = _buildFloatingSpeedPanel(isFull);
+      } else if (_showChapterPanel && widget.chapters.isNotEmpty) {
+        keyName = 'chapter';
+        panel = _buildFloatingChapterPanel(isFull);
+      } else if (_showSubtitlePanel && widget.subtitleTracks.isNotEmpty) {
+        keyName = 'subtitle';
+        panel = _buildFloatingSubtitlePanel(isFull);
+      }
+    }
+
+    if (isFull) {
+      return Positioned(
+        top: 12,
+        bottom: 52,
+        right: 12,
+        child: SafeArea(
+          left: false,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            reverseDuration: Duration.zero,
+            transitionBuilder: (child, animation) {
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.18, 0),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child: panel == null
+                ? const SizedBox.shrink(key: ValueKey('drawer_empty'))
+                : KeyedSubtree(key: ValueKey('drawer_$keyName'), child: panel),
+          ),
+        ),
+      );
+    }
+
+    return Positioned(
+      right: 10,
+      bottom: 48,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 160),
+        reverseDuration: Duration.zero,
+        transitionBuilder: (child, animation) {
+          return ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
+            alignment: Alignment.bottomRight,
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
+        child: panel == null
+            ? const SizedBox.shrink(key: ValueKey('pop_empty'))
+            : KeyedSubtree(key: ValueKey('pop_$keyName'), child: panel),
+      ),
+    );
   }
 
   List<({int quality, String description, bool locked})>
@@ -2673,6 +3148,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       isFull: isFull,
       onSelectQuality: (quality) {
         setState(() => _showQualityPanel = false);
+        _startHideTimer();
         widget.onQualityChanged?.call(quality);
       },
     );
@@ -2690,6 +3166,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
         });
         unawaited(_applyToPlayers((c) => c.setPlaybackSpeed(s)));
         _danmakuController.setPlaybackSpeed(s);
+        _startHideTimer();
       },
     );
   }
@@ -2699,6 +3176,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
     return PlayerChapterPanel(
       chapters: widget.chapters,
       currentSec: currentSec,
+      positionListenable: _controller,
       accent: _getPlayerAccent(context),
       isFull: isFull,
       onSelectChapter: (ch) {
@@ -2719,6 +3197,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
       isFull: isFull,
       onSelectTrack: (track) {
         setState(() => _showSubtitlePanel = false);
+        _startHideTimer();
         widget.onSubtitleTrackChanged?.call(track);
       },
     );
@@ -2738,7 +3217,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
             Colors.transparent,
             Colors.black87,
           ],
-          stops: [0.0, 0.25, 0.75, 1.0],
+          stops: [0.0, 0.25, 0.72, 1.0],
         ),
       ),
       child: SafeArea(
@@ -2756,14 +3235,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                 children: [
                   IconButton(
                     visualDensity: VisualDensity.compact,
-                    tooltip: '退出全屏',
+                    tooltip: isFull ? '退出全屏' : '返回',
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       color: Colors.white,
                       size: 16,
                     ),
                     onPressed: () {
-                      if (_isFullScreen || isFull) {
+                      if (isFull) {
                         exitFullScreen();
                       } else {
                         Navigator.of(context).maybePop();
@@ -2836,9 +3315,26 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                       },
                     ),
                     tooltip: '睡眠定时',
-                    onPressed: () => SleepTimerBottomSheet.show(context),
+                    onPressed: _openSleepTimerSheet,
                   ),
                   if (isFull)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        _videoFit == BoxFit.cover
+                            ? Icons.aspect_ratio_rounded
+                            : Icons.fit_screen_rounded,
+                        color: _videoFit == BoxFit.cover ? accent : Colors.white,
+                        size: 17,
+                      ),
+                      tooltip: _videoFit == BoxFit.cover ? '适应画面' : '铺满屏幕',
+                      onPressed: () => _setVideoFit(
+                        _videoFit == BoxFit.cover
+                            ? BoxFit.contain
+                            : BoxFit.cover,
+                      ),
+                    ),
+                  if (isFull && ResponsiveUtil.isMobile)
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       icon: const Icon(
@@ -2875,7 +3371,7 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                     return const SizedBox.shrink();
                   }
                   return IconButton(
-                    iconSize: 44,
+                    iconSize: 46,
                     tooltip: '播放/暂停',
                     icon: Icon(Icons.play_circle_fill_rounded, color: accent),
                     onPressed: _togglePlayPause,
@@ -2885,14 +3381,13 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
             else
               const SizedBox.shrink(),
 
-            // Ultra-Compact Single-Row Bottom Controls Bar
+            // 底部控制栏（播放/下一集 + 时间 + 自定义气泡进度条 + 字幕/弹幕/章节/倍速/清晰度/全屏）
             Container(
-              height: 40,
+              height: 42,
               padding: const EdgeInsets.symmetric(horizontal: 4.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 1. Play / Pause Button
                   if (hasController)
                     ValueListenableBuilder<VideoPlayerValue>(
                       valueListenable: _controller!,
@@ -2925,97 +3420,81 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                       onPressed: _togglePlayPause,
                     ),
 
-                  // 2 & 3. Compact Time Display & Slider (listening to position)
+                  if (widget.onNextEpisode != null)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      tooltip: '下一集',
+                      icon: const Icon(
+                        Icons.skip_next_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        _startHideTimer();
+                        widget.onNextEpisode?.call();
+                      },
+                    ),
+
                   if (hasController)
                     Expanded(
-                      child: ValueListenableBuilder<double?>(
-                        valueListenable: _sliderDragPosition,
-                        builder: (context, dragVal, _) {
-                          return ValueListenableBuilder<VideoPlayerValue>(
-                            valueListenable: _controller!,
-                            builder: (context, val, _) {
-                              final duration = val.duration;
-                              final currentPos = dragVal != null
-                                  ? Duration(milliseconds: dragVal.toInt())
-                                  : val.position;
-                              final maxMs = duration.inMilliseconds > 0
-                                  ? duration.inMilliseconds.toDouble()
-                                  : 1.0;
-                              final curMs =
-                                  (dragVal ??
-                                          val.position.inMilliseconds
-                                              .toDouble())
-                                      .clamp(0.0, maxMs);
-
-                              return Row(
-                                children: [
-                                  Text(
-                                    '${Formatters.formatDuration(currentPos.inSeconds)} / ${Formatters.formatDuration(duration.inSeconds)}',
+                      child: Row(
+                        children: [
+                          ValueListenableBuilder<double?>(
+                            valueListenable: _sliderDragPosition,
+                            builder: (context, dragVal, _) {
+                              return ValueListenableBuilder<VideoPlayerValue>(
+                                valueListenable: _controller!,
+                                builder: (context, val, _) {
+                                  final currentPos = dragVal != null
+                                      ? Duration(milliseconds: dragVal.toInt())
+                                      : val.position;
+                                  return Text(
+                                    '${Formatters.formatDuration(currentPos.inSeconds)} / ${Formatters.formatDuration(val.duration.inSeconds)}',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: -0.2,
                                     ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        trackHeight: 2.0,
-                                        thumbShape: const RoundSliderThumbShape(
-                                          enabledThumbRadius: 4.5,
-                                        ),
-                                        overlayShape:
-                                            const RoundSliderOverlayShape(
-                                              overlayRadius: 8.0,
-                                            ),
-                                        activeTrackColor: accent,
-                                        inactiveTrackColor: Colors.white24,
-                                        thumbColor: accent,
-                                      ),
-                                      child: Slider(
-                                        value: curMs,
-                                        min: 0.0,
-                                        max: maxMs,
-                                        onChangeStart: (v) {
-                                          _hideTimer?.cancel();
-                                          _isDraggingProgress = true;
-                                          _sliderDragPosition.value = v;
-                                          HapticFeedback.selectionClick();
-                                        },
-                                        onChanged: (v) {
-                                          _sliderDragPosition.value = v;
-                                        },
-                                        onChangeEnd: (v) {
-                                          final ms = v.toInt();
-                                          _isDraggingProgress = false;
-                                          unawaited(
-                                            _seekBothPlayers(
-                                              Duration(milliseconds: ms),
-                                            ),
-                                          );
-                                          _danmakuController.updatePosition(
-                                            ms / 1000.0,
-                                          );
-                                          _sliderDragPosition.value = null;
-                                          _startHideTimer();
-                                          HapticFeedback.lightImpact();
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                  );
+                                },
                               );
                             },
-                          );
-                        },
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: PlayerProgressBar(
+                              controller: _controller!,
+                              dragPositionMs: _sliderDragPosition,
+                              chapters: widget.chapters,
+                              accent: accent,
+                              onSeekStart: (v) {
+                                _hideTimer?.cancel();
+                                _isDraggingProgress = true;
+                                _sliderDragPosition.value = v;
+                              },
+                              onSeekUpdate: (v) {
+                                _sliderDragPosition.value = v;
+                              },
+                              onSeekEnd: (v) {
+                                final ms = v.toInt();
+                                _isDraggingProgress = false;
+                                unawaited(
+                                  _seekBothPlayers(Duration(milliseconds: ms)),
+                                );
+                                _danmakuController.updatePosition(ms / 1000.0);
+                                _sliderDragPosition.value = null;
+                                _startHideTimer();
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   else
                     const Expanded(child: SizedBox.shrink()),
 
-                  // 3.5 CC Subtitle Button
                   if (widget.subtitleTracks.isNotEmpty ||
                       widget.onSubtitleTap != null)
                     IconButton(
@@ -3042,7 +3521,6 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                       },
                     ),
 
-                  // 4. Danmaku Toggle Button
                   ListenableBuilder(
                     listenable: _danmakuController,
                     builder: (ctx, _) {
@@ -3064,15 +3542,14 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                     },
                   ),
 
-                  // 4.5 Chapters Button (In-player floating panel)
                   if (widget.chapters.isNotEmpty) ...[
                     InkWell(
                       onTap: _toggleChapterPanel,
                       borderRadius: BorderRadius.circular(4),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 3,
+                          horizontal: 5,
+                          vertical: 4,
                         ),
                         child: Text(
                           '章节',
@@ -3084,17 +3561,16 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                   ],
 
-                  // 5. Speed Button (In-player floating panel)
                   InkWell(
                     onTap: _toggleSpeedPanel,
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 3,
+                        horizontal: 5,
+                        vertical: 4,
                       ),
                       child: Text(
                         '${_playbackSpeed}x',
@@ -3107,16 +3583,15 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                     ),
                   ),
 
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
 
-                  // 6. Quality Button (In-player floating panel)
                   InkWell(
                     onTap: _toggleQualityPanel,
                     borderRadius: BorderRadius.circular(4),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 3,
+                        horizontal: 5,
+                        vertical: 4,
                       ),
                       child: Text(
                         _getQualityLabel(
@@ -3133,7 +3608,6 @@ class BiliVideoPlayerState extends State<BiliVideoPlayer>
                     ),
                   ),
 
-                  // 7. Fullscreen Button
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(horizontal: 2),

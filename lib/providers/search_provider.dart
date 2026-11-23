@@ -89,6 +89,14 @@ class SearchProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 删除单条历史搜索记录
+  Future<void> removeHistoryItem(String kw) async {
+    if (!_history.remove(kw)) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('search_history', _history);
+    notifyListeners();
+  }
+
   Future<void> loadHotSearches() async {
     try {
       final list = await _searchApiService.getHotSearch();
@@ -212,16 +220,18 @@ class SearchProvider extends ChangeNotifier {
   }
 
   Future<void> setCategory(String cat) async {
-    if (_currentCategory == cat) return;
-    _currentCategory = cat;
+    // 防御性归一化历史误传值 'bili_user' -> 'user'
+    final normalized = cat == 'bili_user' ? 'user' : cat;
+    if (_currentCategory == normalized) return;
+    _currentCategory = normalized;
     notifyListeners();
 
     if (_currentKeyword.isNotEmpty) {
-      if (cat == 'video' && _searchResults.isEmpty) {
+      if (normalized == 'video' && _searchResults.isEmpty) {
         await search(_currentKeyword, category: 'video');
-      } else if (cat == 'user' && _searchUsers.isEmpty) {
+      } else if (normalized == 'user' && _searchUsers.isEmpty) {
         await search(_currentKeyword, category: 'user');
-      } else if (cat == 'article' && _searchArticles.isEmpty) {
+      } else if (normalized == 'article' && _searchArticles.isEmpty) {
         await search(_currentKeyword, category: 'article');
       }
     }

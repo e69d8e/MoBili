@@ -77,24 +77,31 @@ class AppColors {
   factory AppColors.of(BuildContext context) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
+    final isAmoled = dark && theme.scaffoldBackgroundColor == AppTheme.pureBlack;
     return AppColors(
       bg: theme.scaffoldBackgroundColor,
       card: theme.colorScheme.surface,
-      fill: dark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-      fillHighlight:
-          dark ? AppTheme.fillHighlightDark : AppTheme.fillHighlightLight,
-      divider: theme.dividerTheme.color ?? AppTheme.dividerLight,
+      fill: dark
+          ? (isAmoled ? AppTheme.surfaceDarkAmoled : AppTheme.surfaceDark)
+          : AppTheme.surfaceLight,
+      fillHighlight: dark
+          ? (isAmoled
+              ? AppTheme.fillHighlightDarkAmoled
+              : AppTheme.fillHighlightDark)
+          : AppTheme.fillHighlightLight,
+      divider: theme.dividerTheme.color ??
+          (dark ? AppTheme.dividerDark : AppTheme.dividerLight),
       textMain: theme.colorScheme.onSurface,
       textSub: dark ? AppTheme.textSubDark : AppTheme.textSubLight,
       textHint: dark ? AppTheme.textHintDark : AppTheme.textHintLight,
       primary: theme.colorScheme.primary,
       onPrimary: theme.colorScheme.onPrimary,
       error: theme.colorScheme.error,
-      warning: AppTheme.warning,
+      warning: dark ? AppTheme.warning : AppTheme.warningLight,
       danger: dark ? AppTheme.dangerDark : AppTheme.dangerLight,
       success: dark ? AppTheme.successDark : AppTheme.successLight,
-      rankFirst: dark ? const Color(0xFFE57373) : const Color(0xFFC0483E),
-      rankSecond: dark ? const Color(0xFFFFB74D) : const Color(0xFFE67E22),
+      rankFirst: dark ? const Color(0xFFE57373) : const Color(0xFFB83B32),
+      rankSecond: dark ? const Color(0xFFFFB74D) : const Color(0xFF8F5200),
       rankThird: dark ? const Color(0xFF64B5F6) : const Color(0xFF2A6F97),
     );
   }

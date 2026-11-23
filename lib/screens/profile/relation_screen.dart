@@ -231,49 +231,63 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
     return Column(
       children: [
         // Search Bar for Followings / Followers
-        Container(
-          height: 36,
-          margin: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 4.0),
-          decoration: BoxDecoration(
-            color: context.colors.fill,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          alignment: Alignment.center,
-          child: TextField(
-            controller: _searchController,
-            textAlignVertical: TextAlignVertical.center,
-            style: const TextStyle(fontSize: 13),
-            decoration: InputDecoration(
-              isDense: true,
-              isCollapsed: true,
-              hintText: widget.isFollowings ? '搜索已关注的UP主...' : '搜索粉丝...',
-              hintStyle: TextStyle(
-                color: context.colors.textHint,
-                fontSize: 12,
-              ),
-              prefixIcon: Icon(
-                Icons.search_rounded,
-                size: 17,
-                color: context.colors.textHint,
-              ),
-              prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34, maxWidth: 34, maxHeight: 34),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.clear_rounded, size: 15),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    )
-                  : null,
-              suffixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34, maxWidth: 34, maxHeight: 34),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 4.0),
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            decoration: BoxDecoration(
+              color: context.colors.fill,
+              borderRadius: BorderRadius.circular(20),
             ),
-            onChanged: (val) {
-              setState(() => _searchQuery = val.trim());
-            },
+            alignment: Alignment.center,
+            child: TextField(
+              controller: _searchController,
+              textAlignVertical: TextAlignVertical.center,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                isCollapsed: true,
+                hintText: widget.isFollowings ? '搜索已关注的UP主...' : '搜索粉丝...',
+                hintStyle: TextStyle(
+                  color: context.colors.textHint,
+                  fontSize: 12,
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 17,
+                  color: context.colors.textHint,
+                ),
+                prefixIconConstraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        padding: EdgeInsets.zero,
+                        tooltip: '清除搜索',
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        icon: const Icon(Icons.clear_rounded, size: 16),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                suffixIconConstraints: const BoxConstraints(
+                  minWidth: 44,
+                  minHeight: 44,
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (val) {
+                setState(() => _searchQuery = val.trim());
+              },
+            ),
           ),
         ),
 
@@ -300,6 +314,7 @@ class _RelationListTabState extends State<_RelationListTab> with AutomaticKeepAl
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => _loadData(refresh: true),
                     child: ListView.separated(
+                      primary: false,
                       scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
                       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                       itemCount: displayedUsers.length + (_isLoadingMore ? 1 : 0),

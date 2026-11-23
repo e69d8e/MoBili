@@ -379,6 +379,188 @@ Map<String, dynamic> _normalizeModules(dynamic rawModules) {
   return <String, dynamic>{};
 }
 
+/// 从链接中提取 opus id（形如 //www.bilibili.com/opus/123456）
+String extractOpusIdFromUrl(String? url) {
+  if (url == null || url.isEmpty) return '';
+  final match = RegExp(r'/opus/(\d+)').firstMatch(url);
+  return match?.group(1) ?? '';
+}
+
+/// 从链接中提取专栏 cv id（形如 //www.bilibili.com/read/cv123456）
+int extractCvIdFromUrl(String? url) {
+  if (url == null || url.isEmpty) return 0;
+  final match = RegExp(r'/read/cv(\d+)').firstMatch(url);
+  if (match == null) return 0;
+  return int.tryParse(match.group(1)!) ?? 0;
+}
+
+String _normalizeUrlScheme(String raw) {
+  var url = raw.trim();
+  if (url.startsWith('//')) {
+    url = 'https:$url';
+  } else if (url.startsWith('http://')) {
+    url = url.replaceFirst('http://', 'https://');
+  }
+  return url;
+}
+
+String _decodeHtmlEntities(String input) {
+  var out = input
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&apos;', "'");
+  out = out.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) {
+    final code = int.tryParse(m.group(1)!, radix: 16);
+    return code != null ? String.fromCharCode(code) : m.group(0)!;
+  });
+  out = out.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
+    final code = int.tryParse(m.group(1)!);
+    return code != null ? String.fromCharCode(code) : m.group(0)!;
+  });
+  return out;
+}
+
+String _stripHtmlTags(String raw) {
+  final withBreaks = raw.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+  final stripped = withBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
+  return _decodeHtmlEntities(stripped)
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+}
+
+String? _extractHtmlAttr(String tag, String attr) {
+  final match = RegExp(
+    '(?:^|\\s)$attr\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))',
+    caseSensitive: false,
+  ).firstMatch(tag);
+  return match?.group(1) ?? match?.group(2) ?? match?.group(3);
+}
+
+DynamicPicture? _pictureFromImgTag(String imgTag) {
+  final srcRaw =
+      _extractHtmlAttr(imgTag, 'data-src') ?? _extractHtmlAttr(imgTag, 'src');
+  if (srcRaw == null || srcRaw.trim().isEmpty) return null;
+  final url = _normalizeUrlScheme(srcRaw);
+  if (url.isEmpty || url.startsWith('data:')) return null;
+  final w = double.tryParse(_extractHtmlAttr(imgTag, 'width') ?? '');
+  final h = double.tryParse(_extractHtmlAttr(imgTag, 'height') ?? '');
+  return DynamicPicture(url: url, width: w, height: h);
+}
+
+void _appendMixedHtmlSegment(
+  String htmlSegment,
+  List<DynamicParagraph> paragraphs,
+  List<DynamicPicture> pictures, {
+  int textType = 1,
+}) {
+  final imgPattern = RegExp(r'<img\b[^>]*>', caseSensitive: false);
+  var cursor = 0;
+  for (final match in imgPattern.allMatches(htmlSegment)) {
+    final before = _stripHtmlTags(htmlSegment.substring(cursor, match.start));
+    if (before.isNotEmpty) {
+      paragraphs.add(DynamicParagraph(type: textType, text: before));
+    }
+    final pic = _pictureFromImgTag(match.group(0)!);
+    if (pic != null) {
+      paragraphs.add(DynamicParagraph(type: 2, picture: pic));
+      if (!pictures.any((e) => e.url == pic.url)) pictures.add(pic);
+    }
+    cursor = match.end;
+  }
+  final tail = _stripHtmlTags(htmlSegment.substring(cursor));
+  if (tail.isNotEmpty) {
+    paragraphs.add(DynamicParagraph(type: textType, text: tail));
+  }
+}
+
+/// 将旧版 B 站专栏 `/x/article/view` 返回的 HTML 正文解析成 [DynamicParagraph] 列表，
+/// 并同步去重提取正文图片写入 [pictures]。
+List<DynamicParagraph> parseArticleHtmlParagraphs(
+  String html,
+  List<DynamicPicture> pictures,
+) {
+  final paragraphs = <DynamicParagraph>[];
+  if (html.trim().isEmpty) return paragraphs;
+
+  final blockPattern = RegExp(
+    r'<(h[1-6]|blockquote|pre|ul|ol|figure|p|div)\b[^>]*>([\s\S]*?)</\1>|<hr\b[^>]*\/?>|<img\b[^>]*\/?>',
+    caseSensitive: false,
+  );
+
+  var cursor = 0;
+  for (final match in blockPattern.allMatches(html)) {
+    if (match.start > cursor) {
+      _appendMixedHtmlSegment(
+        html.substring(cursor, match.start),
+        paragraphs,
+        pictures,
+      );
+    }
+    cursor = match.end;
+
+    final fullTag = match.group(0)!;
+    final tagName = match.group(1)?.toLowerCase();
+    final inner = match.group(2) ?? '';
+
+    if (tagName == null) {
+      if (fullTag.toLowerCase().startsWith('<hr')) {
+        paragraphs.add(const DynamicParagraph(type: 3));
+      } else {
+        final pic = _pictureFromImgTag(fullTag);
+        if (pic != null) {
+          paragraphs.add(DynamicParagraph(type: 2, picture: pic));
+          if (!pictures.any((e) => e.url == pic.url)) pictures.add(pic);
+        }
+      }
+      continue;
+    }
+
+    if (tagName.startsWith('h')) {
+      final heading = _stripHtmlTags(inner);
+      if (heading.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 4, text: heading));
+      }
+    } else if (tagName == 'blockquote') {
+      final quote = _stripHtmlTags(inner);
+      if (quote.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 5, text: quote));
+      }
+    } else if (tagName == 'pre') {
+      final code = _stripHtmlTags(inner);
+      if (code.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 6, text: code));
+      }
+    } else if (tagName == 'ul' || tagName == 'ol') {
+      final ordered = tagName == 'ol';
+      final liPattern = RegExp(r'<li\b[^>]*>([\s\S]*?)</li>', caseSensitive: false);
+      final lines = <String>[];
+      var idx = 0;
+      for (final li in liPattern.allMatches(inner)) {
+        idx++;
+        final itemText = _stripHtmlTags(li.group(1) ?? '');
+        if (itemText.isEmpty) continue;
+        lines.add('${ordered ? '$idx. ' : '• '}$itemText');
+      }
+      if (lines.isNotEmpty) {
+        paragraphs.add(DynamicParagraph(type: 1, text: lines.join('\n')));
+      }
+    } else {
+      // figure / p / div 可能混合文本与 <img>，按文档顺序拆段保留图文穿插
+      _appendMixedHtmlSegment(inner, paragraphs, pictures);
+    }
+  }
+
+  if (cursor < html.length) {
+    _appendMixedHtmlSegment(html.substring(cursor), paragraphs, pictures);
+  }
+
+  return paragraphs;
+}
+
 /// 读取模块里的标题（opus 详情使用 MODULE_TYPE_TITLE，列表接口可能放在 module_top）
 String _moduleTitleText(Map<String, dynamic> modules) {
   final moduleTitle = modules['module_title'];
@@ -623,7 +805,7 @@ class DynamicItem {
       );
     }
     final json = Map<String, dynamic>.from(rawJson);
-    final idStr = json['id_str']?.toString() ?? json['id']?.toString() ?? '';
+    var idStr = json['id_str']?.toString() ?? json['id']?.toString() ?? '';
     final typeStr = json['type']?.toString() ?? '';
 
     final basic = json['basic'] is Map
@@ -641,6 +823,7 @@ class DynamicItem {
 
     String descText = '';
     String titleStr = '';
+    int articleCvId = extractCvIdFromUrl(basic['jump_url']?.toString());
     DynamicVideo? videoObj;
     final picturesList = <DynamicPicture>[];
     final parsedParagraphs = <DynamicParagraph>[];
@@ -690,9 +873,34 @@ class DynamicItem {
         opus = Map<String, dynamic>.from(major['opus'] as Map);
       }
 
-      // Article Covers
+      // Article (旧版专栏动态卡或转发原专栏)
       if (majorType == 'MAJOR_TYPE_ARTICLE' && major['article'] is Map) {
         final article = major['article'] as Map<String, dynamic>;
+        final rawArticleId = article['id'];
+        final parsedCv = rawArticleId is int
+            ? rawArticleId
+            : (int.tryParse(rawArticleId?.toString() ?? '') ??
+                extractCvIdFromUrl(article['jump_url']?.toString()));
+        if (parsedCv > 0) articleCvId = parsedCv;
+
+        final articleTitle = article['title']?.toString().trim() ?? '';
+        final articleDesc =
+            _extractRichText(article['desc'] ?? article['summary']).trim();
+        if (titleStr.isEmpty && articleTitle.isNotEmpty) {
+          titleStr = articleTitle;
+        }
+        if (articleTitle.isNotEmpty) {
+          if (descText.isNotEmpty && !descText.contains(articleTitle)) {
+            descText = '$articleTitle\n\n$descText';
+          } else if (descText.isEmpty) {
+            descText = articleDesc.isNotEmpty
+                ? '$articleTitle\n\n$articleDesc'
+                : articleTitle;
+          }
+        } else if (descText.isEmpty && articleDesc.isNotEmpty) {
+          descText = articleDesc;
+        }
+
         final covers = article['covers'] ?? article['pics'] ?? article['images'];
         if (covers is List) {
           for (final c in covers) {
@@ -710,9 +918,19 @@ class DynamicItem {
       }
     }
 
+    if (idStr.isEmpty) {
+      idStr = extractOpusIdFromUrl(basic['jump_url']?.toString());
+      if (idStr.isEmpty) {
+        idStr = extractOpusIdFromUrl(opus?['jump_url']?.toString());
+      }
+      if (idStr.isEmpty && articleCvId > 0) {
+        idStr = 'cv$articleCvId';
+      }
+    }
+
     if (opus != null) {
       final summaryText = _extractRichText(opus['summary']);
-      titleStr = opus['title']?.toString() ?? '';
+      if (titleStr.isEmpty) titleStr = opus['title']?.toString() ?? '';
       if (titleStr.isEmpty) titleStr = json['title']?.toString() ?? '';
       if (titleStr.isEmpty) titleStr = _moduleTitleText(modules);
 
@@ -746,7 +964,7 @@ class DynamicItem {
         }
       }
     } else {
-      titleStr = json['title']?.toString() ?? '';
+      if (titleStr.isEmpty) titleStr = json['title']?.toString() ?? '';
       if (titleStr.isEmpty) titleStr = _moduleTitleText(modules);
     }
 
@@ -798,6 +1016,9 @@ class DynamicItem {
       if (videoObj != null && videoObj.aid > 0) {
         cId = videoObj.aid;
         cType = 1;
+      } else if (articleCvId > 0) {
+        cId = articleCvId;
+        cType = 12;
       } else {
         cId = int.tryParse(idStr) ?? 0;
         cType = picturesList.isNotEmpty ? 11 : 17;
@@ -850,6 +1071,110 @@ class DynamicItem {
     );
   }
 
+  /// 解析 `/x/article/viewinfo` 或 `/x/article/view` 返回的专栏详情 JSON。
+  factory DynamicItem.fromArticleViewJson(
+    Map<String, dynamic> data, {
+    int? fallbackCvId,
+  }) {
+    final rawCv = data['id'];
+    final cvId = rawCv is int
+        ? rawCv
+        : (int.tryParse(rawCv?.toString() ?? '') ?? fallbackCvId ?? 0);
+    final rawDynId = data['dyn_id_str']?.toString().trim() ?? '';
+    final dynId = (rawDynId.isNotEmpty && rawDynId != '0') ? rawDynId : '';
+    final title = data['title']?.toString().trim() ?? '';
+
+    final stats = data['stats'] is Map
+        ? Map<String, dynamic>.from(data['stats'] as Map)
+        : <String, dynamic>{};
+    int statInt(String key) {
+      final v = stats[key];
+      return v is int ? v : int.tryParse(v?.toString() ?? '') ?? 0;
+    }
+
+    final articleStat = DynamicStat(
+      commentCount: statInt('reply'),
+      forwardCount: statInt('share'),
+      likeCount: statInt('like'),
+      isLiked: data['like'] == 1 || data['like'] == true,
+    );
+
+    final midVal = data['mid'];
+    final authorMid =
+        midVal is int ? midVal : int.tryParse(midVal?.toString() ?? '') ?? 0;
+    final author = DynamicAuthor(
+      mid: authorMid,
+      name: data['author_name']?.toString() ?? '',
+      face: '',
+      pubTime: '',
+      pubAction: '投稿了专栏',
+    );
+
+    final pictures = <DynamicPicture>[];
+    void addPicUrl(String raw) {
+      final url = _normalizeUrlScheme(raw);
+      if (url.isEmpty) return;
+      if (!pictures.any((e) => e.url == url)) {
+        pictures.add(DynamicPicture(url: url));
+      }
+    }
+
+    final bannerUrl = _normalizeUrlScheme(data['banner_url']?.toString() ?? '');
+    if (bannerUrl.isNotEmpty) {
+      addPicUrl(bannerUrl);
+    }
+
+    final htmlContent = data['content']?.toString() ?? '';
+    final paragraphs = parseArticleHtmlParagraphs(htmlContent, pictures);
+
+    final originImgs = data['origin_image_urls'];
+    if (originImgs is List) {
+      for (final u in originImgs) {
+        addPicUrl(u.toString());
+      }
+    }
+    final coverImgs = data['image_urls'];
+    if (coverImgs is List) {
+      for (final u in coverImgs) {
+        addPicUrl(u.toString());
+      }
+    }
+
+    if (bannerUrl.isNotEmpty &&
+        !paragraphs.any((p) => p.isPicture && p.picture?.url == bannerUrl)) {
+      paragraphs.insert(
+        0,
+        DynamicParagraph(type: 2, picture: DynamicPicture(url: bannerUrl)),
+      );
+    }
+
+    final summary = _stripHtmlTags(data['summary']?.toString() ?? '');
+    final paragraphText = paragraphs
+        .where((p) => p.isText && p.text.isNotEmpty)
+        .map((p) => p.text)
+        .join('\n\n');
+    final bodyText = paragraphText.isNotEmpty ? paragraphText : summary;
+
+    final baseItem = DynamicItem(
+      id: dynId.isNotEmpty ? dynId : (cvId > 0 ? 'cv$cvId' : ''),
+      type: 'DYNAMIC_TYPE_ARTICLE',
+      title: title,
+      author: author,
+      text: bodyText,
+      pictures: pictures,
+      stat: articleStat,
+      commentId: cvId,
+      commentType: 12,
+      paragraphs: paragraphs,
+    );
+
+    if (data['opus'] is Map) {
+      final opusItem = DynamicItem.fromJson(data['opus']);
+      return merge(opusItem, baseItem) ?? baseItem;
+    }
+    return baseItem;
+  }
+
   /// 合并两个来源的动态数据：以 [detail]（通常是接口最新返回）为主，
   /// 其缺失或为空的部分回退到 [fallback]（例如列表项），
   /// 避免详情接口只返回摘要时把列表里的正文/图片覆盖成空。
@@ -863,8 +1188,16 @@ class DynamicItem {
       if (!mergedPictures.any((e) => e.url == pic.url)) mergedPictures.add(pic);
     }
 
+    // 尽量保留真实动态 ID，避免被 cv 前缀覆盖导致无法点动态赞
+    final preferFallbackId = detail.id.startsWith('cv') &&
+        fallback.id.isNotEmpty &&
+        !fallback.id.startsWith('cv');
+    final resolvedId = preferFallbackId
+        ? fallback.id
+        : (detail.id.isNotEmpty ? detail.id : fallback.id);
+
     return DynamicItem(
-      id: detail.id.isNotEmpty ? detail.id : fallback.id,
+      id: resolvedId,
       type: detail.type.isNotEmpty ? detail.type : fallback.type,
       title: detail.title.isNotEmpty ? detail.title : fallback.title,
       author: (detail.author.mid > 0 || detail.author.name.isNotEmpty)

@@ -83,5 +83,19 @@ void main() {
         isNull,
       );
     });
+
+    test('opus and read/cv links resolve to dynamicId', () {
+      final opus = DeepLinkService.parseTarget(
+        Uri.parse('https://www.bilibili.com/opus/1191817349076877316'),
+      );
+      expect(opus, isNotNull);
+      expect(opus!.dynamicId, '1191817349076877316');
+
+      final cv = DeepLinkService.parseTarget(
+        Uri.parse('https://www.bilibili.com/read/cv33445566'),
+      );
+      expect(cv, isNotNull);
+      expect(cv!.dynamicId, 'cv33445566');
+    });
   });
 }

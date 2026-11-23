@@ -290,6 +290,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     }
 
     return ListView.separated(
+      primary: false,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       itemCount: items.length,
       separatorBuilder: (ctx, i) => const SizedBox(height: 8.0),
@@ -515,6 +516,7 @@ class _VideoCacheScreenState extends State<VideoCacheScreen>
     }
 
     return ListView.separated(
+      primary: false,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       itemCount: items.length,
       separatorBuilder: (ctx, i) => const SizedBox(height: 8.0),

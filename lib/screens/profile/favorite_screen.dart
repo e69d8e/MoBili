@@ -10,6 +10,8 @@ import '../../theme/app_colors.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/video_card.dart';
+import '../video/video_detail_screen.dart';
+import 'login_dialog.dart';
 
 class FavoriteScreen extends StatefulWidget {
   const FavoriteScreen({super.key});
@@ -147,150 +149,248 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     } catch (_) {}
   }
 
+  void _playAll() {
+    if (_folderVideos.isEmpty) return;
+    final playlist = _folderVideos.map((v) {
+      return WatchLaterItem(
+        aid: v.aid,
+        bvid: v.bvid,
+        cid: v.cid,
+        title: v.title,
+        pic: v.pic,
+        ownerName: v.owner.name,
+        ownerFace: v.owner.face,
+        ownerMid: v.owner.mid,
+        duration: v.duration,
+        pubdate: v.pubdate,
+        addAt: 0,
+        progress: 0,
+      );
+    }).toList();
+    final first = _folderVideos.first;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => VideoDetailScreen(
+          bvid: first.bvid,
+          initialVideo: first,
+          watchLaterList: playlist,
+          initialWatchLaterIndex: 0,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isLogin = context.watch<AuthProvider>().isLogin;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final onPrimary = Theme.of(context).colorScheme.onPrimary;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('我的收藏')),
-      body: _isLoading
-          ? const LoadingView(message: '正在加载收藏夹...')
-          : _error != null && _folders.isEmpty
-          ? ErrorView(message: _error!, onRetry: _loadFolders)
-          : _folders.isEmpty
-          ? const EmptyView(
-              message: '暂无收藏夹或未登录',
-              icon: Icons.star_border_rounded,
-            )
-          : Column(
-              children: [
-                // Folders Selector Bar
-                SizedBox(
-                  height: 52,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 8.0,
+      appBar: AppBar(
+        title: const Text('我的收藏'),
+        actions: [
+          if (_folderVideos.isNotEmpty)
+            TextButton.icon(
+              onPressed: _playAll,
+              icon: const Icon(Icons.playlist_play_rounded, size: 20),
+              label: const Text('全部播放'),
+            ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: ResponsiveMaxConstraint(
+        child: !isLogin
+            ? EmptyView(
+                message: '登录后即可查看收藏夹与收藏视频',
+                icon: Icons.star_border_rounded,
+                retryText: '立即登录',
+                onRetry: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const LoginDialog(),
+                  ).then((_) => _loadFolders());
+                },
+              )
+            : _isLoading
+            ? const LoadingView(message: '正在加载收藏夹...')
+            : _error != null && _folders.isEmpty
+            ? ErrorView(message: _error!, onRetry: _loadFolders)
+            : _folders.isEmpty
+            ? EmptyView(
+                message: '暂无收藏夹',
+                icon: Icons.star_border_rounded,
+                retryText: '刷新重试',
+                onRetry: _loadFolders,
+              )
+            : Column(
+                children: [
+                  // Folders Selector Bar
+                  SizedBox(
+                    height: 52,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12.0,
+                        vertical: 8.0,
+                      ),
+                      itemCount: _folders.length,
+                      separatorBuilder: (ctx, _) => const SizedBox(width: 8.0),
+                      itemBuilder: (ctx, idx) {
+                        final folder = _folders[idx];
+                        final isSelected = _selectedFolder?.id == folder.id;
+                        return ChoiceChip(
+                          label: Text('${folder.title} (${folder.mediaCount})'),
+                          selected: isSelected,
+                          showCheckmark: false,
+                          selectedColor: primaryColor,
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? onPrimary
+                                : context.colors.textSub,
+                            fontSize: 12,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                          backgroundColor: context.colors.fill,
+                          side: BorderSide.none,
+                          onSelected: (_) => _selectFolder(folder),
+                        );
+                      },
                     ),
-                    itemCount: _folders.length,
-                    separatorBuilder: (ctx, _) => const SizedBox(width: 8.0),
-                    itemBuilder: (ctx, idx) {
-                      final folder = _folders[idx];
-                      final isSelected = _selectedFolder?.id == folder.id;
-                      final primaryColor = Theme.of(context)
-                          .colorScheme
-                          .primary;
-                      final onPrimary = Theme.of(context).colorScheme.onPrimary;
-                      return ChoiceChip(
-                        label: Text('${folder.title} (${folder.mediaCount})'),
-                        selected: isSelected,
-                        selectedColor: primaryColor,
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? onPrimary
-                              : context.colors.textSub,
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                        ),
-                        backgroundColor: context.colors.fill,
-                        side: BorderSide.none,
-                        onSelected: (_) => _selectFolder(folder),
-                      );
-                    },
                   ),
-                ),
-                Divider(
-                  height: 1,
-                  thickness: 0.5,
-                  color: context.colors.divider,
-                ),
-                // Videos Grid
-                Expanded(
-                  child: _isVideoLoading
-                      ? const VideoGridSkeleton(padding: EdgeInsets.all(12.0))
-                      : _error != null && _folderVideos.isEmpty
-                      ? ErrorView(message: _error!, onRetry: () => _selectFolder(_selectedFolder!))
-                      : RefreshIndicator(
-                          color: Theme.of(context).colorScheme.primary,
-                          onRefresh: _handleRefresh,
-                          child: _folderVideos.isEmpty
-                              ? ListView(
-                                  // AlwaysScrollable 让空列表也能下拉刷新
-                                  physics: const AlwaysScrollableScrollPhysics(),
-                                  children: const [
-                                    SizedBox(height: 120),
-                                    EmptyView(message: '该收藏夹暂无视频'),
-                                  ],
-                                )
-                              : NotificationListener<ScrollNotification>(
-                                  onNotification: (scrollInfo) {
-                                    if (scrollInfo.metrics.pixels >=
-                                        scrollInfo.metrics.maxScrollExtent - 300) {
-                                      _loadMore();
-                                    }
-                                    return false;
-                                  },
-                                  child: GridView.builder(
-                                    scrollCacheExtent: ScrollCacheExtent.pixels(500.0),
-                                    physics: const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.all(12.0),
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount:
-                                          ResponsiveGridConfig.calculateCrossAxisCount(
-                                            context,
-                                          ),
-                                      childAspectRatio:
-                                          ResponsiveGridConfig.calculateChildAspectRatio(
-                                            context,
-                                          ),
-                                      crossAxisSpacing: 10,
-                                      mainAxisSpacing: 10,
-                                    ),
-                                    itemCount: _folderVideos.length +
-                                        ((_isLoadingMore || !_hasMore) ? 1 : 0),
-                                    itemBuilder: (ctx, idx) {
-                                      if (idx == _folderVideos.length) {
-                                        if (_isLoadingMore) {
-                                          return Center(
-                                            child: SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: context.colors.divider,
+                  ),
+                  // Videos Grid
+                  Expanded(
+                    child: _isVideoLoading
+                        ? const VideoGridSkeleton(padding: EdgeInsets.all(12.0))
+                        : _error != null && _folderVideos.isEmpty
+                        ? ErrorView(
+                            message: _error!,
+                            onRetry: () => _selectFolder(_selectedFolder!),
+                          )
+                        : RefreshIndicator(
+                            color: primaryColor,
+                            onRefresh: _handleRefresh,
+                            child: _folderVideos.isEmpty
+                                ? ListView(
+                                    // AlwaysScrollable 让空列表也能下拉刷新
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    children: const [
+                                      SizedBox(height: 120),
+                                      EmptyView(message: '该收藏夹暂无视频'),
+                                    ],
+                                  )
+                                : NotificationListener<ScrollNotification>(
+                                    onNotification: (scrollInfo) {
+                                      if (scrollInfo.metrics.maxScrollExtent >
+                                              0 &&
+                                          scrollInfo.metrics.pixels >=
+                                              scrollInfo
+                                                      .metrics
+                                                      .maxScrollExtent -
+                                                  300) {
+                                        _loadMore();
+                                      }
+                                      return false;
+                                    },
+                                    child: CustomScrollView(
+                                      physics:
+                                          const AlwaysScrollableScrollPhysics(),
+                                      scrollCacheExtent:
+                                          ScrollCacheExtent.pixels(500.0),
+                                      slivers: [
+                                        SliverLayoutBuilder(
+                                          builder: (ctx, sliverConstraints) {
+                                            final w = sliverConstraints
+                                                .crossAxisExtent;
+                                            final cols = ResponsiveGridConfig
+                                                .calculateCrossAxisCountForWidth(
+                                                  w,
+                                                );
+                                            final extent = ResponsiveGridConfig
+                                                .calculateMainAxisExtent(
+                                                  ctx,
+                                                  availableWidth: w,
+                                                  crossAxisCount: cols,
+                                                );
+                                            return SliverPadding(
+                                              padding: const EdgeInsets.all(
+                                                12.0,
+                                              ),
+                                              sliver: SliverGrid.builder(
+                                                gridDelegate:
+                                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                                      crossAxisCount: cols,
+                                                      mainAxisExtent: extent,
+                                                      crossAxisSpacing: 10,
+                                                      mainAxisSpacing: 10,
+                                                    ),
+                                                itemCount:
+                                                    _folderVideos.length,
+                                                itemBuilder: (itemCtx, idx) {
+                                                  return RepaintBoundary(
+                                                    child: VideoCard(
+                                                      video:
+                                                          _folderVideos[idx],
+                                                      showViewCount: false,
+                                                      heroTag:
+                                                          'fav_${_folderVideos[idx].bvid}_$idx',
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        if (_isLoadingMore || !_hasMore)
+                                          SliverToBoxAdapter(
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.fromLTRB(
+                                                    12.0,
+                                                    4.0,
+                                                    12.0,
+                                                    24.0,
+                                                  ),
+                                              child: Center(
+                                                child: _isLoadingMore
+                                                    ? SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                              color:
+                                                                  primaryColor,
+                                                            ),
+                                                      )
+                                                    : Text(
+                                                        '没有更多了',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          color: context
+                                                              .colors
+                                                              .textHint,
+                                                        ),
+                                                      ),
                                               ),
                                             ),
-                                          );
-                                        }
-                                        return Center(
-                                          child: Text(
-                                            '没有更多了',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: context.colors.textHint,
-                                            ),
                                           ),
-                                        );
-                                      }
-                                      return RepaintBoundary(
-                                        child: VideoCard(
-                                          video: _folderVideos[idx],
-                                          showViewCount: false,
-                                          heroTag:
-                                              'fav_${_folderVideos[idx].bvid}_$idx',
-                                        ),
-                                      );
-                                    },
+                                      ],
+                                    ),
                                   ),
-                                ),
-                        ),
-                ),
-              ],
-            ),
+                          ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 class StatBadge extends StatelessWidget {
   final IconData icon;
@@ -18,7 +19,7 @@ class StatBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Theme.of(context).hintColor;
+    final c = color ?? context.colors.textHint;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

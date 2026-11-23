@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -35,9 +36,8 @@ class ResponsiveUtil {
 
 /// Adaptive grid layout configurations for video feeds
 class ResponsiveGridConfig {
-  /// Calculate appropriate number of columns based on viewport width
-  static int calculateCrossAxisCount(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
+  /// Calculate column count for an explicit width (useful inside LayoutBuilder / NavigationRail shells)
+  static int calculateCrossAxisCountForWidth(double width) {
     if (width < 600) {
       return 2; // Phones portrait / small screens
     } else if (width < 960) {
@@ -49,7 +49,12 @@ class ResponsiveGridConfig {
     }
   }
 
-  /// Calculate aspect ratio matching the calculated column count
+  /// Calculate appropriate number of columns based on viewport width
+  static int calculateCrossAxisCount(BuildContext context) {
+    return calculateCrossAxisCountForWidth(MediaQuery.sizeOf(context).width);
+  }
+
+  /// Calculate aspect ratio matching the calculated column count (legacy fallback)
   static double calculateChildAspectRatio(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     if (width < 600) {
@@ -59,6 +64,28 @@ class ResponsiveGridConfig {
     } else {
       return 1.02;
     }
+  }
+
+  /// 计算随字号缩放与实际可用宽度自适应的卡片行高，防止大字体(1.4x)或窄屏下卡片底部文字溢出。
+  static double calculateMainAxisExtent(
+    BuildContext context, {
+    double? availableWidth,
+    double horizontalPadding = 24.0,
+    double crossAxisSpacing = 10.0,
+    int? crossAxisCount,
+  }) {
+    final width = availableWidth ?? MediaQuery.sizeOf(context).width;
+    final cols = crossAxisCount ?? calculateCrossAxisCountForWidth(width);
+    final cardWidth =
+        ((width - horizontalPadding - crossAxisSpacing * (cols - 1)) / cols)
+            .clamp(120.0, 600.0);
+    // 封面比例统一 16 / 10，贴近国际版 B 站宽敞视觉
+    final coverHeight = cardWidth / (16 / 10);
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.4);
+    // 内边距(8+8) + 2行标题(13*1.35*2) + 间距(6) + UP主元信息行(最小24)
+    final metaHeight =
+        16.0 + (36.0 * textScale) + 6.0 + math.max(24.0, 18.0 * textScale);
+    return coverHeight + metaHeight + 4.0;
   }
 }
 

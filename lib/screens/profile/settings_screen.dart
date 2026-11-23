@@ -9,7 +9,10 @@ import '../../services/storage/video_cache_service.dart';
 import '../../services/update/update_check_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
+import '../../theme/app_typography.dart';
 import '../../utils/app_constants.dart';
+import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/app_update_dialog.dart';
 import '../../widgets/player/sleep_timer_bottom_sheet.dart';
@@ -42,8 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('外观与设置')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      body: ResponsiveMaxConstraint(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
         children: [
           // App Brand Header
           Center(
@@ -92,32 +96,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          // Section: Theme Presets
+          // Section: Theme Presets (紧凑色板横条)
           _buildSectionHeader('主题配色'),
           Material(
             color: context.colors.card,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.card,
             clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (int i = 0; i < AppThemePreset.values.length; i++) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 1,
-                      thickness: 0.5,
-                      indent: 52,
-                      color: context.colors.divider,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final preset in AppThemePreset.values) ...[
+                          _buildPresetSwatch(
+                            context: context,
+                            preset: preset,
+                            isSelected: themeProvider.themePreset == preset,
+                            onTap: () => themeProvider.setThemePreset(preset),
+                          ),
+                          if (preset != AppThemePreset.values.last)
+                            const SizedBox(width: 10.0),
+                        ],
+                      ],
                     ),
-                  _buildPresetTile(
-                    context: context,
-                    preset: AppThemePreset.values[i],
-                    isSelected:
-                        themeProvider.themePreset == AppThemePreset.values[i],
-                    onTap: () =>
-                        themeProvider.setThemePreset(AppThemePreset.values[i]),
+                  ),
+                  const SizedBox(height: 10.0),
+                  Row(
+                    children: [
+                      Text(
+                        themeProvider.themePreset.name,
+                        style: TextStyle(
+                          fontSize: AppTypography.body2,
+                          fontWeight: FontWeight.w600,
+                          color: primaryColor,
+                        ),
+                      ),
+                      if (themeProvider.themePreset == AppThemePreset.ink) ...[
+                        const SizedBox(width: 6.0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5.0,
+                            vertical: 1.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: context.colors.fill,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '默认',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: context.colors.textSub,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        child: Text(
+                          themeProvider.themePreset.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.colors.textHint,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ],
+              ),
             ),
           ),
 
@@ -184,7 +238,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   value: themeProvider.isAmoled,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) => themeProvider.setAmoled(val),
                 ),
               ],
@@ -218,12 +271,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       value: autoRotate,
-                      activeTrackColor: primaryColor,
-                      onChanged: (val) {
-                        setState(() {
-                          PlayerSettingsService.setAutoRotateFullScreen(val);
-                        });
-                      },
+                      onChanged: (val) =>
+                          PlayerSettingsService.setAutoRotateFullScreen(val),
                     );
                   },
                 ),
@@ -251,12 +300,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       value: subtitleEnabled,
-                      activeTrackColor: primaryColor,
-                      onChanged: (val) {
-                        setState(() {
-                          PlayerSettingsService.setSubtitleEnabled(val);
-                        });
-                      },
+                      onChanged: (val) =>
+                          PlayerSettingsService.setSubtitleEnabled(val),
                     );
                   },
                 ),
@@ -329,7 +374,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   value: PlayerSettingsService.autoPlayNextEpisode,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) {
                     setState(() {
                       PlayerSettingsService.setAutoPlayNextEpisode(val);
@@ -430,10 +474,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       value: incognito,
                       activeTrackColor: context.colors.warning,
+                      activeThumbColor:
+                          AppTheme.contrastOnColor(context.colors.warning),
                       onChanged: (val) {
-                        setState(() {
-                          PlayerSettingsService.setIncognitoMode(val);
-                        });
+                        PlayerSettingsService.setIncognitoMode(val);
                         AppToast.show(
                           context,
                           val ? '已开启无痕浏览模式' : '已关闭无痕浏览模式',
@@ -518,7 +562,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   value: PlayerSettingsService.enableLongPressSpeed,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) {
                     setState(() {
                       PlayerSettingsService.setEnableLongPressSpeed(val);
@@ -573,7 +616,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   value:
                       PlayerSettingsService.enableVerticalPanVolumeBrightness,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) {
                     setState(() {
                       PlayerSettingsService.setEnableVerticalPan(val);
@@ -600,7 +642,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   value: PlayerSettingsService.enableHorizontalPanSeek,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) {
                     setState(() {
                       PlayerSettingsService.setEnableHorizontalPan(val);
@@ -627,7 +668,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   value: themeProvider.enablePredictiveBack,
-                  activeTrackColor: primaryColor,
                   onChanged: (val) => themeProvider.setPredictiveBack(val),
                 ),
               ],
@@ -926,12 +966,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       value: autoCheck,
-                      activeTrackColor: primaryColor,
-                      onChanged: (val) {
-                        setState(() {
-                          UpdateCheckService.setAutoCheckEnabled(val);
-                        });
-                      },
+                      onChanged: (val) =>
+                          UpdateCheckService.setAutoCheckEnabled(val),
                     );
                   },
                 ),
@@ -973,6 +1009,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1019,89 +1056,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildPresetTile({
+  Widget _buildPresetSwatch({
     required BuildContext context,
     required AppThemePreset preset,
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    // 预览的是各预设自己的亮/暗主色，需按当前明暗取对应变体，不是当前 UI 取色
-    final activePrimary = Theme.of(context).brightness == Brightness.dark
-        ? preset.darkPrimary
-        : preset.lightPrimary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 预览各预设自身的亮/暗主色与辅助色变体
+    final activePrimary = isDark ? preset.darkPrimary : preset.lightPrimary;
+    final activeSecondary = isDark ? preset.darkSecondary : preset.secondary;
+    final checkColor = isDark
+        ? AppTheme.contrastOnColor(activePrimary)
+        : Colors.white;
 
-    return ListTile(
-      dense: true,
-      onTap: onTap,
-      leading: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [preset.previewColors[0], preset.previewColors[1]],
-          ),
-          border: Border.all(
-            color: isSelected
-                ? activePrimary
-                : context.colors.divider,
-            width: isSelected ? 2.0 : 1.0,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: activePrimary.withValues(alpha: 0.35),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: '${preset.name} 主题',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? activePrimary.withValues(alpha: 0.12)
+                  : context.colors.fill,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: isSelected ? activePrimary : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [activePrimary, activeSecondary],
+                    ),
+                    border: Border.all(
+                      color: isSelected ? activePrimary : context.colors.divider,
+                      width: isSelected ? 2.0 : 1.0,
+                    ),
                   ),
-                ]
-              : null,
+                  child: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 16,
+                          color: checkColor,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 6.0),
+                Text(
+                  preset.name,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? activePrimary : context.colors.textSub,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      title: Row(
-        children: [
-          Text(
-            preset.name,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected
-                  ? activePrimary
-                  : (context.colors.textMain),
-            ),
-          ),
-          if (preset == AppThemePreset.ink) ...[
-            const SizedBox(width: 4.0),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 4.0,
-                vertical: 1.5,
-              ),
-              decoration: BoxDecoration(
-                color: context.colors.fill,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '默认',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: context.colors.textSub,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      subtitle: Text(
-        preset.description,
-        style: TextStyle(fontSize: 11, color: context.colors.textHint),
-      ),
-      trailing: isSelected
-          ? Icon(Icons.check_circle_rounded, color: activePrimary, size: 20)
-          : null,
     );
   }
 
@@ -1147,16 +1182,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _showQualityPicker(BuildContext context) {
-    final qualities = [
-      {'val': 120, 'label': '4K 超清 (需大会员/设备支持)'},
-      {'val': 116, 'label': '1080P 60帧 (流畅高帧率)'},
-      {'val': 80, 'label': '1080P 高清 (推荐)'},
-      {'val': 64, 'label': '720P 高清 (省流优先)'},
-      {'val': 32, 'label': '480P 清晰'},
-      {'val': 16, 'label': '360P 流畅'},
-    ];
-
+  void _showSelectionSheet<T>({
+    required BuildContext context,
+    required String title,
+    String? subtitle,
+    required List<({T value, String label})> options,
+    required T selectedValue,
+    required ValueChanged<T> onSelected,
+  }) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1165,7 +1198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         return Material(
           color: context.colors.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: AppRadius.sheet,
           clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: EdgeInsets.only(
@@ -1186,19 +1219,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12.0),
-                const Text(
-                  '选择默认首选画质',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4.0),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.colors.textHint,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8.0),
-                for (final q in qualities) ...[
+                for (final option in options)
                   ListTile(
                     dense: true,
                     title: Text(
-                      q['label'] as String,
+                      option.label,
                       style: const TextStyle(fontSize: 14),
                     ),
-                    trailing: PlayerSettingsService.defaultQuality == q['val']
+                    trailing: selectedValue == option.value
                         ? Icon(
                             Icons.check_circle_rounded,
                             color: primaryColor,
@@ -1206,291 +1252,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           )
                         : null,
                     onTap: () {
-                      setState(() {
-                        PlayerSettingsService.setDefaultQuality(
-                          q['val'] as int,
-                        );
-                      });
+                      onSelected(option.value);
                       Navigator.pop(ctx);
                     },
                   ),
-                ],
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showQualityPicker(BuildContext context) {
+    _showSelectionSheet<int>(
+      context: context,
+      title: '选择默认首选画质',
+      options: const [
+        (value: 120, label: '4K 超清 (需大会员/设备支持)'),
+        (value: 116, label: '1080P 60帧 (流畅高帧率)'),
+        (value: 80, label: '1080P 高清 (推荐)'),
+        (value: 64, label: '720P 高清 (省流优先)'),
+        (value: 32, label: '480P 清晰'),
+        (value: 16, label: '360P 流畅'),
+      ],
+      selectedValue: PlayerSettingsService.defaultQuality,
+      onSelected: (val) =>
+          setState(() => PlayerSettingsService.setDefaultQuality(val)),
     );
   }
 
   void _showSpeedPicker(BuildContext context) {
-    final speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-    showModalBottomSheet(
+    _showSelectionSheet<double>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final primaryColor = Theme.of(ctx).colorScheme.primary;
-
-        return Material(
-          color: context.colors.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).padding.bottom + 16,
-              top: 14,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.divider,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12.0),
-                const Text(
-                  '选择默认播放倍速',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8.0),
-                for (final sp in speeds) ...[
-                  ListTile(
-                    dense: true,
-                    title: Text('${sp}x', style: const TextStyle(fontSize: 14)),
-                    trailing: PlayerSettingsService.defaultPlaybackSpeed == sp
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: primaryColor,
-                            size: 20,
-                          )
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        PlayerSettingsService.setDefaultPlaybackSpeed(sp);
-                      });
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+      title: '选择默认播放倍速',
+      options: const [
+        (value: 0.75, label: '0.75x'),
+        (value: 1.0, label: '1.0x'),
+        (value: 1.25, label: '1.25x'),
+        (value: 1.5, label: '1.5x'),
+        (value: 1.75, label: '1.75x'),
+        (value: 2.0, label: '2.0x'),
+      ],
+      selectedValue: PlayerSettingsService.defaultPlaybackSpeed,
+      onSelected: (sp) =>
+          setState(() => PlayerSettingsService.setDefaultPlaybackSpeed(sp)),
     );
   }
 
   void _showTapZonePicker(BuildContext context) {
-    final percents = [5, 10, 15, 20, 25, 30];
-
-    showModalBottomSheet(
+    _showSelectionSheet<int>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final primaryColor = Theme.of(ctx).colorScheme.primary;
-
-        return Material(
-          color: context.colors.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).padding.bottom + 16,
-              top: 14,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.divider,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12.0),
-                const Text(
-                  '双击快进/快退区域宽度',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4.0),
-                Text(
-                  '画面左右两侧各占的百分比，中间区域双击播放/暂停',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.colors.textHint,
-                  ),
-                ),
-                const SizedBox(height: 8.0),
-                for (final p in percents) ...[
-                  ListTile(
-                    dense: true,
-                    title: Text(
-                      '左右各 $p%（中间 ${100 - 2 * p}%）',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    trailing:
-                        PlayerSettingsService.doubleTapEdgeRatioPercent == p
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: primaryColor,
-                            size: 20,
-                          )
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        PlayerSettingsService.setDoubleTapEdgeRatioPercent(p);
-                      });
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+      title: '双击快进/快退区域宽度',
+      subtitle: '画面左右两侧各占的百分比，中间区域双击播放/暂停',
+      options: [
+        for (final p in const [5, 10, 15, 20, 25, 30])
+          (value: p, label: '左右各 $p%（中间 ${100 - 2 * p}%）'),
+      ],
+      selectedValue: PlayerSettingsService.doubleTapEdgeRatioPercent,
+      onSelected: (p) =>
+          setState(() => PlayerSettingsService.setDoubleTapEdgeRatioPercent(p)),
     );
   }
 
   void _showLongPressSpeedPicker(BuildContext context) {
-    final speeds = [2.0, 2.5, 3.0];
-
-    showModalBottomSheet(
+    _showSelectionSheet<double>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final primaryColor = Theme.of(ctx).colorScheme.primary;
-
-        return Material(
-          color: context.colors.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).padding.bottom + 16,
-              top: 14,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.divider,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12.0),
-                const Text(
-                  '选择长按倍速值',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8.0),
-                for (final sp in speeds) ...[
-                  ListTile(
-                    dense: true,
-                    title: Text(
-                      '${sp.toStringAsFixed(1)}x',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    trailing: PlayerSettingsService.longPressSpeedValue == sp
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: primaryColor,
-                            size: 20,
-                          )
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        PlayerSettingsService.setLongPressSpeedValue(sp);
-                      });
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+      title: '选择长按倍速值',
+      options: [
+        for (final sp in const [2.0, 2.5, 3.0])
+          (value: sp, label: '${sp.toStringAsFixed(1)}x'),
+      ],
+      selectedValue: PlayerSettingsService.longPressSpeedValue,
+      onSelected: (sp) =>
+          setState(() => PlayerSettingsService.setLongPressSpeedValue(sp)),
     );
   }
 
   void _showSeekSecondsPicker(BuildContext context) {
-    final secs = [5, 10, 15, 30];
-
-    showModalBottomSheet(
+    _showSelectionSheet<int>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final primaryColor = Theme.of(ctx).colorScheme.primary;
-
-        return Material(
-          color: context.colors.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).padding.bottom + 16,
-              top: 14,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: context.colors.divider,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12.0),
-                const Text(
-                  '双击快进步长',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8.0),
-                for (final s in secs) ...[
-                  ListTile(
-                    dense: true,
-                    title: Text('$s 秒', style: const TextStyle(fontSize: 14)),
-                    trailing: PlayerSettingsService.doubleTapSeekSeconds == s
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: primaryColor,
-                            size: 20,
-                          )
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        PlayerSettingsService.setDoubleTapSeekSeconds(s);
-                      });
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+      title: '双击快进步长',
+      options: [
+        for (final s in const [5, 10, 15, 30]) (value: s, label: '$s 秒'),
+      ],
+      selectedValue: PlayerSettingsService.doubleTapSeekSeconds,
+      onSelected: (s) =>
+          setState(() => PlayerSettingsService.setDoubleTapSeekSeconds(s)),
     );
   }
 }

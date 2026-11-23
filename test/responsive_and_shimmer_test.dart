@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobili/utils/responsive_util.dart';
+import 'package:mobili/widgets/app_toast.dart';
 import 'package:mobili/widgets/state_views.dart';
 
 void main() {
@@ -202,5 +203,88 @@ void main() {
       await tester.pump();
       expect(retried, isTrue);
     });
+
+    testWidgets(
+      'ShimmerLoading halts shimmer animation when disableAnimations is true',
+      (tester) async {
+        await tester.pumpWidget(
+          const MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: MaterialApp(
+              home: Scaffold(body: VideoGridSkeleton(itemCount: 2)),
+            ),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+        expect(find.byType(VideoCardSkeleton), findsNWidgets(2));
+        expect(find.byType(ShaderMask), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'AppToast clears viewInsets, uses IgnorePointer, and wraps long text on narrow screen',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const msg = '这是一条非常非常长的提示文本用于验证窄屏场景与系统放大字体下不会发生横向溢出';
+
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              padding: EdgeInsets.only(bottom: 34),
+              viewInsets: EdgeInsets.only(bottom: 260),
+              disableAnimations: true,
+              textScaler: TextScaler.linear(1.4),
+            ),
+            child: MaterialApp(
+              home: Scaffold(
+                body: Builder(
+                  builder: (ctx) => Center(
+                    child: ElevatedButton(
+                      onPressed: () => AppToast.show(
+                        ctx,
+                        msg,
+                        icon: Icons.info_outline_rounded,
+                      ),
+                      child: const Text('Trigger'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Trigger'));
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text(msg), findsOneWidget);
+
+        final positioned = tester.widget<Positioned>(
+          find.ancestor(
+            of: find.text(msg),
+            matching: find.byType(Positioned),
+          ),
+        );
+        expect(positioned.bottom, greaterThanOrEqualTo(284.0));
+
+        final ignorePointer = tester.widget<IgnorePointer>(
+          find.ancestor(
+            of: find.text(msg),
+            matching: find.byType(IgnorePointer),
+          ).first,
+        );
+        expect(ignorePointer.ignoring, isTrue);
+
+        // 等待内置 1300ms 自动关闭定时器完成，避免测试结束残留 pending timer
+        await tester.pump(const Duration(milliseconds: 1500));
+      },
+    );
   });
 }

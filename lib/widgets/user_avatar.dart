@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_theme.dart';
 import 'network_image_view.dart';
 
 class UserAvatar extends StatelessWidget {
@@ -36,6 +38,7 @@ class UserAvatar extends StatelessWidget {
     );
 
     if (level != null && level! > 0) {
+      final levelBg = _getLevelColor(level!);
       avatar = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -46,17 +49,17 @@ class UserAvatar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
               decoration: BoxDecoration(
-                color: _getLevelColor(level!),
+                color: levelBg,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: Theme.of(context).cardColor,
+                  color: context.colors.card,
                   width: 1,
                 ),
               ),
               child: Text(
                 'Lv$level',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppTheme.contrastOnColor(levelBg),
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   height: 1,

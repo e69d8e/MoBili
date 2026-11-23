@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
@@ -82,60 +83,79 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      bottom: 78,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: FadeTransition(
-          opacity: _opacity,
-          child: ScaleTransition(
-            scale: _scale,
-            child: Material(
-              color: Colors.transparent,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        width: 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.28),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.icon != null) ...[
-                          Icon(widget.icon, color: Colors.white, size: 14),
-                          const SizedBox(width: 4.0),
-                        ],
-                        Text(
-                          widget.message,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ],
+    final mq = MediaQuery.of(context);
+    final bottomInset = math.max(mq.padding.bottom, mq.viewInsets.bottom);
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+    final pill = Material(
+      color: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 0.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(widget.icon, color: Colors.white, size: 14),
+                  const SizedBox(width: 6.0),
+                ],
+                Flexible(
+                  child: Text(
+                    widget.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
+          ),
+        ),
+      ),
+    );
+
+    return Positioned(
+      bottom: math.max(78.0, bottomInset + 24.0),
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        ignoring: true,
+        child: Semantics(
+          liveRegion: true,
+          label: widget.message,
+          child: Center(
+            child: reduceMotion
+                ? pill
+                : FadeTransition(
+                    opacity: _opacity,
+                    child: ScaleTransition(
+                      scale: _scale,
+                      child: pill,
+                    ),
+                  ),
           ),
         ),
       ),

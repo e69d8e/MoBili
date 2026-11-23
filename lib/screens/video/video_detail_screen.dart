@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,9 @@ import '../../services/player/sleep_timer_service.dart';
 import '../../services/storage/history_storage_service.dart';
 import '../../services/storage/video_cache_service.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
+import '../../theme/app_typography.dart';
+import '../../utils/app_routes.dart';
 import '../../utils/formatters.dart';
 import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
@@ -52,6 +56,20 @@ import 'widgets/video_sub_replies_sheet.dart';
 import 'widgets/video_watch_later_panel.dart';
 
 part 'video_detail_tabs.dart';
+
+class _VideoHistoryEntry {
+  final String bvid;
+  final VideoItem? video;
+  final Duration position;
+  final int pageIndex;
+
+  const _VideoHistoryEntry({
+    required this.bvid,
+    required this.video,
+    required this.position,
+    required this.pageIndex,
+  });
+}
 
 class VideoDetailScreen extends StatefulWidget {
   final String bvid;
@@ -83,15 +101,30 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   late final AnimationController _tripleComboAnimController;
   final GlobalKey<_VideoInfoTabState> _infoTabKey =
       GlobalKey<_VideoInfoTabState>();
-  // 评论数用于 Tab 标签展示，由评论子组件回报
-  int _commentCountForLabel = 0;
+  // 评论数局部通知器：评论加载/发表后即时同步 Tab 标签而无需重建整页
+  final ValueNotifier<int> _commentCountNotifier = ValueNotifier<int>(0);
+  // 竖屏滚动时平滑收起过高的竖屏视频区域
+  final ValueNotifier<double> _portraitCollapseNotifier = ValueNotifier<double>(
+    0.0,
+  );
+  // 页内切换相关视频的历史返回栈（单播放器实例复用）
+  final List<_VideoHistoryEntry> _videoHistoryStack = [];
+  VideoItem? _currentInitialVideo;
+
+  // 自动连播 4 秒可取消倒计时
+  Timer? _autoNextTimer;
+  final ValueNotifier<({int secondsLeft, String title, VoidCallback onConfirm})?>
+      _autoNextNotifier = ValueNotifier(null);
+
   VideoDetail? _detail;
   PlayUrlInfo? _playUrlInfo;
+  bool _isSwitchingStream = false;
 
   /// 播放流获取失败时的提示（-10403 权限/付费、-352 风控、网络异常等）
   String? _playUrlError;
   List<DanmakuItem> _danmakus = [];
   List<VideoItem> _relatedVideos = [];
+  bool _relatedLoading = true;
 
   // Subtitles
   List<SubtitleTrack> _subtitleTracks = [];
@@ -117,6 +150,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   void initState() {
     super.initState();
     _currentBvid = widget.bvid;
+    _currentInitialVideo = widget.initialVideo;
     _watchLaterList = widget.watchLaterList != null
         ? List<WatchLaterItem>.from(widget.watchLaterList!)
         : null;
@@ -195,7 +229,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     _videoLoadToken++;
     _detailLoadToken++;
     final detailToken = _detailLoadToken;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _relatedLoading = true;
+      _detailError = false;
+    });
 
     // 0. Instant offline cache detection & zero-latency local playback
     final cacheService = VideoCacheService();
@@ -204,7 +242,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         .toList();
 
     if (cachedTasks.isNotEmpty) {
-      final initialCid = widget.initialVideo?.cid ?? 0;
+      final initialCid = _currentInitialVideo?.cid ?? 0;
       final primaryTask = cachedTasks.firstWhere(
         (t) => initialCid > 0 && t.cid == initialCid,
         orElse: () => cachedTasks.first,
@@ -244,7 +282,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           // 快照损坏时按老缓存处理，不影响离线播放
         }
       }
-      final fallback = widget.initialVideo;
+      final fallback = _currentInitialVideo;
       _detail =
           cachedDetail?.copyWith(pages: localPages) ??
           VideoDetail(
@@ -277,9 +315,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       if (mounted) {
         setState(() => _isLoading = false);
       }
-    } else if (widget.initialVideo != null && widget.initialVideo!.cid > 0) {
+    } else if (_currentInitialVideo != null &&
+        _currentInitialVideo!.cid > 0) {
       // Fallback: If initial video has cid, try loading stream
-      _loadPlayUrlAndDanmaku(widget.initialVideo!.cid);
+      _loadPlayUrlAndDanmaku(_currentInitialVideo!.cid);
     }
 
     // 1. Fetch Online Video Detail（命中预取缓存时可跳过网络等待）
@@ -290,12 +329,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       if (detail != null && mounted && _detailLoadToken == detailToken) {
         setState(() {
           _detail = detail;
+          _currentInitialVideo = detail.videoItem;
         });
 
         // 2. Relation / related / comments are self-managed by the tab child widgets
 
         // 3. If stream wasn't loaded from cache, load online stream
-        if (_playUrlInfo == null) {
+        if (_playUrlInfo == null || _isSwitchingStream) {
           final cid = detail.pages.isNotEmpty
               ? detail.pages[_selectedPageIndex].cid
               : detail.videoItem.cid;
@@ -316,27 +356,43 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         final relatedBvid = _currentBvid;
         VideoApiService().getRelatedVideos(relatedBvid).then((list) {
           if (mounted && relatedBvid == _currentBvid) {
-            setState(() => _relatedVideos = list);
+            setState(() {
+              _relatedVideos = list;
+              _relatedLoading = false;
+            });
             // 预取前几个相关视频的详情与播放地址，点开时秒开
             VideoPrefetchService.instance.prefetchVideos(list);
+          }
+        }).catchError((_) {
+          if (mounted && relatedBvid == _currentBvid) {
+            setState(() => _relatedLoading = false);
           }
         });
 
         _detailError = false;
       } else {
         // 在线详情获取失败；若也没有本地/初始数据可展示，则标记错误态
-        if (_detail == null && widget.initialVideo == null && mounted) {
-          setState(() => _detailError = true);
+        if (_detail == null && _currentInitialVideo == null && mounted) {
+          setState(() {
+            _detailError = true;
+            _relatedLoading = false;
+          });
         }
       }
     } catch (_) {
-      if (_detail == null && widget.initialVideo == null && mounted) {
-        setState(() => _detailError = true);
+      if (_detail == null && _currentInitialVideo == null && mounted) {
+        setState(() {
+          _detailError = true;
+          _relatedLoading = false;
+        });
       }
     }
 
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _relatedLoading = false;
+      });
     }
   }
 
@@ -479,15 +535,20 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
 
     if (mounted && _videoLoadToken == token) {
-      final listenProvider = context.read<ListenVideoProvider>();
-      if (listenProvider.isPlaying || listenProvider.controller != null) {
-        await listenProvider.stopAndClear();
+      // 仅当视频详情页位于栈顶时才停止后台听视频；若用户正在 ListenVideoScreen 内切集，
+      // 绝不能误停听视频并抢播视频流。
+      final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+      if (routeIsCurrent) {
+        final listenProvider = context.read<ListenVideoProvider>();
+        if (listenProvider.isPlaying || listenProvider.controller != null) {
+          await listenProvider.stopAndClear();
+        }
       }
-      // stopAndClear 期间可能已切集/退出页面，落地前必须复查
       if (!mounted || _videoLoadToken != token) return;
       setState(() {
         _playUrlInfo = playUrl;
         _playUrlError = playUrlError;
+        _isSwitchingStream = false;
         _danmakus = danmakuList;
         _localVideoPath = isCached ? localVideo : null;
         _subtitleTracks = subtitleTracks;
@@ -495,6 +556,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         _currentSubtitleData = initialData;
         _isSubtitleEnabled = isSubEnabled && initialTrack != null;
       });
+      if (!routeIsCurrent) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _playerKey.currentState?.pause();
+        });
+      }
     }
   }
 
@@ -561,7 +627,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.3),
+                        color: context.colors.divider,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -873,17 +939,71 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
   }
 
+  void _cancelAutoNext() {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+    if (_autoNextNotifier.value != null) {
+      _autoNextNotifier.value = null;
+    }
+    _isAutoPlayingNext = false;
+  }
+
+  VideoItem _videoItemFromWatchLater(WatchLaterItem item) {
+    return VideoItem(
+      aid: item.aid,
+      bvid: item.bvid,
+      cid: item.cid,
+      title: item.title,
+      pic: item.pic,
+      desc: '',
+      duration: item.duration,
+      pubdate: item.pubdate,
+      ctime: item.pubdate,
+      owner: Owner(
+        mid: item.ownerMid,
+        name: item.ownerName,
+        face: item.ownerFace,
+      ),
+      stat: Stat(),
+    );
+  }
+
+  VideoItem _videoItemFromEpisode(UgcEpisode ep) {
+    return VideoItem(
+      aid: 0,
+      bvid: ep.bvid,
+      cid: ep.cid,
+      title: ep.title,
+      pic: ep.cover.isNotEmpty
+          ? ep.cover
+          : (_detail?.videoItem.pic ?? _currentInitialVideo?.pic ?? ''),
+      desc: '',
+      duration: ep.duration,
+      pubdate: 0,
+      ctime: 0,
+      owner: _detail?.videoItem.owner ??
+          _currentInitialVideo?.owner ??
+          Owner(mid: 0, name: '', face: ''),
+      stat: Stat(),
+    );
+  }
+
   Future<void> _switchPart(int index) async {
     if (_detail == null ||
+        index < 0 ||
         index >= _detail!.pages.length ||
         index == _selectedPageIndex) {
       return;
     }
+    _cancelAutoNext();
     _reportFinalProgress();
+    unawaited(_playerKey.currentState?.pause());
     setState(() {
       _hasSwitchedEpisodeOrPart = true;
       _selectedPageIndex = index;
-      _playUrlInfo = null;
+      // 保持 BiliVideoPlayer 实例挂载，切换分 P 时不丢失全屏与手势上下文
+      _isSwitchingStream = _playUrlInfo != null;
+      _playUrlError = null;
       _danmakus = [];
       _subtitleTracks = [];
       _currentSubtitleTrack = null;
@@ -899,13 +1019,20 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
 
   Future<void> _switchEpisode(UgcEpisode ep) async {
     if (ep.bvid == _currentBvid) return;
+    _cancelAutoNext();
     _reportFinalProgress();
+    unawaited(_playerKey.currentState?.pause());
+    final fallbackVideo = _videoItemFromEpisode(ep);
     setState(() {
       _hasSwitchedEpisodeOrPart = true;
       _currentBvid = ep.bvid;
+      _currentInitialVideo = fallbackVideo;
+      _detail = null;
       _selectedPageIndex = 0;
       _isLoading = true;
-      _playUrlInfo = null;
+      _relatedLoading = true;
+      _isSwitchingStream = _playUrlInfo != null;
+      _playUrlError = null;
       _danmakus = [];
       _subtitleTracks = [];
       _currentSubtitleTrack = null;
@@ -916,6 +1043,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       _lastReportedPosition = Duration.zero;
       _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
     });
+    _commentCountNotifier.value = 0;
+    _portraitCollapseNotifier.value = 0.0;
 
     // 作废在途请求并记录本次切换的代数，防止快速连点时旧详情/旧流覆盖新状态
     _videoLoadToken++;
@@ -926,7 +1055,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     if (detail != null && mounted && _detailLoadToken == detailToken) {
       setState(() {
         _detail = detail;
+        _currentInitialVideo = detail.videoItem;
       });
+      _commentCountNotifier.value = detail.videoItem.stat.reply;
 
       final cid = detail.pages.isNotEmpty
           ? detail.pages[0].cid
@@ -936,20 +1067,34 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       final relatedBvid = _currentBvid;
       VideoApiService().getRelatedVideos(relatedBvid).then((list) {
         if (mounted && relatedBvid == _currentBvid) {
-          setState(() => _relatedVideos = list);
+          setState(() {
+            _relatedVideos = list;
+            _relatedLoading = false;
+          });
           VideoPrefetchService.instance.prefetchVideos(list);
+        }
+      }).catchError((_) {
+        if (mounted && relatedBvid == _currentBvid) {
+          setState(() => _relatedLoading = false);
         }
       });
     }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
+    if (mounted && _detailLoadToken == detailToken) {
+      setState(() {
+        _isLoading = false;
+        if (_detail == null) {
+          _relatedLoading = false;
+        }
+      });
     }
   }
 
   Future<void> _switchWatchLaterItem(WatchLaterItem item, int index) async {
     if (item.bvid == _currentBvid && index == _currentWatchLaterIndex) return;
+    _cancelAutoNext();
     _reportFinalProgress();
+    unawaited(_playerKey.currentState?.pause());
     final effectiveProgress = item.progress > 0
         ? item.progress
         : HistoryStorageService().getProgress(item.bvid);
@@ -958,17 +1103,112 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       _hasSwitchedEpisodeOrPart = true;
       _currentWatchLaterIndex = index;
       _currentBvid = item.bvid;
+      _currentInitialVideo = _videoItemFromWatchLater(item);
+      _detail = null;
       _selectedPageIndex = 0;
       _isLoading = true;
-      _playUrlInfo = null;
+      _relatedLoading = true;
+      _isSwitchingStream = _playUrlInfo != null;
+      _playUrlError = null;
       _danmakus = [];
+      _subtitleTracks = [];
+      _currentSubtitleTrack = null;
+      _currentSubtitleData = null;
+      _isSubtitleEnabled = false;
       _relatedVideos = [];
       _overrideInitialPosition = effectiveProgress > 0
           ? Duration(seconds: effectiveProgress)
           : Duration.zero;
     });
+    _commentCountNotifier.value = 0;
+    _portraitCollapseNotifier.value = 0.0;
 
     _loadAll();
+  }
+
+  /// 页内无缝切换到推荐/相关视频，压入返回栈并复用单播放器实例
+  Future<void> _switchRelatedVideo(VideoItem related) async {
+    if (related.bvid == _currentBvid) {
+      _infoTabKey.currentState?.scrollToTop();
+      return;
+    }
+    _cancelAutoNext();
+    _reportFinalProgress();
+    _videoHistoryStack.add(
+      _VideoHistoryEntry(
+        bvid: _currentBvid,
+        video: _detail?.videoItem ?? _currentInitialVideo,
+        position: _playerKey.currentState?.currentPosition ?? Duration.zero,
+        pageIndex: _selectedPageIndex,
+      ),
+    );
+    unawaited(_playerKey.currentState?.pause());
+
+    setState(() {
+      _hasSwitchedEpisodeOrPart = true;
+      _currentBvid = related.bvid;
+      _currentInitialVideo = related;
+      _detail = null;
+      _selectedPageIndex = 0;
+      _isLoading = true;
+      _relatedLoading = true;
+      _isSwitchingStream = _playUrlInfo != null;
+      _playUrlError = null;
+      _danmakus = [];
+      _subtitleTracks = [];
+      _currentSubtitleTrack = null;
+      _currentSubtitleData = null;
+      _isSubtitleEnabled = false;
+      _relatedVideos = [];
+      _overrideInitialPosition = null;
+      _lastReportedPosition = Duration.zero;
+      _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
+    });
+    _commentCountNotifier.value = related.stat.reply;
+    _portraitCollapseNotifier.value = 0.0;
+    if (_tabController.index != 0) {
+      _tabController.animateTo(0);
+    }
+    _infoTabKey.currentState?.scrollToTop();
+    await _loadAll();
+  }
+
+  Future<void> _popVideoHistory() async {
+    if (_videoHistoryStack.isEmpty) return;
+    _cancelAutoNext();
+    _reportFinalProgress();
+    final prev = _videoHistoryStack.removeLast();
+    unawaited(_playerKey.currentState?.pause());
+
+    setState(() {
+      _hasSwitchedEpisodeOrPart = true;
+      _currentBvid = prev.bvid;
+      _currentInitialVideo = prev.video;
+      _detail = null;
+      _selectedPageIndex = prev.pageIndex;
+      _isLoading = true;
+      _relatedLoading = true;
+      _isSwitchingStream = _playUrlInfo != null;
+      _playUrlError = null;
+      _danmakus = [];
+      _subtitleTracks = [];
+      _currentSubtitleTrack = null;
+      _currentSubtitleData = null;
+      _isSubtitleEnabled = false;
+      _relatedVideos = [];
+      _overrideInitialPosition = prev.position > Duration.zero
+          ? prev.position
+          : Duration.zero;
+      _lastReportedPosition = Duration.zero;
+      _lastReportTime = DateTime.fromMillisecondsSinceEpoch(0);
+    });
+    _commentCountNotifier.value = prev.video?.stat.reply ?? 0;
+    _portraitCollapseNotifier.value = 0.0;
+    if (_tabController.index != 0) {
+      _tabController.animateTo(0);
+    }
+    _infoTabKey.currentState?.scrollToTop();
+    await _loadAll();
   }
 
   void _showUgcSeasonBottomSheet(UgcSeason season) {
@@ -1111,52 +1351,180 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
       }
     }
 
-    // 3. Auto-play next video in Watch Later playlist if reached end
-    if (_watchLaterList != null &&
-        durSec > 0 &&
-        currentSec >= durSec &&
-        !_isAutoPlayingNext &&
-        _currentWatchLaterIndex + 1 < _watchLaterList!.length) {
-      _isAutoPlayingNext = true;
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted &&
-            _watchLaterList != null &&
-            _currentWatchLaterIndex + 1 < _watchLaterList!.length) {
-          final nextIdx = _currentWatchLaterIndex + 1;
-          final nextItem = _watchLaterList![nextIdx];
-          AppToast.show(
-            context,
-            '正在自动播放下一条稍后看: ${nextItem.title}',
-            icon: Icons.playlist_play_rounded,
-          );
-          _switchWatchLaterItem(nextItem, nextIdx);
-          _isAutoPlayingNext = false;
-        }
-      });
-    } else if (PlayerSettingsService.autoPlayNextEpisode &&
-        _detail != null &&
-        _detail!.pages.length > 1 &&
-        _selectedPageIndex + 1 < _detail!.pages.length &&
-        durSec > 0 &&
-        currentSec >= durSec &&
-        !_isAutoPlayingNext) {
-      // 4. Auto-play next episode / part
-      _isAutoPlayingNext = true;
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted &&
-            _detail != null &&
-            _selectedPageIndex + 1 < _detail!.pages.length) {
-          final nextIdx = _selectedPageIndex + 1;
-          AppToast.show(
-            context,
-            '正在自动播放下一分P: ${_detail!.pages[nextIdx].part}',
-            icon: Icons.playlist_play_rounded,
-          );
-          _switchPart(nextIdx);
-          _isAutoPlayingNext = false;
-        }
-      });
+    // 如果用户向回拖动进度，取消未开始的自动连播倒计时
+    if (durSec > 0 && currentSec + 2 < durSec && _autoNextTimer != null) {
+      _cancelAutoNext();
     }
+
+    // 3. Auto-play next video (4s cancellable countdown overlay)
+    if (durSec > 0 &&
+        currentSec >= durSec &&
+        !_isSwitchingStream &&
+        !_isAutoPlayingNext &&
+        _autoNextTimer == null) {
+      if (_watchLaterList != null &&
+          _currentWatchLaterIndex + 1 < _watchLaterList!.length) {
+        final nextIdx = _currentWatchLaterIndex + 1;
+        final nextItem = _watchLaterList![nextIdx];
+        _startAutoNextCountdown(
+          title: nextItem.title,
+          onConfirm: () {
+            if (!mounted ||
+                _watchLaterList == null ||
+                nextIdx >= _watchLaterList!.length) {
+              return;
+            }
+            _switchWatchLaterItem(_watchLaterList![nextIdx], nextIdx);
+          },
+        );
+      } else if (PlayerSettingsService.autoPlayNextEpisode &&
+          _detail != null &&
+          _detail!.pages.length > 1 &&
+          _selectedPageIndex + 1 < _detail!.pages.length) {
+        final nextIdx = _selectedPageIndex + 1;
+        _startAutoNextCountdown(
+          title: _detail!.pages[nextIdx].part,
+          onConfirm: () {
+            if (!mounted ||
+                _detail == null ||
+                nextIdx >= _detail!.pages.length) {
+              return;
+            }
+            _switchPart(nextIdx);
+          },
+        );
+      }
+    }
+  }
+
+  void _startAutoNextCountdown({
+    required String title,
+    required VoidCallback onConfirm,
+  }) {
+    _cancelAutoNext();
+    _isAutoPlayingNext = true;
+    int left = 4;
+
+    void confirm() {
+      _cancelAutoNext();
+      onConfirm();
+    }
+
+    _autoNextNotifier.value = (
+      secondsLeft: left,
+      title: title,
+      onConfirm: confirm,
+    );
+    _autoNextTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      left -= 1;
+      if (left <= 0) {
+        confirm();
+      } else {
+        _autoNextNotifier.value = (
+          secondsLeft: left,
+          title: title,
+          onConfirm: confirm,
+        );
+      }
+    });
+  }
+
+  Widget _buildAutoNextOverlay() {
+    return ValueListenableBuilder<
+      ({int secondsLeft, String title, VoidCallback onConfirm})?
+    >(
+      valueListenable: _autoNextNotifier,
+      builder: (context, data, _) {
+        if (data == null) return const SizedBox.shrink();
+        final primary = Theme.of(context).colorScheme.primary;
+        return Positioned(
+          right: 16,
+          bottom: 56,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 320),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.78),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  width: 0.6,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      '${data.secondsLeft}s 后播放 · ${data.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Semantics(
+                    button: true,
+                    label: '取消自动播放下一集',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: _cancelAutoNext,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        child: Text(
+                          '取消',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Semantics(
+                    button: true,
+                    label: '立即播放下一集',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      onTap: data.onConfirm,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primary,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
+                        ),
+                        child: Text(
+                          '立即播放',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _reportFinalProgress() {
@@ -1167,7 +1535,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     final currentSec = pos.inSeconds;
     if (currentSec <= 0) return;
 
-    final video = _detail?.videoItem ?? widget.initialVideo;
+    final video = _detail?.videoItem ?? _currentInitialVideo;
     final aid = video?.aid ?? 0;
     final cid =
         (_detail != null &&
@@ -1221,6 +1589,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
 
   @override
   void dispose() {
+    _autoNextTimer?.cancel();
+    _commentCountNotifier.dispose();
+    _portraitCollapseNotifier.dispose();
+    _autoNextNotifier.dispose();
     _tripleComboAnimController.dispose();
     PlayerSettingsService.autoRotateListenable.removeListener(
       _onAutoRotateSettingChanged,
@@ -1234,7 +1606,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
   }
 
   void _startListenMode() async {
-    final video = _detail?.videoItem ?? widget.initialVideo;
+    final video = _detail?.videoItem ?? _currentInitialVideo;
     if (video == null) {
       AppToast.show(
         context,
@@ -1312,8 +1684,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     if (!mounted) return;
 
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (ctx) => ListenVideoScreen(
+      AppRoutes.slideUpModal<void>(
+        ListenVideoScreen(
           bvid: video.bvid,
           cid: video.cid,
           title: video.title,
@@ -1370,18 +1742,47 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     }
   }
 
-  Widget _buildPlayer(VideoItem? video, Color primaryColor) {
-    final content = _buildPlayerContent(video, primaryColor);
-    if (widget.heroTag == null || video == null || video.pic.isEmpty) {
+  Widget _buildPlayer(
+    VideoItem? video,
+    Color primaryColor, {
+    bool isWide = false,
+  }) {
+    final content = _buildPlayerContent(video, primaryColor, isWide: isWide);
+    final showHero =
+        widget.heroTag != null &&
+        _videoHistoryStack.isEmpty &&
+        _currentBvid == widget.bvid &&
+        video != null &&
+        video.pic.isNotEmpty;
+
+    if (!showHero && !_isSwitchingStream) {
       return content;
     }
+
     // 详情侧 Hero 常驻（不可见但在树里）：push 时承接卡片封面的飞入，
-    // pop 时即便播放器已就绪也能反向飞回卡片位置。全屏时保持同一 Stack 骨架，
-    // 仅隐藏 Hero 层，避免切换全屏时外层容器结构跳变。
+    // pop 时即便播放器已就绪也能反向飞回卡片位置。全屏或切换分P时保持同一 Stack 骨架。
     return Stack(
       children: [
         content,
-        if (!_isPlayerFullScreen)
+        if (_isSwitchingStream)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                color: Colors.black54,
+                child: Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (showHero && !_isPlayerFullScreen)
           Positioned.fill(
             // 不可见的 Hero 层不能吞掉播放器的点击/拖动/双击手势
             child: IgnorePointer(
@@ -1392,8 +1793,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                   child: NetworkImageView(
                     url: video.pic,
                     fit: BoxFit.cover,
-                    memCacheWidth: 640,
-                    memCacheHeight: 360,
+                    memCacheWidth: 480,
+                    memCacheHeight: 300,
                   ),
                 ),
               ),
@@ -1403,14 +1804,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     );
   }
 
-  Widget _buildPlayerContent(VideoItem? video, Color primaryColor) {
+  Widget _buildPlayerContent(
+    VideoItem? video,
+    Color primaryColor, {
+    bool isWide = false,
+  }) {
     if (_playUrlInfo != null) {
       final cid =
           (_detail != null &&
               _detail!.pages.isNotEmpty &&
               _selectedPageIndex < _detail!.pages.length)
           ? _detail!.pages[_selectedPageIndex].cid
-          : (_detail?.videoItem.cid ?? 0);
+          : (_detail?.videoItem.cid ?? video?.cid ?? 0);
 
       Duration? effectiveInitialPos = _overrideInitialPosition;
       if (effectiveInitialPos == null) {
@@ -1448,6 +1853,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         videoKey: '${_currentBvid}_$cid',
         playUrlInfo: _playUrlInfo!,
         localFilePath: _localVideoPath,
+        coverUrl: video?.pic,
         danmakus: _danmakus,
         chapters: _detail?.chapters ?? const [],
         title: playerTitle,
@@ -1458,6 +1864,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
         },
         onListenMode: _startListenMode,
         onProgressUpdate: _onPlayerProgressUpdate,
+        autoNextOverlay: _buildAutoNextOverlay(),
+        portraitCollapseListenable: isWide
+            ? const AlwaysStoppedAnimation<double>(1.0)
+            : _portraitCollapseNotifier,
         onNextEpisode:
             (_detail != null && _selectedPageIndex + 1 < _detail!.pages.length)
             ? () => _switchPart(_selectedPageIndex + 1)
@@ -1487,8 +1897,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
               NetworkImageView(
                 url: video.pic,
                 fit: BoxFit.cover,
-                memCacheWidth: 640,
-                memCacheHeight: 360,
+                memCacheWidth: 480,
+                memCacheHeight: 300,
               ),
             Container(color: Colors.black45),
             if (_playUrlError != null)
@@ -1557,9 +1967,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
                 ),
               ),
             Positioned(
-              top: 8,
-              left: 8,
+              top: MediaQuery.paddingOf(context).top + 8,
+              left: MediaQuery.paddingOf(context).left + 8,
               child: IconButton(
+                tooltip: '返回',
                 icon: const Icon(
                   Icons.arrow_back_ios_new_rounded,
                   color: Colors.white,
@@ -1574,21 +1985,48 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
     );
   }
 
+  Widget _buildCommentTabTitle() {
+    return ValueListenableBuilder<int>(
+      valueListenable: _commentCountNotifier,
+      builder: (context, count, _) {
+        final effectiveCount =
+            count > 0 ? count : (_detail?.videoItem.stat.reply ?? 0);
+        return Text(
+          effectiveCount > 0
+              ? '评论 ${Formatters.formatCount(effectiveCount)}'
+              : '评论',
+        );
+      },
+    );
+  }
+
+  void _handleCommentCountChanged(int count) {
+    if (_commentCountNotifier.value != count) {
+      _commentCountNotifier.value = count;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isMobileLandscape =
         ResponsiveUtil.isMobile &&
         MediaQuery.of(context).orientation == Orientation.landscape;
     final isFullScreen = _isPlayerFullScreen || isMobileLandscape;
-    final video = _detail?.videoItem ?? widget.initialVideo;
+    final isWide = !isFullScreen && ResponsiveUtil.isWideScreen(context);
+    final video = _detail?.videoItem ?? _currentInitialVideo;
+    final hasInitialContent = _detail != null || _currentInitialVideo != null;
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return PopScope(
-      canPop: !isFullScreen,
+      canPop: !isFullScreen && _videoHistoryStack.isEmpty,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (isFullScreen) {
           _playerKey.currentState?.exitFullScreen();
+          return;
+        }
+        if (_videoHistoryStack.isNotEmpty) {
+          _popVideoHistory();
         }
       },
       child: Scaffold(
@@ -1600,66 +2038,123 @@ class _VideoDetailScreenState extends State<VideoDetailScreen>
           bottom: false,
           left: !isFullScreen,
           right: !isFullScreen,
-          child: Column(
-            children: [
-              // Top: Video Player (Full height in landscape/fullscreen, 16:9 in portrait)
-              if (isFullScreen)
-                Expanded(child: _buildPlayer(video, primaryColor))
-              else
-                _buildPlayer(video, primaryColor),
-
-              // Tab Bar & Details (only when NOT fullscreen)
-              if (!isFullScreen) ...[
-                // Tab Bar: 简介 / 评论
-                Container(
-                  height: 40,
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorColor: primaryColor,
-                    indicatorWeight: 2.5,
-                    indicatorSize: TabBarIndicatorSize.label,
-                    labelColor: primaryColor,
-                    unselectedLabelColor: context.colors.textSub,
-                    labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+          child: isFullScreen
+              ? Column(
+                  children: [
+                    Expanded(
+                      child: _buildPlayer(video, primaryColor, isWide: false),
                     ),
-                    unselectedLabelStyle: const TextStyle(fontSize: 14),
-                    dividerColor: Colors.transparent,
-                    dividerHeight: 0,
-                    tabs: [
-                      const Tab(text: '简介'),
-                      Tab(
-                        text:
-                            '评论 ${_commentCountForLabel > 0 ? Formatters.formatCount(_commentCountForLabel) : (_detail?.videoItem.stat.reply != null ? Formatters.formatCount(_detail!.videoItem.stat.reply) : "")}',
+                  ],
+                )
+              : isWide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        children: [
+                          _buildPlayer(video, primaryColor, isWide: true),
+                          Expanded(
+                            child: (_isLoading && !hasInitialContent && !_detailError)
+                                ? const LoadingView(message: '正在加载视频详情...')
+                                : _VideoInfoTab(key: _infoTabKey, state: this),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-
-                // Tab View Body
-                Expanded(
-                  child: _isLoading && _detail == null
-                      ? const LoadingView(message: '正在加载视频详情...')
-                      : TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _VideoInfoTab(key: _infoTabKey, state: this),
-                            _VideoCommentsTab(
-                              state: this,
-                              onTotalCountChanged: (count) {
-                                if (_commentCountForLabel != count) {
-                                  setState(() => _commentCountForLabel = count);
-                                }
-                              },
+                    ),
+                    Container(width: 0.5, color: context.colors.divider),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 44),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                                vertical: 10,
+                              ),
+                              alignment: Alignment.centerLeft,
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: context.colors.divider,
+                                    width: 0.5,
+                                  ),
+                                ),
+                              ),
+                              child: DefaultTextStyle.merge(
+                                style: TextStyle(
+                                  color: context.colors.textMain,
+                                  fontSize: AppTypography.body1,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                child: _buildCommentTabTitle(),
+                              ),
                             ),
-                          ],
+                          ),
+                          Expanded(
+                            child: _VideoCommentsTab(
+                              state: this,
+                              onTotalCountChanged: _handleCommentCountChanged,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildPlayer(video, primaryColor, isWide: false),
+                    // Tab Bar: 简介 / 评论
+                    Container(
+                      height: math.max(
+                        40.0,
+                        38.0 * MediaQuery.textScalerOf(context).scale(1.0),
+                      ),
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: TabBar(
+                        controller: _tabController,
+                        indicatorColor: primaryColor,
+                        indicatorWeight: 2.5,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        labelColor: primaryColor,
+                        unselectedLabelColor: context.colors.textSub,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
+                        unselectedLabelStyle: const TextStyle(fontSize: 14),
+                        dividerColor: Colors.transparent,
+                        dividerHeight: 0,
+                        tabs: [
+                          const Tab(text: '简介'),
+                          Tab(child: _buildCommentTabTitle()),
+                        ],
+                      ),
+                    ),
+
+                    // Tab View Body：有 initialVideo 时秒开展示，不再阻塞整屏转圈
+                    Expanded(
+                      child: (_isLoading && !hasInitialContent && !_detailError)
+                          ? const LoadingView(message: '正在加载视频详情...')
+                          : TabBarView(
+                              controller: _tabController,
+                              children: [
+                                _VideoInfoTab(key: _infoTabKey, state: this),
+                                _VideoCommentsTab(
+                                  state: this,
+                                  onTotalCountChanged:
+                                      _handleCommentCountChanged,
+                                ),
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ],
-          ),
         ),
       ),
     );

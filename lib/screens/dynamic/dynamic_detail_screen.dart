@@ -2,16 +2,20 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/comment_model.dart';
 import '../../models/dynamic_model.dart';
+import '../../models/video_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/bili_http_client.dart';
 import '../../services/api/comment_api_service.dart';
 import '../../services/api/dynamic_api_service.dart';
 import '../../services/api/user_api_service.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
 import '../../utils/formatters.dart';
 import '../../utils/image_decode_sizing.dart';
+import '../../utils/responsive_util.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/audio/mini_audio_player.dart';
 import '../../widgets/comment_item_widget.dart';
@@ -123,8 +127,21 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     }
   }
 
-  int get _commentOid => _item?.commentId ?? (int.tryParse(widget.dynamicId) ?? 0);
-  int get _commentType => _item?.commentType ?? 17;
+  int get _commentOid {
+    if (_item != null && _item!.commentId > 0) return _item!.commentId;
+    if (widget.dynamicId.startsWith('cv')) {
+      return int.tryParse(widget.dynamicId.substring(2)) ?? 0;
+    }
+    return int.tryParse(widget.dynamicId) ?? 0;
+  }
+
+  int get _commentType {
+    if (_item != null && _item!.commentType > 0) return _item!.commentType;
+    return widget.dynamicId.startsWith('cv') ? 12 : 17;
+  }
+
+  String get _detailHeroScope =>
+      'dyn_detail_${identityHashCode(this)}_${widget.dynamicId}';
 
   Future<void> _loadComments({bool refresh = false}) async {
     final oid = _commentOid;
@@ -238,7 +255,9 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
       _likeCount += targetLike ? 1 : -1;
     });
 
-    final ok = await DynamicApiService().likeDynamic(widget.dynamicId, like: targetLike);
+    final likeTargetId =
+        (_item?.id.isNotEmpty == true) ? _item!.id : widget.dynamicId;
+    final ok = await DynamicApiService().likeDynamic(likeTargetId, like: targetLike);
     if (!ok && mounted) {
       setState(() {
         _isLiked = !targetLike;
@@ -331,17 +350,47 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     }
   }
 
+  Future<void> _openInBrowser() async {
+    final resolvedId = _item?.id.isNotEmpty == true ? _item!.id : widget.dynamicId;
+    final url = resolvedId.startsWith('cv')
+        ? 'https://www.bilibili.com/read/$resolvedId'
+        : 'https://www.bilibili.com/opus/$resolvedId';
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) return;
+      } catch (_) {}
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    if (mounted) {
+      AppToast.show(context, '链接已复制', icon: Icons.copy_rounded);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('动态详情', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        title: Text(
+          widget.dynamicId.startsWith('cv') ? '专栏详情' : '动态详情',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.open_in_browser_rounded),
+            tooltip: '在浏览器打开',
+            onPressed: _openInBrowser,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
+            tooltip: '刷新动态',
             onPressed: () {
               _loadDynamicDetail();
               _loadComments(refresh: true);
@@ -357,38 +406,44 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                   message: '动态不存在或已被删除',
                   onRetry: _loadDynamicDetail,
                 )
-              : Column(
-                  children: [
-                    Expanded(
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (scrollInfo) {
-                          if (scrollInfo is ScrollUpdateNotification &&
-                              scrollInfo.metrics.maxScrollExtent > 50 &&
-                              scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
-                            _loadMoreComments();
-                          }
-                          return false;
-                        },
-                        child: CustomScrollView(
-                          slivers: [
-                            // Dynamic Main Content Card（正文分段懒加载）
-                            ..._buildContentSlivers(context, _item!, primaryColor),
+              : ResponsiveMaxConstraint(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (scrollInfo) {
+                            if (scrollInfo is ScrollUpdateNotification &&
+                                scrollInfo.metrics.maxScrollExtent > 50 &&
+                                scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+                              _loadMoreComments();
+                            }
+                            return false;
+                          },
+                          child: RefreshIndicator(
+                            color: primaryColor,
+                            onRefresh: () async {
+                              await _loadDynamicDetail();
+                              await _loadComments(refresh: true);
+                            },
+                            child: CustomScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              slivers: [
+                                // Dynamic Main Content Card（正文分段懒加载）
+                                ..._buildContentSlivers(context, _item!, primaryColor),
 
-                            // Divider & Comments Header
-                            SliverToBoxAdapter(
-                              child: _buildCommentsHeader(primaryColor),
-                            ),
-
-                          // Comments List
-                          if (_commentLoading && _comments.isEmpty)
-                            const SliverToBoxAdapter(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 36),
-                                child: Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                // Divider & Comments Header
+                                SliverToBoxAdapter(
+                                  child: _buildCommentsHeader(primaryColor),
                                 ),
-                              ),
-                            )
+
+                                // Comments List
+                                if (_commentLoading && _comments.isEmpty)
+                                  const SliverToBoxAdapter(
+                                    child: SizedBox(
+                                      height: 360,
+                                      child: CommentSkeleton(itemCount: 4),
+                                    ),
+                                  )
                           else if (_comments.isEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
@@ -448,11 +503,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                       ),
                     ),
                   ),
+                ),
 
-                  // Bottom Comment Input Bar
-                  _buildBottomInputBar(primaryColor),
-                ],
-              ),
+                // Bottom Comment Input Bar
+                _buildBottomInputBar(primaryColor),
+              ],
+            ),
+          ),
     );
   }
 
@@ -469,6 +526,15 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     final cardColor = context.colors.card;
     final video = item.video;
     final hasVideo = video != null && video.bvid.isNotEmpty;
+    final firstParaForPicIndex = <int, int>{};
+    for (var i = 0; i < item.paragraphs.length; i++) {
+      final p = item.paragraphs[i];
+      if (!p.isPicture) continue;
+      final url = p.picture!.url;
+      final picIdx = item.pictures.indexWhere((pic) => pic.url == url);
+      final effectiveIdx = picIdx >= 0 ? picIdx : 0;
+      firstParaForPicIndex.putIfAbsent(effectiveIdx, () => i);
+    }
 
     return [
       SliverToBoxAdapter(
@@ -491,7 +557,13 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                 color: cardColor,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(16.0, index == 0 ? 12.0 : 0, 16.0, 0),
-                  child: _buildParagraph(ctx, item.paragraphs[index], item.pictures),
+                  child: _buildParagraph(
+                    ctx,
+                    index,
+                    item.paragraphs[index],
+                    item.pictures,
+                    firstParaForPicIndex,
+                  ),
                 ),
               );
             },
@@ -525,62 +597,78 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           // Author Header
           Row(
             children: [
-              GestureDetector(
-                onTap: () {
-                  if (item.author.mid > 0) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
-                      ),
-                    );
-                  }
-                },
-                child: UserAvatar(url: item.author.face, size: 42),
+              Semantics(
+                button: item.author.mid > 0,
+                label: '查看 ${item.author.name} 主页',
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () {
+                      if (item.author.mid > 0) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
+                          ),
+                        );
+                      }
+                    },
+                    child: UserAvatar(url: item.author.face, size: 42),
+                  ),
+                ),
               ),
               const SizedBox(width: 12.0),
               Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    if (item.author.mid > 0) {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
-                        ),
-                      );
-                    }
-                  },
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.author.name,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
+                child: Semantics(
+                  button: item.author.mid > 0,
+                  label: '查看 ${item.author.name} 主页',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        if (item.author.mid > 0) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) => UpSpaceScreen(mid: item.author.mid),
+                            ),
+                          );
+                        }
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.author.pubTime.isNotEmpty
-                                ? item.author.pubTime
-                                : (item.author.pubTs > 0 ? Formatters.formatTime(item.author.pubTs) : ''),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.colors.textHint,
-                            ),
+                            item.author.name,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                           ),
-                          if (item.author.pubAction.isNotEmpty) ...[
-                            const SizedBox(width: 4.0),
-                            Text(
-                              '· ${item.author.pubAction}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: context.colors.textHint,
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Text(
+                                item.author.pubTime.isNotEmpty
+                                    ? item.author.pubTime
+                                    : (item.author.pubTs > 0 ? Formatters.formatTime(item.author.pubTs) : ''),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: context.colors.textHint,
+                                ),
                               ),
-                            ),
-                          ],
+                              if (item.author.pubAction.isNotEmpty) ...[
+                                const SizedBox(width: 4.0),
+                                Text(
+                                  '· ${item.author.pubAction}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.colors.textHint,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -688,48 +776,61 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           // Forwarded Dynamic (if any)
           if (item.orig != null) ...[
             const SizedBox(height: 12.0),
-            GestureDetector(
-              onTap: () {
-                if (item.orig!.id.isNotEmpty) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => DynamicDetailScreen(
-                        dynamicId: item.orig!.id,
-                        initialItem: item.orig,
+            Semantics(
+              button: item.orig!.id.isNotEmpty,
+              label: '查看转发源动态：${item.orig!.author.name}',
+              child: Material(
+                color: context.colors.fill,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: item.orig!.id.isNotEmpty
+                      ? () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) => DynamicDetailScreen(
+                                dynamicId: item.orig!.id,
+                                initialItem: item.orig,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '@${item.orig!.author.name}: ${item.orig!.text}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: context.colors.textSub,
+                            height: 1.45,
+                          ),
+                        ),
+                        if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
+                          const SizedBox(height: 8.0),
+                          _buildVideoCard(
+                            context,
+                        item.orig!.video!,
+                        heroTag: '${_detailHeroScope}_orig_vid_${item.orig!.video!.bvid}',
                       ),
-                    ),
-                  );
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12.0),
-                decoration: BoxDecoration(
-                  color: context.colors.fill,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '@${item.orig!.author.name}: ${item.orig!.text}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: context.colors.textSub,
-                        height: 1.45,
-                      ),
-                    ),
-                    if (item.orig!.video != null && item.orig!.video!.bvid.isNotEmpty) ...[
-                      const SizedBox(height: 8.0),
-                      _buildVideoCard(context, item.orig!.video!),
                     ],
-                    if (item.orig!.pictures.isNotEmpty) ...[
-                      const SizedBox(height: 8.0),
-                      _buildImages(context, item.orig!.pictures),
+                      if (item.orig!.pictures.isNotEmpty) ...[
+                        const SizedBox(height: 8.0),
+                        _buildImages(
+                          context,
+                          item.orig!.pictures,
+                          heroPrefix: '${_detailHeroScope}_orig',
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
+          ),
           ],
 
           const SizedBox(height: 16.0),
@@ -809,24 +910,47 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
     );
   }
 
-  Widget _buildVideoCard(BuildContext context, DynamicVideo video) {
+  Widget _buildVideoCard(
+    BuildContext context,
+    DynamicVideo video, {
+    String? heroTag,
+  }) {
+    final resolvedHeroTag =
+        heroTag ?? '${_detailHeroScope}_vid_${video.bvid}';
+    final initialVideo = VideoItem(
+      aid: video.aid,
+      bvid: video.bvid,
+      cid: 0,
+      title: video.title,
+      pic: video.cover,
+      desc: video.desc,
+      duration: 0,
+      pubdate: 0,
+      ctime: 0,
+      owner: Owner(
+        mid: _item?.author.mid ?? 0,
+        name: _item?.author.name ?? '',
+        face: _item?.author.face ?? '',
+      ),
+      stat: Stat(),
+    );
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (ctx) => VideoDetailScreen(bvid: video.bvid),
+            builder: (ctx) => VideoDetailScreen(
+              bvid: video.bvid,
+              initialVideo: initialVideo,
+              heroTag: resolvedHeroTag,
+            ),
           ),
         );
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadius.card,
       child: Container(
         decoration: BoxDecoration(
           color: context.colors.fill,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: context.colors.divider,
-            width: 0.6,
-          ),
+          borderRadius: AppRadius.card,
         ),
         clipBehavior: Clip.antiAlias,
         child: Row(
@@ -837,11 +961,14 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  NetworkImageView(
-                    url: video.cover,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 240,
-                    memCacheHeight: 150,
+                  Hero(
+                    tag: resolvedHeroTag,
+                    child: NetworkImageView(
+                      url: video.cover,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 480,
+                      memCacheHeight: 300,
+                    ),
                   ),
                   if (video.durationText.isNotEmpty)
                     Positioned(
@@ -912,8 +1039,10 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
   /// 所以图片只有滚动到可见范围附近时才会开始解码。
   Widget _buildParagraph(
     BuildContext context,
+    int paragraphIndex,
     DynamicParagraph p,
     List<DynamicPicture> allPictures,
+    Map<int, int> firstParaForPicIndex,
   ) {
     if (p.isQuote) {
       return Padding(
@@ -998,23 +1127,33 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
       final pic = p.picture!;
       final picIndex = allPictures.indexWhere((item) => item.url == pic.url);
       final effectiveIndex = picIndex >= 0 ? picIndex : 0;
+      final isPrimaryHero = firstParaForPicIndex[effectiveIndex] == paragraphIndex;
+      final heroPrefix = _detailHeroScope;
+      final pictureCard = ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          color: context.colors.fill,
+          child: _buildPictureBlock(context, pic),
+        ),
+      );
 
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => ImageViewer.show(
             context,
             pictures: allPictures.isNotEmpty ? allPictures : [pic],
             initialIndex: effectiveIndex,
+            heroPrefix: isPrimaryHero ? heroPrefix : null,
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: double.infinity,
-              color: context.colors.fill,
-              child: _buildPictureBlock(context, pic),
-            ),
-          ),
+          child: isPrimaryHero
+              ? Hero(
+                  tag: '${heroPrefix}_$effectiveIndex',
+                  child: pictureCard,
+                )
+              : pictureCard,
         ),
       );
     }
@@ -1033,25 +1172,32 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
 
   Widget _buildImages(
     BuildContext context,
-    List<DynamicPicture> pictures,
-  ) {
+    List<DynamicPicture> pictures, {
+    String? heroPrefix,
+  }) {
     final count = pictures.length;
     if (count == 0) return const SizedBox.shrink();
+    final effectiveHeroPrefix = heroPrefix ?? _detailHeroScope;
 
     if (count == 1) {
       final pic = pictures.first;
       return GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => ImageViewer.show(
           context,
           pictures: pictures,
           initialIndex: 0,
+          heroPrefix: effectiveHeroPrefix,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: double.infinity,
-            color: context.colors.fill,
-            child: _buildPictureBlock(context, pic),
+        child: Hero(
+          tag: '${effectiveHeroPrefix}_0',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: double.infinity,
+              color: context.colors.fill,
+              child: _buildPictureBlock(context, pic),
+            ),
           ),
         ),
       );
@@ -1074,23 +1220,31 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             final pic = entry.value;
 
             return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () => ImageViewer.show(
                 context,
                 pictures: pictures,
                 initialIndex: idx,
+                heroPrefix: effectiveHeroPrefix,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: itemWidth,
-                  height: itemWidth,
-                  color: context.colors.fill,
-                  child: NetworkImageView(
-                    url: pic.url,
+              child: Hero(
+                tag: '${effectiveHeroPrefix}_$idx',
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
                     width: itemWidth,
                     height: itemWidth,
-                    fit: BoxFit.cover,
-                    alignment: pic.isLongImage ? Alignment.topCenter : Alignment.center,
+                    color: context.colors.fill,
+                    child: NetworkImageView(
+                      url: pic.url,
+                      width: itemWidth,
+                      height: itemWidth,
+                      fit: BoxFit.cover,
+                      disableServerCrop: pic.isLongImage,
+                      alignment: pic.isLongImage
+                          ? Alignment.topCenter
+                          : Alignment.center,
+                    ),
                   ),
                 ),
               ),
@@ -1115,6 +1269,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
         child: NetworkImageView(
           url: pic.url,
           fit: BoxFit.contain,
+          disableServerCrop: pic.isLongImage,
           memCacheWidth: 720,
           memCacheHeight: 720,
         ),
@@ -1138,6 +1293,7 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
             child: NetworkImageView(
               url: pic.url,
               fit: BoxFit.contain,
+              disableServerCrop: isLong,
               alignment: isLong ? Alignment.topCenter : Alignment.center,
               memCacheWidth: cacheWidth,
             ),
@@ -1224,9 +1380,12 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
                     style: TextStyle(fontSize: 12, color: primaryColor, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: _cancelReply,
-                    child: const Icon(Icons.close_rounded, size: 16),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    tooltip: '取消回复',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                    onPressed: _cancelReply,
                   ),
                 ],
               ),
@@ -1234,32 +1393,53 @@ class _DynamicDetailScreenState extends State<DynamicDetailScreen> {
           Row(
             children: [
               Expanded(
-                child: Container(
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: context.colors.fill,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: TextField(
-                    controller: _commentInputController,
-                    focusNode: _commentFocusNode,
-                    decoration: InputDecoration(
-                      hintText: _replyTarget != null ? '回复 @${_replyTarget!.member.uname}...' : '发一条友善的动态评论...',
-                      hintStyle: TextStyle(fontSize: 13, color: context.colors.textHint),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 40, maxHeight: 112),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: context.colors.fill,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    style: const TextStyle(fontSize: 13),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendComment(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 4.0,
+                    ),
+                    child: CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                            _sendComment,
+                        const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                            _sendComment,
+                      },
+                      child: TextField(
+                        controller: _commentInputController,
+                        focusNode: _commentFocusNode,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: _replyTarget != null
+                              ? '回复 @${_replyTarget!.member.uname}...'
+                              : '发一条友善的动态评论...',
+                          hintStyle: TextStyle(
+                            fontSize: 13,
+                            color: context.colors.textHint,
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 6.0),
+                        ),
+                        style: const TextStyle(fontSize: 13),
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendComment(),
+                      ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 8.0),
               IconButton.filled(
                 onPressed: _isSendingComment ? null : _sendComment,
+                tooltip: '发送评论',
                 style: IconButton.styleFrom(
                   backgroundColor: primaryColor,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,

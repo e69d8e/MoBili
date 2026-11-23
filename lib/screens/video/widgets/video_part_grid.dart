@@ -189,27 +189,28 @@ class VideoPartGrid extends StatelessWidget {
     final columns =
         crossAxisCount ?? columnsForWidth(MediaQuery.of(context).size.width);
 
-    // 缓存进度是 ChangeNotifier，下载完成/删除后角标需要即时刷新
-    return AnimatedBuilder(
-      animation: VideoCacheService(),
-      builder: (context, _) {
-        return GridView.builder(
-          controller: controller,
-          shrinkWrap: shrinkWrap,
-          physics: shrinkWrap
-              ? const NeverScrollableScrollPhysics()
-              : const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 8.0,
-            crossAxisSpacing: 8.0,
-            mainAxisExtent: tileHeight,
-          ),
-          itemCount: shown.length,
-          itemBuilder: (ctx, i) {
-            final realIndex = shown[i];
-            final page = pages[realIndex];
+    // 缓存状态收敛到单个分P节点内部监听，避免下载进度每 400ms 触发整张网格重建
+    return GridView.builder(
+      controller: controller,
+      primary: false,
+      shrinkWrap: shrinkWrap,
+      physics: shrinkWrap
+          ? const NeverScrollableScrollPhysics()
+          : const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        mainAxisSpacing: 8.0,
+        crossAxisSpacing: 8.0,
+        mainAxisExtent: tileHeight,
+      ),
+      itemCount: shown.length,
+      itemBuilder: (ctx, i) {
+        final realIndex = shown[i];
+        final page = pages[realIndex];
+        return AnimatedBuilder(
+          animation: VideoCacheService(),
+          builder: (context, _) {
             return VideoPartTile(
               page: page,
               number: realIndex + 1,
@@ -288,15 +289,27 @@ class _VideoPartGridSheetState extends State<VideoPartGridSheet> {
     super.dispose();
   }
 
-  void _revealCurrentPart() {
+  void _revealCurrentPart({bool animate = false}) {
     if (!mounted || !_gridController.hasClients) return;
     final columns = VideoPartGrid.columnsForWidth(
       MediaQuery.of(context).size.width,
     );
-    final row = widget.selectedIndex ~/ columns;
+    final displayIndex = _reversed
+        ? (widget.pages.length - 1 - widget.selectedIndex)
+        : widget.selectedIndex;
+    final row = displayIndex ~/ columns;
     final target = row * (VideoPartGrid.tileHeight + 8.0);
     final maxExtent = _gridController.position.maxScrollExtent;
-    _gridController.jumpTo(target.clamp(0.0, maxExtent));
+    final clamped = target.clamp(0.0, maxExtent);
+    if (animate) {
+      _gridController.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _gridController.jumpTo(clamped);
+    }
   }
 
   @override
@@ -370,7 +383,12 @@ class _VideoPartGridSheetState extends State<VideoPartGridSheet> {
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: () => setState(() => _reversed = !_reversed),
+                      onPressed: () {
+                        setState(() => _reversed = !_reversed);
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _revealCurrentPart(animate: true),
+                        );
+                      },
                       icon: Icon(
                         _reversed
                             ? Icons.arrow_upward_rounded
@@ -387,8 +405,12 @@ class _VideoPartGridSheetState extends State<VideoPartGridSheet> {
                       ),
                     ),
                     IconButton(
-                      visualDensity: VisualDensity.compact,
+                      tooltip: '关闭',
                       padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
                       icon: const Icon(Icons.close_rounded, size: 20),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
@@ -399,28 +421,31 @@ class _VideoPartGridSheetState extends State<VideoPartGridSheet> {
             // 自动连播（与设置页共用一份持久化状态）
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: SizedBox(
-                height: 40,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.playlist_play_rounded,
-                      size: 16,
-                      color: context.colors.textHint,
-                    ),
-                    const SizedBox(width: 6),
-                    const Expanded(
-                      child: Text('播完自动连播下一集', style: TextStyle(fontSize: 12)),
-                    ),
-                    Switch(
-                      value: _autoPlayNext,
-                      onChanged: (val) {
-                        setState(() => _autoPlayNext = val);
-                        PlayerSettingsService.setAutoPlayNextEpisode(val);
-                      },
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ],
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 40),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.playlist_play_rounded,
+                        size: 16,
+                        color: context.colors.textHint,
+                      ),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text('播完自动连播下一集', style: TextStyle(fontSize: 12)),
+                      ),
+                      Switch(
+                        value: _autoPlayNext,
+                        onChanged: (val) {
+                          setState(() => _autoPlayNext = val);
+                          PlayerSettingsService.setAutoPlayNextEpisode(val);
+                        },
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

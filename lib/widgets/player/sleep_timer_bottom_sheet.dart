@@ -128,8 +128,8 @@ class _SleepTimerBottomSheetState extends State<SleepTimerBottomSheet> {
                         _service.cancelTimer();
                         AppToast.show(context, '已关闭睡眠定时');
                       },
-                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.redAccent),
-                      label: const Text('关闭定时', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                      icon: Icon(Icons.close_rounded, size: 16, color: context.colors.danger),
+                      label: Text('关闭定时', style: TextStyle(color: context.colors.danger, fontSize: 13)),
                     ),
                 ],
               ),

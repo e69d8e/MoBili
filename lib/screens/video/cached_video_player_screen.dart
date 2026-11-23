@@ -388,7 +388,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text('删除', style: TextStyle(color: context.colors.danger)),
           ),
         ],
       ),
@@ -517,20 +517,20 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.green.withValues(alpha: 0.12),
+                                color: context.colors.success.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 0.8),
+                                border: Border.all(color: context.colors.success.withValues(alpha: 0.3), width: 0.8),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.offline_pin_rounded, size: 13, color: Colors.green),
+                                  Icon(Icons.offline_pin_rounded, size: 13, color: context.colors.success),
                                   const SizedBox(width: 3),
                                   Text(
                                     _currentItem.qualityDesc.isNotEmpty ? _currentItem.qualityDesc : '本地',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.green,
+                                      color: context.colors.success,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -572,7 +572,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                             context,
                             icon: Icons.delete_outline_rounded,
                             label: '删除此集',
-                            primaryColor: Colors.redAccent,
+                            primaryColor: context.colors.danger,
                             isDestructive: true,
                             onTap: _deleteCurrentCache,
                           ),
@@ -760,7 +760,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
               Icon(
                 icon,
                 size: 20,
-                color: isDestructive ? Colors.redAccent : primaryColor,
+                color: isDestructive ? context.colors.danger : primaryColor,
               ),
               const SizedBox(height: 4),
               Text(
@@ -769,7 +769,7 @@ class _CachedVideoPlayerScreenState extends State<CachedVideoPlayerScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: isDestructive
-                      ? Colors.redAccent
+                      ? context.colors.danger
                       : (context.colors.textSub),
                 ),
               ),

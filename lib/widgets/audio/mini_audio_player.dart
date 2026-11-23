@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../providers/listen_video_provider.dart';
 import '../../screens/video/listen_video_screen.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimens.dart';
+import '../../utils/app_routes.dart';
 import '../network_image_view.dart';
 
 class _MiniPlayerMetadata {
@@ -85,166 +87,211 @@ class MiniAudioPlayer extends StatelessWidget {
         sleepTimerMinutes: provider.sleepTimerRemaining?.inMinutes,
       ),
       builder: (context, meta, _) {
-        if (!meta.hasAudio) {
-          return const SizedBox.shrink();
-        }
-
         final primary = Theme.of(context).colorScheme.primary;
 
-        return RepaintBoundary(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 8.0),
-            decoration: BoxDecoration(
-              color: context.colors.card,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  // 卡片投影固定为淡黑，暗色主题下自然隐去，无需按明暗分支
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-              border: Border.all(
-                color: context.colors.divider,
-                width: 0.8,
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Top mini progress line (isolated high-frequency redraw)
-                _MiniAudioProgressBar(primary: primary),
-                InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (ctx) => ListenVideoScreen(
-                          bvid: meta.bvid,
-                          cid: meta.cid,
-                          title: meta.title,
-                          coverUrl: meta.cover,
-                          upName: meta.upName,
-                          totalDuration: meta.duration,
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !meta.hasAudio
+              ? const SizedBox(width: double.infinity, height: 0)
+              : RepaintBoundary(
+                  child: Dismissible(
+                    key: ValueKey('mini_audio_${meta.bvid}_${meta.cid}'),
+                    direction: DismissDirection.horizontal,
+                    onDismissed: (_) =>
+                        context.read<ListenVideoProvider>().stopAndClear(),
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 8.0),
+                      decoration: BoxDecoration(
+                        color: context.colors.card,
+                        borderRadius: AppRadius.card,
+                        boxShadow: [
+                          BoxShadow(
+                            // 卡片投影固定为淡黑，暗色主题下自然隐去，无需按明暗分支
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: context.colors.divider,
+                          width: 0.6,
                         ),
                       ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-                    child: Row(
-                      children: [
-                        // Album Thumbnail
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: SizedBox(
-                            width: 42,
-                            height: 42,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                NetworkImageView(
-                                  url: meta.cover,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: 100,
-                                  memCacheHeight: 100,
-                                ),
-                                Container(
-                                  color: Colors.black26,
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.headphones_rounded,
-                                      size: 18,
-                                      color: Colors.white,
-                                    ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Top mini progress line (isolated high-frequency redraw)
+                          _MiniAudioProgressBar(primary: primary),
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                AppRoutes.slideUpModal(
+                                  ListenVideoScreen(
+                                    bvid: meta.bvid,
+                                    cid: meta.cid,
+                                    title: meta.title,
+                                    coverUrl: meta.cover,
+                                    upName: meta.upName,
+                                    totalDuration: meta.duration,
+                                    heroTag: 'listen_mini_cover_${meta.bvid}',
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8.0),
-
-                        // Title & UP
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                meta.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 8.0,
                               ),
-                              const SizedBox(height: 2),
-                              Row(
+                              child: Row(
                                 children: [
-                                  Text(
-                                    meta.upName.isNotEmpty ? meta.upName : '听视频模式',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: context.colors.textSub,
+                                  // Album Thumbnail with Hero bridge
+                                  Hero(
+                                    tag: 'listen_mini_cover_${meta.bvid}',
+                                    child: ClipRRect(
+                                      borderRadius: AppRadius.of(AppRadius.sm),
+                                      child: SizedBox(
+                                        width: 42,
+                                        height: 42,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            NetworkImageView(
+                                              url: meta.cover,
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: 100,
+                                              memCacheHeight: 100,
+                                            ),
+                                            Container(
+                                              color: Colors.black26,
+                                              child: const Center(
+                                                child: Icon(
+                                                  Icons.headphones_rounded,
+                                                  size: 18,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  if (meta.isSleepTimerActive && meta.sleepTimerMinutes != null) ...[
-                                    const SizedBox(width: 4.0),
-                                    Text(
-                                      '🌙 ${meta.sleepTimerMinutes}m',
-                                      style: TextStyle(fontSize: 10, color: primary),
+                                  const SizedBox(width: 8.0),
+
+                                  // Title & UP
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          meta.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                meta.upName.isNotEmpty
+                                                    ? meta.upName
+                                                    : '听视频模式',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: context.colors.textSub,
+                                                ),
+                                              ),
+                                            ),
+                                            if (meta.isSleepTimerActive &&
+                                                meta.sleepTimerMinutes !=
+                                                    null) ...[
+                                              const SizedBox(width: 4.0),
+                                              Text(
+                                                '🌙 ${meta.sleepTimerMinutes}m',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: primary,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
+
+                                  // Play / Pause Button
+                                  IconButton(
+                                    tooltip: meta.isPlaying ? '暂停' : '播放',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 44,
+                                      minHeight: 44,
+                                    ),
+                                    icon: meta.isBuffering
+                                        ? SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    primary,
+                                                  ),
+                                            ),
+                                          )
+                                        : Icon(
+                                            meta.isPlaying
+                                                ? Icons
+                                                      .pause_circle_filled_rounded
+                                                : Icons
+                                                      .play_circle_fill_rounded,
+                                            color: primary,
+                                            size: 32,
+                                          ),
+                                    onPressed: () => context
+                                        .read<ListenVideoProvider>()
+                                        .togglePlayPause(),
+                                  ),
+
+                                  // Close Button
+                                  IconButton(
+                                    tooltip: '关闭后台播放',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 44,
+                                      minHeight: 44,
+                                    ),
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      size: 18,
+                                      color: context.colors.textHint,
+                                    ),
+                                    onPressed: () => context
+                                        .read<ListenVideoProvider>()
+                                        .stopAndClear(),
+                                  ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-
-                        // Play / Pause Button
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          icon: meta.isBuffering
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(primary),
-                                  ),
-                                )
-                              : Icon(
-                                  meta.isPlaying
-                                      ? Icons.pause_circle_filled_rounded
-                                      : Icons.play_circle_fill_rounded,
-                                  color: primary,
-                                  size: 32,
-                                ),
-                          onPressed: () => context.read<ListenVideoProvider>().togglePlayPause(),
-                        ),
-
-                        // Close Button
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          icon: Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: context.colors.textHint,
-                          ),
-                          onPressed: () => context.read<ListenVideoProvider>().stopAndClear(),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
         );
       },
     );

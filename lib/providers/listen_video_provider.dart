@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/api/video_api_service.dart';
 import '../services/player/bili_stream_proxy.dart';
+import '../services/player/sleep_timer_service.dart';
 
 class ListenVideoProvider extends ChangeNotifier {
   VideoPlayerController? _controller;
@@ -49,6 +50,13 @@ class ListenVideoProvider extends ChangeNotifier {
 
   ListenVideoProvider() {
     _initAudioSession();
+    SleepTimerService().registerPauseCallback(_onSleepTimerPause);
+  }
+
+  void _onSleepTimerPause() {
+    if (_isPlaying) {
+      pause();
+    }
   }
 
   // Getters
@@ -160,6 +168,7 @@ class ListenVideoProvider extends ChangeNotifier {
     }
 
     if (val.isCompleted) {
+      SleepTimerService().notifyVideoFinished();
       if (_sleepEndOfTrack) {
         pause();
         cancelSleepTimer();
@@ -633,6 +642,7 @@ class ListenVideoProvider extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _playToken++;
+    SleepTimerService().unregisterPauseCallback(_onSleepTimerPause);
     cancelSleepTimer();
     _noisySub?.cancel();
     _interruptionSub?.cancel();

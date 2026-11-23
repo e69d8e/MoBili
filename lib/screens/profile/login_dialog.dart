@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api/auth_api_service.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/app_toast.dart';
 
 class LoginDialog extends StatefulWidget {
@@ -130,8 +131,9 @@ class _LoginDialogState extends State<LoginDialog> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded, size: 18),
+                        tooltip: '关闭',
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -154,26 +156,27 @@ class _LoginDialogState extends State<LoginDialog> {
                       ],
                     ),
                     child: _isLoading
-                        ? Center(
+                        ? const Center(
                             child: SizedBox(
                               width: 28,
                               height: 28,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                color: Theme.of(context).colorScheme.primary,
+                                // 二维码框固定纯白底，不能跟随暗色模式取高亮度 primary（水墨暗色 #EDEDF2 会隐身）
+                                color: AppTheme.textMainLight,
                               ),
                             ),
                           )
                         : _isExpired
                             ? InkWell(
                                 onTap: _fetchQr,
-                                child: Center(
+                                child: const Center(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.refresh_rounded, size: 34, color: Theme.of(context).colorScheme.primary),
-                                      const SizedBox(height: 4.0),
-                                      const Text(
+                                      Icon(Icons.refresh_rounded, size: 34, color: AppTheme.textMainLight),
+                                      SizedBox(height: 4.0),
+                                      Text(
                                         '二维码已失效\n点击刷新',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(color: Colors.black87, fontSize: 12),

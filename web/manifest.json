@@ -1,11 +1,11 @@
 {
-    "name": "mobili",
-    "short_name": "mobili",
+    "name": "MoBili · 墨哩",
+    "short_name": "墨哩",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F7F8FA",
+    "theme_color": "#C9255E",
+    "description": "MoBili (墨哩) — 跨平台第三方哔哩哔哩客户端",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

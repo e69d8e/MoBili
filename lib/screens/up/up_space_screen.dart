@@ -99,23 +99,25 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
 
     return Scaffold(
       bottomNavigationBar: const MiniAudioPlayer(),
-      body: _isLoading
-          ? const VideoGridSkeleton()
-          : _spaceInfo == null
-          ? ErrorView(onRetry: _loadData)
-          : NotificationListener<ScrollNotification>(
-              onNotification: (scrollInfo) {
-                if (scrollInfo.metrics.pixels >=
-                    scrollInfo.metrics.maxScrollExtent - 200) {
-                  _loadMore();
-                }
-                return false;
-              },
-              child: RefreshIndicator(
-                color: primaryColor,
-                onRefresh: () => _loadData(isRefresh: true),
-                child: CustomScrollView(
-                scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
+      body: ResponsiveMaxConstraint(
+        child: _isLoading
+            ? const VideoGridSkeleton()
+            : _spaceInfo == null
+            ? ErrorView(onRetry: _loadData)
+            : NotificationListener<ScrollNotification>(
+                onNotification: (scrollInfo) {
+                  if (scrollInfo.metrics.pixels >=
+                      scrollInfo.metrics.maxScrollExtent - 200) {
+                    _loadMore();
+                  }
+                  return false;
+                },
+                child: RefreshIndicator(
+                  color: primaryColor,
+                  onRefresh: () => _loadData(isRefresh: true),
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    scrollCacheExtent: ScrollCacheExtent.pixels(600.0),
                 slivers: [
                   // App Bar without banner image
                   SliverAppBar(
@@ -257,31 +259,37 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
                       child: EmptyView(message: '该UP主暂无投稿视频'),
                     )
                   else
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                      sliver: SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount:
-                              ResponsiveGridConfig.calculateCrossAxisCount(
-                                context,
+                    SliverLayoutBuilder(
+                      builder: (ctx, sliverConstraints) {
+                        final w = sliverConstraints.crossAxisExtent;
+                        final cols = ResponsiveGridConfig
+                            .calculateCrossAxisCountForWidth(w);
+                        final extent = ResponsiveGridConfig
+                            .calculateMainAxisExtent(
+                              ctx,
+                              availableWidth: w,
+                              crossAxisCount: cols,
+                            );
+                        return SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                          sliver: SliverGrid.builder(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: cols,
+                                  mainAxisExtent: extent,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                ),
+                            itemCount: _videos.length,
+                            itemBuilder: (itemCtx, idx) => RepaintBoundary(
+                              child: VideoCard(
+                                video: _videos[idx],
+                                heroTag: 'up_${_videos[idx].bvid}_$idx',
                               ),
-                          childAspectRatio:
-                              ResponsiveGridConfig.calculateChildAspectRatio(
-                                context,
-                              ),
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (ctx, idx) => RepaintBoundary(
-                            child: VideoCard(
-                              video: _videos[idx],
-                              heroTag: 'up_${_videos[idx].bvid}_$idx',
                             ),
                           ),
-                          childCount: _videos.length,
-                        ),
-                      ),
+                        );
+                      },
                     ),
 
                   if (_isLoadingMore)
@@ -300,6 +308,7 @@ class _UpSpaceScreenState extends State<UpSpaceScreen> {
               ),
               ),
             ),
+      ),
     );
   }
 }

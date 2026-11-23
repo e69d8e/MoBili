@@ -141,9 +141,13 @@ class VideoWatchLaterSection extends StatelessWidget {
                                           color: primaryColor,
                                           borderRadius: BorderRadius.circular(4),
                                         ),
-                                        child: const Text(
+                                        child: Text(
                                           '播放中',
-                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.onPrimary,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -350,10 +354,10 @@ class VideoWatchLaterSheet {
                                             color: primaryColor,
                                             borderRadius: BorderRadius.circular(4),
                                           ),
-                                          child: const Text(
+                                          child: Text(
                                             '播放中',
                                             style: TextStyle(
-                                              color: Colors.white,
+                                              color: Theme.of(c).colorScheme.onPrimary,
                                               fontSize: 10,
                                               fontWeight: FontWeight.w600,
                                             ),

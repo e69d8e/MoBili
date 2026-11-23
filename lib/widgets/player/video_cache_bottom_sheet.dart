@@ -445,7 +445,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.5),
                               decoration: BoxDecoration(
-                                color: (isLoggedIn ? Colors.green : Colors.orange).withValues(alpha: 0.15),
+                                color: (isLoggedIn ? context.colors.success : context.colors.warning).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -453,7 +453,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w500,
-                                  color: isLoggedIn ? Colors.green : Colors.orange,
+                                  color: isLoggedIn ? context.colors.success : context.colors.warning,
                                 ),
                               ),
                             ),
@@ -518,7 +518,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                             decoration: BoxDecoration(
-                                              color: (isSelected ? onPrimary : Colors.orange).withValues(alpha: 0.2),
+                                              color: (isSelected ? onPrimary : context.colors.warning).withValues(alpha: 0.2),
                                               borderRadius: BorderRadius.circular(4),
                                             ),
                                             child: Text(
@@ -526,7 +526,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
-                                                color: isSelected ? onPrimary : Colors.orange,
+                                                color: isSelected ? onPrimary : context.colors.warning,
                                               ),
                                             ),
                                           ),
@@ -706,15 +706,14 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                         onPressed: _selectedPageIndices.isEmpty
                             ? null
                             : () => _startCaching(episodes),
-                        icon: Icon(Icons.download_rounded, size: 18, color: onPrimary),
+                        icon: const Icon(Icons.download_rounded, size: 18),
                         label: Text(
                           _selectedPageIndices.isEmpty
                               ? '请选择剧集'
                               : '开始缓存 (${_selectedPageIndices.length})',
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: onPrimary,
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -811,7 +810,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
                 ),
                 const SizedBox(width: 12.0),
                 if (isCached)
-                  _buildBadge('已缓存', Colors.green)
+                  _buildBadge('已缓存', context.colors.success)
                 else if (inProgress)
                   _buildBadge('缓存中', primaryColor)
                 else
@@ -917,7 +916,7 @@ class _VideoCacheBottomSheetState extends State<VideoCacheBottomSheet> {
               ),
               const SizedBox(width: 8.0),
               if (isCached)
-                _buildBadge('已缓存', Colors.green)
+                _buildBadge('已缓存', context.colors.success)
               else if (inProgress)
                 _buildBadge('缓存中', primaryColor)
               else

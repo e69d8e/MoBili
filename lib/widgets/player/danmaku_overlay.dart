@@ -288,20 +288,22 @@ class _DanmakuOverlayState extends State<DanmakuOverlay> with SingleTickerProvid
       return const SizedBox.shrink();
     }
 
-    // Direct single-pass canvas painting with RepaintBoundary without Opacity saveLayer overhead
+    // Direct single-pass canvas painting with ClipRect & RepaintBoundary without Opacity saveLayer overhead
     return IgnorePointer(
-      child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _tickerController,
-          builder: (context, _) {
-            return CustomPaint(
-              size: Size.infinite,
-              painter: _DanmakuPainter(
-                controller: widget.controller,
-                currentSeconds: widget.controller.currentPositionSeconds,
-              ),
-            );
-          },
+      child: ClipRect(
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: _tickerController,
+            builder: (context, _) {
+              return CustomPaint(
+                size: Size.infinite,
+                painter: _DanmakuPainter(
+                  controller: widget.controller,
+                  currentSeconds: widget.controller.currentPositionSeconds,
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -314,6 +316,7 @@ class _DanmakuPainter extends CustomPainter {
 
   // Duration in seconds for a scrolling danmaku to cross the screen in video timeline
   static const double scrollDuration = 6.0;
+  static const double fixedDuration = 4.0;
   static const int maxOnScreenDanmakus = 60;
 
   _DanmakuPainter({
@@ -340,16 +343,29 @@ class _DanmakuPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final danmakus = controller.danmakus;
-    if (danmakus.isEmpty) return;
+    if (danmakus.isEmpty || size.width <= 0 || size.height <= 0) return;
 
-    final double baseTrackHeight = (19.0 * controller.fontSizeScale).clamp(18.0, 32.0);
+    final double baseTrackHeight =
+        (19.0 * controller.fontSizeScale).clamp(18.0, 32.0);
     final double maxDisplayHeight = size.height * controller.areaRatio;
-    final int availableTracks = (maxDisplayHeight / baseTrackHeight).floor().clamp(1, 24);
+    final int availableTracks =
+        (maxDisplayHeight / baseTrackHeight).floor().clamp(1, 24);
     final double trackHeight = maxDisplayHeight / availableTracks;
     final double minTime = currentSeconds - scrollDuration;
 
     // Fast binary search to find visible range
     final int startIndex = _findStartIndex(danmakus, minTime);
+
+    // 轻量轨道碰撞检测：按时间顺序记录每条轨道前序弹幕的右边界与固定弹幕占用
+    final List<double> scrollTrackRightEdge = List<double>.filled(
+      availableTracks,
+      -double.infinity,
+    );
+    final List<bool> topTrackUsed = List<bool>.filled(availableTracks, false);
+    final List<bool> bottomTrackUsed = List<bool>.filled(
+      availableTracks,
+      false,
+    );
 
     int paintedCount = 0;
     for (int i = startIndex; i < danmakus.length; i++) {
@@ -358,26 +374,76 @@ class _DanmakuPainter extends CustomPainter {
       final item = danmakus[i];
       if (item.timePoint > currentSeconds) break; // Future items, stop scanning
 
-      final double progress = (currentSeconds - item.timePoint) / scrollDuration;
+      final double age = currentSeconds - item.timePoint;
+      final bool isFixed =
+          item.mode == DanmakuMode.top || item.mode == DanmakuMode.bottom;
+      final double life = isFixed ? fixedDuration : scrollDuration;
+      final double progress = age / life;
       if (progress < 0.0 || progress > 1.0) continue;
 
       final tp = controller.getOrCreatePainter(item);
 
-      double x;
-      if (item.mode == DanmakuMode.top || item.mode == DanmakuMode.bottom) {
-        // Center fixed
-        x = (size.width - tp.width) / 2;
-      } else {
-        // Scroll right to left
-        x = size.width - progress * (size.width + tp.width);
+      if (item.mode == DanmakuMode.top) {
+        int trackIndex = -1;
+        for (int t = 0; t < availableTracks; t++) {
+          if (!topTrackUsed[t]) {
+            trackIndex = t;
+            topTrackUsed[t] = true;
+            break;
+          }
+        }
+        if (trackIndex < 0) {
+          trackIndex = (item.text.hashCode.abs() + item.timestamp) %
+              availableTracks;
+        }
+        final x = (size.width - tp.width) / 2;
+        final y = trackIndex * trackHeight + 4;
+        tp.paint(canvas, Offset(x, y));
+        paintedCount++;
+        continue;
       }
 
-      // Cull items that have already scrolled past the left edge or haven't appeared
+      if (item.mode == DanmakuMode.bottom) {
+        int trackIndex = -1;
+        for (int t = availableTracks - 1; t >= 0; t--) {
+          if (!bottomTrackUsed[t]) {
+            trackIndex = t;
+            bottomTrackUsed[t] = true;
+            break;
+          }
+        }
+        if (trackIndex < 0) {
+          trackIndex = availableTracks -
+              1 -
+              ((item.text.hashCode.abs() + item.timestamp) % availableTracks);
+        }
+        final x = (size.width - tp.width) / 2;
+        final y = (size.height - (availableTracks - trackIndex) * trackHeight)
+            .clamp(4.0, size.height - trackHeight);
+        tp.paint(canvas, Offset(x, y));
+        paintedCount++;
+        continue;
+      }
+
+      // 滚动弹幕：从右向左，避开仍在同一轨道未完整移出的前序弹幕
+      final double x = size.width - progress * (size.width + tp.width);
       if (x + tp.width < -10 || x > size.width + 10) continue;
 
-      final int trackIndex = (item.text.hashCode.abs() + item.timestamp) % availableTracks;
-      final double y = trackIndex * trackHeight + 4;
+      final int preferredTrack =
+          (item.text.hashCode.abs() + item.timestamp) % availableTracks;
+      int chosenTrack = preferredTrack;
+      for (int offset = 0; offset < availableTracks; offset++) {
+        final candidate = (preferredTrack + offset) % availableTracks;
+        if (scrollTrackRightEdge[candidate] + 16.0 <= x) {
+          chosenTrack = candidate;
+          break;
+        }
+      }
+      if (x + tp.width > scrollTrackRightEdge[chosenTrack]) {
+        scrollTrackRightEdge[chosenTrack] = x + tp.width;
+      }
 
+      final double y = chosenTrack * trackHeight + 4;
       tp.paint(canvas, Offset(x, y));
       paintedCount++;
     }

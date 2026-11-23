@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_dimens.dart';
+import '../../../theme/app_typography.dart';
 import '../../../utils/formatters.dart';
 
-/// 主操作按钮（点赞/投币/收藏）：图标 + 计数文字，支持长按三连进度圈。
+/// 主操作按钮（点赞/投币/收藏/分享）：图标弹性反馈 + 计数文字，支持长按三连联动光环。
 class VideoActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -34,63 +37,91 @@ class VideoActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeColor = color ?? Theme.of(context).colorScheme.primary;
+    final hasProgress = progress != null && progress! > 0;
 
     return Expanded(
       child: Semantics(
         button: true,
         label: semanticLabel ?? label,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            onTap();
-          },
-          onLongPressStart: onLongPressStart,
-          onLongPressEnd: onLongPressEnd,
-          onLongPressCancel: onLongPressCancel,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      if (progress != null && progress! > 0)
-                        SizedBox(
-                          width: 30,
-                          height: 30,
-                          child: CircularProgressIndicator(
-                            value: progress,
-                            strokeWidth: 2.2,
-                            valueColor: AlwaysStoppedAnimation<Color>(activeColor),
-                            backgroundColor: context.colors.divider,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: AppRadius.of(AppRadius.sm),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTap();
+            },
+            onLongPress: onLongPressStart != null ? () {} : null,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onLongPressStart: onLongPressStart,
+              onLongPressEnd: onLongPressEnd,
+              onLongPressCancel: onLongPressCancel,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (hasProgress)
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                value: progress,
+                                strokeWidth: 2.4,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  activeColor,
+                                ),
+                                backgroundColor: context.colors.divider,
+                              ),
+                            ),
+                          TweenAnimationBuilder<double>(
+                            key: ValueKey('act_$active'),
+                            tween: Tween(
+                              begin: active ? 0.78 : 1.0,
+                              end: hasProgress ? 1.12 : 1.0,
+                            ),
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutBack,
+                            builder: (context, scale, child) {
+                              return Transform.scale(scale: scale, child: child);
+                            },
+                            child: Icon(
+                              icon,
+                              size: 21,
+                              color: (active || hasProgress)
+                                  ? activeColor
+                                  : context.colors.textSub,
+                            ),
                           ),
-                        ),
-                      Icon(
-                        icon,
-                        size: 21,
-                        color: active ? activeColor : (context.colors.textSub),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: AppTypography.caption,
+                        color: (active || hasProgress)
+                            ? activeColor
+                            : context.colors.textSub,
+                        fontWeight: (active || hasProgress)
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: active ? activeColor : (context.colors.textSub),
-                    fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -99,7 +130,7 @@ class VideoActionButton extends StatelessWidget {
   }
 }
 
-/// 次操作按钮（缓存/听视频/稍后看）：纯图标，靠间距分组弱化视觉权重。
+/// 次操作按钮（缓存/听视频/稍后看）：纯图标，带轻水波纹反馈。
 class _IconAction extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -123,19 +154,22 @@ class _IconAction extends StatelessWidget {
       child: Semantics(
         button: true,
         label: tooltip,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            onTap();
-          },
-          child: SizedBox(
-            width: 38,
-            height: 38,
-            child: Icon(
-              icon,
-              size: 21,
-              color: active ? activeColor : (context.colors.textHint),
+        child: Material(
+          color: Colors.transparent,
+          child: InkResponse(
+            radius: 20,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              onTap();
+            },
+            child: SizedBox(
+              width: 38,
+              height: 38,
+              child: Icon(
+                icon,
+                size: 21,
+                color: active ? activeColor : context.colors.textHint,
+              ),
             ),
           ),
         ),
@@ -209,42 +243,56 @@ class VideoActionBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         children: [
-          AnimatedBuilder(
-            animation: tripleComboAnimation,
-            builder: (context, _) {
-              return VideoActionButton(
-                icon: isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
-                label: Formatters.formatCount(likeCount),
-                active: isLiked,
-                progress: tripleComboAnimation.value,
-                onTap: onLikeTap,
-                onLongPressStart: onLikeLongPressStart,
-                onLongPressEnd: onLikeLongPressEnd,
-                onLongPressCancel: onLikeLongPressCancel,
-              );
-            },
-          ),
-          VideoActionButton(
-            icon: coinCount > 0
-                ? Icons.monetization_on_rounded
-                : Icons.monetization_on_outlined,
-            // 与点赞/收藏一致始终展示总投币数；本人已投数通过图标高亮与无障碍文案表达
-            label: Formatters.formatCount(totalCoins),
-            semanticLabel: coinCount > 0
-                ? '投币，共${Formatters.formatCount(totalCoins)}，本人已投$coinCount币'
-                : '投币，共${Formatters.formatCount(totalCoins)}',
-            active: coinCount > 0,
-            onTap: onCoinTap,
-          ),
-          VideoActionButton(
-            icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-            label: Formatters.formatCount(favCount),
-            semanticLabel: isFav
-                ? '已收藏，${Formatters.formatCount(favCount)}，单击取消收藏，长按选择收藏夹'
-                : '收藏，${Formatters.formatCount(favCount)}，单击一键收藏，长按选择收藏夹',
-            active: isFav,
-            onTap: onFavTap,
-            onLongPressStart: (_) => onFavLongPress(),
+          // 三连进度同时联动点赞/投币/收藏三个主按钮光环
+          Expanded(
+            flex: 3,
+            child: AnimatedBuilder(
+              animation: tripleComboAnimation,
+              builder: (context, _) {
+                final tripleProgress = tripleComboAnimation.value;
+                return Row(
+                  children: [
+                    VideoActionButton(
+                      icon: isLiked
+                          ? Icons.thumb_up_alt_rounded
+                          : Icons.thumb_up_alt_outlined,
+                      label: Formatters.formatCount(likeCount),
+                      active: isLiked,
+                      progress: tripleProgress,
+                      onTap: onLikeTap,
+                      onLongPressStart: onLikeLongPressStart,
+                      onLongPressEnd: onLikeLongPressEnd,
+                      onLongPressCancel: onLikeLongPressCancel,
+                    ),
+                    VideoActionButton(
+                      icon: coinCount > 0
+                          ? Icons.monetization_on_rounded
+                          : Icons.monetization_on_outlined,
+                      label: Formatters.formatCount(totalCoins),
+                      semanticLabel: coinCount > 0
+                          ? '投币，共${Formatters.formatCount(totalCoins)}，本人已投$coinCount币'
+                          : '投币，共${Formatters.formatCount(totalCoins)}',
+                      active: coinCount > 0,
+                      progress: tripleProgress,
+                      onTap: onCoinTap,
+                    ),
+                    VideoActionButton(
+                      icon: isFav
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      label: Formatters.formatCount(favCount),
+                      semanticLabel: isFav
+                          ? '已收藏，${Formatters.formatCount(favCount)}，单击取消收藏，长按选择收藏夹'
+                          : '收藏，${Formatters.formatCount(favCount)}，单击一键收藏，长按选择收藏夹',
+                      active: isFav,
+                      progress: tripleProgress,
+                      onTap: onFavTap,
+                      onLongPressStart: (_) => onFavLongPress(),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
           VideoActionButton(
             icon: Icons.share_outlined,
@@ -268,8 +316,8 @@ class VideoActionBar extends StatelessWidget {
             icon: isCached
                 ? Icons.download_done_rounded
                 : (isDownloading
-                    ? Icons.downloading_rounded
-                    : Icons.download_for_offline_outlined),
+                      ? Icons.downloading_rounded
+                      : Icons.download_for_offline_outlined),
             tooltip: isCached ? '已缓存' : (isDownloading ? '缓存中' : '缓存'),
             active: isCached || isDownloading,
             color: isCached ? context.colors.success : null,
@@ -282,7 +330,9 @@ class VideoActionBar extends StatelessWidget {
             onTap: onListenTap,
           ),
           _IconAction(
-            icon: isInWatchLater ? Icons.watch_later_rounded : Icons.watch_later_outlined,
+            icon: isInWatchLater
+                ? Icons.watch_later_rounded
+                : Icons.watch_later_outlined,
             tooltip: isInWatchLater ? '已添加稍后看' : '稍后看',
             active: isInWatchLater,
             onTap: onWatchLaterTap,

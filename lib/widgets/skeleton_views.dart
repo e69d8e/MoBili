@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_dimens.dart';
 import '../utils/responsive_util.dart';
 
 /// Lightweight 60fps shimmer effect for skeleton loading placeholders
@@ -15,6 +16,7 @@ class ShimmerLoading extends StatefulWidget {
 class _ShimmerLoadingState extends State<ShimmerLoading>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -22,7 +24,22 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (disableAnimations != _reduceMotion) {
+      _reduceMotion = disableAnimations;
+    }
+    if (_reduceMotion) {
+      if (_controller.isAnimating) _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -33,6 +50,10 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
 
   @override
   Widget build(BuildContext context) {
+    if (_reduceMotion) {
+      // 尊重系统减弱动态效果：停用扫光帧动画，保留静态占位骨架
+      return widget.child;
+    }
 
     final baseColor = context.colors.fill;
     final highlightColor = context.colors.fillHighlight;
@@ -85,27 +106,23 @@ class VideoCardSkeleton extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: context.colors.divider,
-          width: 0.8,
-        ),
+        borderRadius: AppRadius.card,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Cover placeholder
+          // Cover placeholder（与新版卡片统一 16 / 10）
           AspectRatio(
-            aspectRatio: 16 / 9.6,
+            aspectRatio: 16 / 10,
             child: Container(
               color: context.colors.fill,
             ),
           ),
           // Metadata lines placeholder
           Padding(
-            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+            padding: const EdgeInsets.all(AppSpacing.sm),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -114,16 +131,16 @@ class VideoCardSkeleton extends StatelessWidget {
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: context.colors.fill,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: AppRadius.of(AppRadius.xs),
                   ),
                 ),
-                const SizedBox(height: 4.0),
+                const SizedBox(height: 5.0),
                 Container(
                   height: 12,
                   width: 110,
                   decoration: BoxDecoration(
                     color: context.colors.fill,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: AppRadius.of(AppRadius.xs),
                   ),
                 ),
                 const SizedBox(height: 8.0),
@@ -143,7 +160,7 @@ class VideoCardSkeleton extends StatelessWidget {
                       width: 60,
                       decoration: BoxDecoration(
                         color: context.colors.fill,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: AppRadius.of(AppRadius.xs),
                       ),
                     ),
                   ],
@@ -159,37 +176,47 @@ class VideoCardSkeleton extends StatelessWidget {
 
 /// Skeleton grid displayed while loading video feeds
 class VideoGridSkeleton extends StatelessWidget {
-  final int itemCount;
+  final int? itemCount;
   final EdgeInsetsGeometry padding;
 
   const VideoGridSkeleton({
     super.key,
-    this.itemCount = 6,
+    this.itemCount,
     this.padding = const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
   });
 
   @override
   Widget build(BuildContext context) {
-    final crossAxisCount = ResponsiveGridConfig.calculateCrossAxisCount(
-      context,
-    );
-    final childAspectRatio = ResponsiveGridConfig.calculateChildAspectRatio(
-      context,
-    );
-
-    return ShimmerLoading(
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: padding,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final crossAxisCount =
+            ResponsiveGridConfig.calculateCrossAxisCountForWidth(availWidth);
+        final mainAxisExtent = ResponsiveGridConfig.calculateMainAxisExtent(
+          context,
+          availableWidth: availWidth,
           crossAxisCount: crossAxisCount,
-          childAspectRatio: childAspectRatio,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: itemCount,
-        itemBuilder: (ctx, idx) => const VideoCardSkeleton(),
-      ),
+        );
+        final effectiveCount = itemCount ?? (crossAxisCount * 3);
+
+        return ShimmerLoading(
+          child: GridView.builder(
+            primary: false,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: padding,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisExtent: mainAxisExtent,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: effectiveCount,
+            itemBuilder: (ctx, idx) => const VideoCardSkeleton(),
+          ),
+        );
+      },
     );
   }
 }
@@ -211,6 +238,7 @@ class VideoListSkeleton extends StatelessWidget {
 
     return ShimmerLoading(
       child: ListView.separated(
+        primary: false,
         physics: const NeverScrollableScrollPhysics(),
         shrinkWrap: true,
         padding: padding,
@@ -286,6 +314,7 @@ class CommentSkeleton extends StatelessWidget {
 
     return ShimmerLoading(
       child: ListView.separated(
+        primary: false,
         physics: const NeverScrollableScrollPhysics(),
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
@@ -332,6 +361,170 @@ class CommentSkeleton extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: placeholderColor,
                         borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Skeleton placeholder for Dynamic feed cards
+class DynamicCardSkeleton extends StatelessWidget {
+  final int itemCount;
+  const DynamicCardSkeleton({super.key, this.itemCount = 4});
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholderColor = context.colors.fill;
+
+    return ShimmerLoading(
+      child: ListView.separated(
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        itemCount: itemCount,
+        separatorBuilder: (_, _) => const SizedBox(height: 10.0),
+        itemBuilder: (context, index) {
+          return Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: context.colors.card,
+              borderRadius: AppRadius.card,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: placeholderColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 96,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            color: placeholderColor,
+                            borderRadius: AppRadius.of(AppRadius.xs),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Container(
+                          width: 64,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: placeholderColor,
+                            borderRadius: AppRadius.of(AppRadius.xs),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  width: double.infinity,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: placeholderColor,
+                    borderRadius: AppRadius.of(AppRadius.xs),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 210,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: placeholderColor,
+                    borderRadius: AppRadius.of(AppRadius.xs),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: placeholderColor,
+                      borderRadius: AppRadius.of(AppRadius.sm),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Skeleton placeholder for UP user list (search / relation lists)
+class UserListSkeleton extends StatelessWidget {
+  final int itemCount;
+  final bool shrinkWrap;
+  const UserListSkeleton({
+    super.key,
+    this.itemCount = 6,
+    this.shrinkWrap = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholderColor = context.colors.fill;
+
+    return ShimmerLoading(
+      child: ListView.separated(
+        primary: false,
+        shrinkWrap: shrinkWrap,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        itemCount: itemCount,
+        separatorBuilder: (_, _) => const SizedBox(height: 14.0),
+        itemBuilder: (context, index) {
+          return Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: placeholderColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: placeholderColor,
+                        borderRadius: AppRadius.of(AppRadius.xs),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: 170,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: placeholderColor,
+                        borderRadius: AppRadius.of(AppRadius.xs),
                       ),
                     ),
                   ],

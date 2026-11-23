@@ -2,18 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobili/models/comment_model.dart';
 import 'package:mobili/models/dynamic_model.dart';
+import 'package:mobili/models/search_model.dart';
 import 'package:mobili/models/user_model.dart';
+import 'package:mobili/models/video_model.dart';
 import 'package:mobili/providers/auth_provider.dart';
 import 'package:mobili/providers/listen_video_provider.dart';
+import 'package:mobili/providers/search_provider.dart';
 import 'package:mobili/screens/dynamic/dynamic_detail_screen.dart';
+import 'package:mobili/screens/dynamic/dynamic_screen.dart';
+import 'package:mobili/screens/search/search_screen.dart';
 import 'package:mobili/screens/up/up_space_screen.dart';
 import 'package:mobili/services/api/api_endpoints.dart';
+import 'package:mobili/services/api/search_api_service.dart';
 import 'package:mobili/services/settings/player_settings_service.dart';
+import 'package:mobili/theme/app_theme.dart';
 import 'package:mobili/utils/image_decode_sizing.dart';
 import 'package:mobili/widgets/comment_item_widget.dart';
 import 'package:mobili/widgets/dynamic_card.dart';
+import 'package:mobili/widgets/image_viewer.dart';
 import 'package:mobili/widgets/network_image_view.dart';
 
 void main() {
@@ -772,7 +781,8 @@ void main() {
 
       // Tap on text to open detail
       await tester.tap(find.text('这是一条测试动态正文'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('动态详情'), findsOneWidget);
     });
@@ -822,7 +832,8 @@ void main() {
 
       // Tap on the card text navigates to DynamicDetailScreen
       await tester.tap(find.text('这是一组插画作品'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       // Successfully navigated to DynamicDetailScreen
       expect(find.text('动态详情'), findsOneWidget);
@@ -1201,5 +1212,363 @@ void main() {
       // 不再按“显示宽度 × DPR”的全分辨率解码
       expect(cacheWidth, lessThan(1440));
     });
+
+    testWidgets('DynamicUpFilterStrip 在 1.0x 与 1.4x 字号缩放下不溢出', (tester) async {
+      final followings = [
+        RelationUser(mid: 1, uname: '测试UP主一号', face: '', sign: ''),
+        RelationUser(mid: 2, uname: '超长用户名截断测试', face: '', sign: ''),
+      ];
+
+      for (final scale in [1.0, 1.4]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            key: ValueKey('strip_$scale'),
+            theme: AppTheme.darkTheme(preset: AppThemePreset.ink),
+            home: MediaQuery(
+              data: MediaQueryData(
+                size: const Size(400, 800),
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: Scaffold(
+                body: DynamicUpFilterStrip(
+                  followings: followings,
+                  selectedHostMid: 1,
+                  primaryColor: AppThemePreset.ink.darkPrimary,
+                  onSelectAll: () {},
+                  onSelectHost: (_) {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: 'scale=$scale');
+        expect(find.text('全部'), findsOneWidget);
+        expect(find.text('测试UP主一号'), findsOneWidget);
+      }
+    });
+
+    test('DynamicItem parses MAJOR_TYPE_ARTICLE title/desc/cv id and jump_url fallback', () {
+      final json = {
+        'id_str': '',
+        'type': 'DYNAMIC_TYPE_ARTICLE',
+        'basic': {'jump_url': '//www.bilibili.com/read/cv98765'},
+        'modules': {
+          'module_author': {'mid': 123, 'name': '专栏作者'},
+          'module_dynamic': {
+            'major': {
+              'type': 'MAJOR_TYPE_ARTICLE',
+              'article': {
+                'id': 98765,
+                'title': '一篇专栏标题',
+                'desc': '专栏摘要内容',
+                'covers': ['//i0.hdslb.com/bfs/article/cover.jpg'],
+                'jump_url': '//www.bilibili.com/read/cv98765',
+              },
+            },
+          },
+        },
+      };
+
+      final item = DynamicItem.fromJson(json);
+      expect(item.id, 'cv98765');
+      expect(item.title, '一篇专栏标题');
+      expect(item.text, contains('专栏摘要内容'));
+      expect(item.pictures.single.url, 'https://i0.hdslb.com/bfs/article/cover.jpg');
+      expect(item.commentId, 98765);
+      expect(item.commentType, 12);
+    });
+
+    test('DynamicItem.fromArticleViewJson parses HTML content, banner and stats', () {
+      final item = DynamicItem.fromArticleViewJson(
+        {
+          'id': 123456,
+          'title': 'HTML 专栏标题',
+          'author_name': '作者小陈',
+          'mid': 4567,
+          'banner_url': '//i0.hdslb.com/bfs/article/banner.jpg',
+          'stats': {'reply': 18, 'like': 99, 'share': 7},
+          'content':
+              '<h2>小标题</h2><p>第一段正文&amp;细节</p><figure><img data-src="//i0.hdslb.com/bfs/article/p1.png" width="800" height="600"/></figure><blockquote>引用内容</blockquote><ul><li>条目指代</li></ul><hr/><pre>code()</pre>',
+        },
+      );
+
+      expect(item.id, 'cv123456');
+      expect(item.title, 'HTML 专栏标题');
+      expect(item.author.name, '作者小陈');
+      expect(item.author.mid, 4567);
+      expect(item.commentId, 123456);
+      expect(item.commentType, 12);
+      expect(item.stat.commentCount, 18);
+      expect(item.stat.likeCount, 99);
+      expect(item.pictures.length, 2);
+      expect(item.paragraphs.any((p) => p.type == 4 && p.text == '小标题'), isTrue);
+      expect(item.paragraphs.any((p) => p.isText && p.text == '第一段正文&细节'), isTrue);
+      expect(
+        item.paragraphs.any(
+          (p) =>
+              p.isPicture &&
+              p.picture?.url == 'https://i0.hdslb.com/bfs/article/p1.png',
+        ),
+        isTrue,
+      );
+      expect(item.paragraphs.any((p) => p.isQuote && p.text == '引用内容'), isTrue);
+      expect(item.paragraphs.any((p) => p.isCode && p.text == 'code()'), isTrue);
+      expect(item.paragraphs.any((p) => p.isDivider), isTrue);
+    });
+
+    testWidgets(
+      'DynamicCard forwards sharing same orig and empty orig.id navigate without Hero conflict',
+      (tester) async {
+        final sharedOrig = DynamicItem(
+          id: 'orig_999',
+          type: 'DYNAMIC_TYPE_DRAW',
+          author: DynamicAuthor(
+            mid: 201,
+            name: '原作者',
+            face: '',
+            pubTime: '1小时前',
+            pubAction: '',
+          ),
+          text: '原创图文内容',
+          pictures: const [
+            DynamicPicture(
+              url: 'https://i0.hdslb.com/bfs/draw/shared.jpg',
+              width: 800,
+              height: 800,
+            ),
+          ],
+          stat: DynamicStat(),
+        );
+        final card1 = DynamicItem(
+          id: 'fwd_1',
+          type: 'DYNAMIC_TYPE_FORWARD',
+          author: DynamicAuthor(
+            mid: 301,
+            name: '转发者1',
+            face: '',
+            pubTime: '刚刚',
+            pubAction: '',
+          ),
+          text: '转发评论一',
+          orig: sharedOrig,
+          stat: DynamicStat(),
+        );
+        final card2 = DynamicItem(
+          id: 'fwd_2',
+          type: 'DYNAMIC_TYPE_FORWARD',
+          author: DynamicAuthor(
+            mid: 302,
+            name: '转发者2',
+            face: '',
+            pubTime: '刚刚',
+            pubAction: '',
+          ),
+          text: '转发评论二',
+          orig: DynamicItem(
+            id: '',
+            type: 'DYNAMIC_TYPE_DRAW',
+            author: DynamicAuthor(
+              mid: 202,
+              name: '无ID原作者',
+              face: '',
+              pubTime: '',
+              pubAction: '',
+            ),
+            text: '原动态无独立ID',
+            stat: DynamicStat(),
+          ),
+          stat: DynamicStat(),
+        );
+        final card3 = DynamicItem(
+          id: 'fwd_3',
+          type: 'DYNAMIC_TYPE_FORWARD',
+          author: DynamicAuthor(
+            mid: 303,
+            name: '转发者3',
+            face: '',
+            pubTime: '刚刚',
+            pubAction: '',
+          ),
+          text: '也转发同一图文',
+          orig: sharedOrig,
+          stat: DynamicStat(),
+        );
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<ListenVideoProvider>(
+                create: (_) => ListenVideoProvider(),
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: ListView(
+                  children: [
+                    DynamicCard(item: card1),
+                    DynamicCard(item: card2),
+                    DynamicCard(item: card3),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('@无ID原作者: 原动态无独立ID'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(DynamicDetailScreen), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(DynamicDetailScreen),
+            matching: find.text('转发评论二'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'DynamicDetailScreen handles duplicate picture URLs across paragraphs without Hero crash',
+      (tester) async {
+        const repeatedPic = DynamicPicture(
+          url: 'https://i0.hdslb.com/bfs/opus/repeated.jpg',
+          width: 900,
+          height: 600,
+        );
+        final opusItem = DynamicItem(
+          id: 'dup_img_opus',
+          type: 'DYNAMIC_TYPE_ARTICLE',
+          title: '含重复配图的图文',
+          author: DynamicAuthor(
+            mid: 404,
+            name: '图文作者',
+            face: '',
+            pubTime: '刚刚',
+            pubAction: '',
+          ),
+          text: '正文内容',
+          pictures: const [repeatedPic],
+          paragraphs: const [
+            DynamicParagraph(type: 2, picture: repeatedPic),
+            DynamicParagraph(type: 1, text: '中间一段文字'),
+            DynamicParagraph(type: 2, picture: repeatedPic),
+          ],
+          stat: DynamicStat(),
+        );
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<ListenVideoProvider>(
+                create: (_) => ListenVideoProvider(),
+              ),
+            ],
+            child: MaterialApp(
+              home: DynamicDetailScreen(
+                dynamicId: 'dup_img_opus',
+                initialItem: opusItem,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final images = find.byType(NetworkImageView);
+        expect(images, findsNWidgets(2));
+
+        await tester.tap(images.last);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ImageViewer), findsOneWidget);
+      },
+    );
+
+    testWidgets('SearchScreen article tap opens DynamicDetailScreen in-app', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final fakeApi = _FakeArticleSearchApiService();
+      final sp = SearchProvider(searchApiService: fakeApi);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+            ChangeNotifierProvider<ListenVideoProvider>(
+              create: (_) => ListenVideoProvider(),
+            ),
+            ChangeNotifierProvider<SearchProvider>.value(value: sp),
+          ],
+          child: const MaterialApp(
+            home: SearchScreen(initialKeyword: 'Flutter'),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.text('专栏'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('搜索命中专栏标题'), findsOneWidget);
+
+      await tester.tap(find.text('搜索命中专栏标题'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DynamicDetailScreen), findsOneWidget);
+      expect(find.text('专栏详情'), findsOneWidget);
+    });
   });
+}
+
+class _FakeArticleSearchApiService implements SearchApiService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
+  Future<List<SearchHotItem>> getHotSearch({int limit = 10}) async => const [];
+
+  @override
+  Future<List<VideoItem>> searchVideos({
+    required String keyword,
+    int page = 1,
+    String order = 'totalrank',
+    int duration = 0,
+    int tid = 0,
+  }) async =>
+      const [];
+
+  @override
+  Future<List<SearchArticleItem>> searchArticles({
+    required String keyword,
+    int page = 1,
+    String order = 'totalrank',
+  }) async {
+    return [
+      SearchArticleItem(
+        id: 556677,
+        title: '搜索命中专栏标题',
+        desc: '专栏摘要预览',
+        imageUrls: const ['https://i0.hdslb.com/bfs/article/search_cover.jpg'],
+        uname: '专栏作者A',
+        mid: 8899,
+        view: 1200,
+        like: 88,
+        reply: 12,
+        pubTime: 1700000000,
+      ),
+    ];
+  }
 }

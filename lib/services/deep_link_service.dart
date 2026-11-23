@@ -4,6 +4,8 @@ import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../models/dynamic_model.dart';
+import '../screens/dynamic/dynamic_detail_screen.dart';
 import '../screens/search/search_screen.dart';
 import '../screens/up/up_space_screen.dart';
 import '../screens/video/video_detail_screen.dart';
@@ -98,6 +100,7 @@ class DeepLinkService {
     String? bvid;
     int? aid;
     int? mid;
+    String? dynamicId;
     String? keyword;
 
     if (resolved.scheme == _customScheme) {
@@ -116,6 +119,13 @@ class DeepLinkService {
             avMatch == null ? null : int.tryParse(avMatch.group(1)!);
         if (parsed != null && parsed > 0) aid = parsed;
       }
+      final opusId = extractOpusIdFromUrl(path);
+      if (opusId.isNotEmpty) {
+        dynamicId = opusId;
+      } else {
+        final cvId = extractCvIdFromUrl(path);
+        if (cvId > 0) dynamicId = 'cv$cvId';
+      }
       if (resolved.host == 'space.bilibili.com') {
         final segment =
             path.split('/').firstWhere((s) => s.isNotEmpty, orElse: () => '');
@@ -124,7 +134,10 @@ class DeepLinkService {
       keyword = resolved.queryParameters['keyword'];
     }
 
-    if (bvid == null && aid == null && (mid == null || mid <= 0)) {
+    if (bvid == null &&
+        aid == null &&
+        dynamicId == null &&
+        (mid == null || mid <= 0)) {
       final kw = keyword?.trim() ?? '';
       if (kw.isEmpty) return null;
       return DeepLinkTarget(keyword: kw);
@@ -133,6 +146,7 @@ class DeepLinkService {
       bvid: bvid,
       aid: (aid != null && aid > 0) ? aid : null,
       mid: (mid != null && mid > 0) ? mid : null,
+      dynamicId: dynamicId,
     );
   }
 
@@ -167,6 +181,10 @@ class DeepLinkService {
       } else if (navContext.mounted) {
         AppToast.show(navContext, '视频不存在或已下架');
       }
+      return;
+    }
+    if (target.dynamicId != null) {
+      _push(nav, DynamicDetailScreen(dynamicId: target.dynamicId!));
       return;
     }
     if (target.mid != null) {
@@ -225,12 +243,19 @@ class DeepLinkService {
   }
 }
 
-/// 解析出的链接路由目标（按优先级依次判断：bvid → aid → mid → keyword）
+/// 解析出的链接路由目标（按优先级依次判断：bvid → aid → dynamicId → mid → keyword）
 class DeepLinkTarget {
   final String? bvid;
   final int? aid;
   final int? mid;
+  final String? dynamicId;
   final String? keyword;
 
-  const DeepLinkTarget({this.bvid, this.aid, this.mid, this.keyword});
+  const DeepLinkTarget({
+    this.bvid,
+    this.aid,
+    this.mid,
+    this.dynamicId,
+    this.keyword,
+  });
 }
